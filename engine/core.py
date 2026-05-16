@@ -237,4 +237,34 @@ class SacredDoctrineAnalyst:
                     "type": "CF_STRIKE"
                 }
             
-        return None
+    def get_strategic_forecast(self):
+        """Generates a plain-language narrative based on the Sacred Doctrine."""
+        master = self.states[self.master_tf]
+        m30 = self.states["M30"]
+        m15 = self.states["M15"]
+        m5 = self.states["M5"]
+        
+        direction = master.cmp
+        if direction == "WAIT":
+            return "MASTER UNCERTAIN: Scanning for direction in higher timeframes."
+            
+        # Analysis Logic
+        if m5.cmp != direction:
+            # Market is in VR (M5 is opposite to Master)
+            msg = f"MARKET STATUS: [bold yellow]VALID RETRACEMENT (VR)[/]. Master {self.master_tf} is {direction}, but M5 is {m5.cmp}. "
+            if m15.cmp == direction:
+                msg += "M15 masih solid. Tunggu M5 pecah SELL (CF) untuk eksekusi Sniper."
+            else:
+                msg += "M15 sudah VR! Retracement merembet ke atas. Play it safe."
+            return msg
+            
+        elif m5.status == "CF":
+            return f"MARKET STATUS: [bold green]CONFIRMATION (CF)[/]. M5 sudah searah Master {direction} setelah VR. Sinyal valid untuk STRIKE!"
+            
+        elif m5.cmp == direction:
+            if not m15.vr_occurred and not m30.vr_occurred:
+                return f"MARKET STATUS: [bold cyan]MOMENTUM KENCENG[/]. Semua TF searah {direction}. Cari celah Ghost Strike di M5."
+            else:
+                return f"MARKET STATUS: [bold blue]RECOVERY[/]. Market mulai kembali ke jalur {direction} setelah retracement."
+                
+        return "MARKET STATUS: ANALYZING STRUCTURE..."

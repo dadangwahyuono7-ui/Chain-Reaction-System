@@ -46,8 +46,9 @@ class ChainReactionExecutor:
         """
         positions = mt5.positions_get(symbol=self.symbol, magic=self.magic_number)
         if not positions:
-            return
+            return []
 
+        events = []
         for p in positions:
             # Calculate current profit in pips (Gold: 0.1 = 1 pip)
             curr_price = mt5.symbol_info_tick(self.symbol).bid if p.type == mt5.POSITION_TYPE_BUY else mt5.symbol_info_tick(self.symbol).ask
@@ -64,15 +65,16 @@ class ChainReactionExecutor:
                     "tp": p.tp,
                 }
                 mt5.order_send(request)
-                console.print(f"[bold yellow]🛡️ BE PROTECT ACTIVATED for Ticket {p.ticket}[/bold yellow]")
+                events.append(f"🛡️ BE PROTECT: Ticket {p.ticket}")
 
             # 2. TP PAKSA: M30 fails to make new BO
-            # If we are in a trade for a while and M30 doesn't confirm momentum
             m30 = analyst.states["M30"]
-            # Simplified: If M30 direction is against position, Close!
             if (p.type == mt5.POSITION_TYPE_BUY and m30.cmp == "SELL") or \
                (p.type == mt5.POSITION_TYPE_SELL and m30.cmp == "BUY"):
-                self.close_position(p, "TP PAKSA: M30 Counter-Trend Detected")
+                self.close_position(p, "TP PAKSA: M30 Counter")
+                events.append(f"🚪 EXIT: TP PAKSA M30 Counter")
+        
+        return events
 
     def close_position(self, p, reason):
         tick = mt5.symbol_info_tick(self.symbol)
@@ -94,36 +96,32 @@ class ChainReactionExecutor:
         """Executes a trade with all Chain Reaction rules applied."""
         tick = mt5.symbol_info_tick(self.symbol)
         if not tick:
-            return False, "No Tick Data"
+            return False, "OFFLINE: No Tick Data"
             
         price = tick.ask if direction == "BUY" else tick.bid
         
         # 1. Barrier Guard Check
         passed, msg = self.check_barrier_guard(price, analyst)
         if not passed:
-            console.print(f"[bold red]{msg}[/bold red]")
-            return False, msg
+            return False, f"VETO: {msg}"
             
-        # 2. TP HIERARCHY LAW: Mapping TP to the trigger TF SNR
-        # DOKTRIN: Jika M15 sudah VR, TP harus lebih pendek (Quick Scalp)
+        # 2. TP HIERARCHY LAW
         m15 = analyst.states["M15"]
         m30 = analyst.states["M30"]
-        
-        # Determine base TP
         trigger_tf = "M5"
         tp = self.calculate_snr_hunter_tp(direction, analyst, tf_name=trigger_tf)
         
-        # ADAPTIVE TP: If M15 or M30 is in VR against Master, we play it safe
+        # ADAPTIVE TP
+        is_adaptive = False
         if m15.status == "VR" or m30.status == "VR":
-            # Shorten TP to 20 pips instead of SNR hunter if SNR is too far
             scalp_tp = price + 2.0 if direction == "BUY" else price - 2.0
             if tp > 0:
                 tp = min(tp, scalp_tp) if direction == "BUY" else max(tp, scalp_tp)
             else:
                 tp = scalp_tp
-            console.print("[bold yellow]⚠️ ADAPTIVE TP: Deep VR detected. Shortening target.[/bold yellow]")
-        
-        # 3. TECHNICAL SL: Below Trigger TF SNR
+            is_adaptive = True
+
+        # 3. TECHNICAL SL
         trigger_state = analyst.states[trigger_tf]
         technical_sl = trigger_state.sup if direction == "BUY" else trigger_state.res
         sl = technical_sl if technical_sl > 0 else (price - 1.5 if direction == "BUY" else price + 1.5)
@@ -133,7 +131,7 @@ class ChainReactionExecutor:
         if positions:
             total_pnl = sum([p.profit for p in positions])
             if total_pnl < -10.0:
-                 return False, f"Pyramid Veto: Account in Drawdown ({total_pnl:.2f})"
+                 return False, "VETO: Deep Drawdown Layering Blocked"
 
         # 5. Send Order
         request = {
@@ -155,6 +153,8 @@ class ChainReactionExecutor:
         result = mt5.order_send(request)
         if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
             err_msg = result.comment if result else "MT5 Connection Error"
-            return False, f"Order Failed: {err_msg}"
+            return False, f"FAILED: {err_msg}"
             
-        return True, f"Strike Executed! Ticket: {result.order} | TP: {tp:.2f} | SL: {sl:.2f}"
+        res_msg = f"SUCCESS: {direction} Strike at {price:.2f}"
+        if is_adaptive: res_msg += " (Adaptive TP)"
+        return True, res_msg
