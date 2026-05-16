@@ -56,7 +56,12 @@ def make_layout() -> Layout:
         Layout(name="ticker", size=3)
     )
     layout["main"].split_row(Layout(name="side", ratio=1), Layout(name="body", ratio=3))
-    layout["side"].split_column(Layout(name="account", ratio=1), Layout(name="stats", ratio=1), Layout(name="pulse", size=5))
+    layout["side"].split_column(
+        Layout(name="account", ratio=3),
+        Layout(name="stats", ratio=3),
+        Layout(name="decryption", ratio=2), # New Hollywood Section
+        Layout(name="pulse", size=5)
+    )
     layout["body"].split_column(
         Layout(name="intel", size=3),
         Layout(name="matrix", ratio=2),
@@ -85,9 +90,10 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     scrolling_text = combined[shift:] + combined[:shift]
     layout["intel"].update(Panel(Align.center(Text(scrolling_text[:display_len], style="bold gold1")), title="[bold white]STRATEGIC INTEL[/bold white]", border_style="gold1"))
 
-    # Theme
+    # Theme & Pulse Effects
     master = analyst.states[settings.get("master_tf", "H4")]
     theme_color = "green" if master.cmp == "BUY" else "red" if master.cmp == "SELL" else "gold1"
+    sync_icon = "📡" if frame % 4 < 2 else "🛰️"
     
     tick = mt5.symbol_info_tick(symbol)
     bid = f"{tick.bid:.2f}" if tick else "OFFLINE"
@@ -96,20 +102,42 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     
     layout["header"].update(Panel(Align.center(Text.assemble((f" {pulse_char} CHAIN REACTION WAR-LORD ", f"bold {theme_color}"), (f" | BY: COMMANDER DADANG ", "bold yellow"), (f" | {symbol}: ", "white"), (bid, "bold green"), (f"/", "white"), (ask, "bold red"), (f" | {datetime.now().strftime('%H:%M:%S')}", "dim white"))), style=f"bold {theme_color}"))
 
+    # 2. Account Sync with Meta-Data
     acc = mt5.account_info()
     acc_table = Table(box=None, expand=True)
     acc_table.add_column("Key", style="cyan"); acc_table.add_column("Val", style="bold magenta", justify="right")
-    if acc: acc_table.add_row("ACC", str(acc.login)); acc_table.add_row("BAL", f"{acc.balance:,.0f}"); acc_table.add_row("EQTY", f"{acc.equity:,.0f}")
-    layout["account"].update(Panel(acc_table, title="[bold white]CORE[/bold white]", border_style="cyan"))
+    if acc: 
+        acc_table.add_row("ACC", f"{acc.login}"); acc_table.add_row("BAL", f"{acc.balance:,.0f}"); acc_table.add_row("EQTY", f"{acc.equity:,.0f}")
+    
+    core_pulse = "█" * int(math.sin(frame * 0.8) * 4 + 5)
+    acc_table.add_row("", "")
+    acc_table.add_row("[cyan]UPLINK[/]", f"[bold cyan]{core_pulse}[/]")
+    acc_table.add_row("[dim]ENC[/]", "[dim]AES-256[/]")
+    layout["account"].update(Panel(acc_table, title=f"[bold white]{sync_icon} CORE SYNC[/bold white]", border_style="cyan" if frame % 4 != 0 else "bright_cyan"))
 
+    # 3. REAL Stats with Hacker Metadata
     stats = get_real_stats(settings.get("magic_number", 2026))
     stats_table = Table(box=None, expand=True)
     stats_table.add_column("Stat", style="yellow"); stats_table.add_column("Val", style="bold white", justify="right")
     stats_table.add_row("WIN RATE", f"{stats['win_rate']:.0f}%"); stats_table.add_row("STRIKES", str(stats['strikes'])); stats_table.add_row("PnL TODAY", f"[green]+{stats['pnl']:,.2f}[/]" if stats['pnl'] >= 0 else f"[red]{stats['pnl']:,.2f}[/]")
-    layout["stats"].update(Panel(stats_table, title="[bold white]REAL STATS[/bold white]", border_style="yellow"))
+    
+    stats_pulse = "█" * int(math.cos(frame * 0.6) * 4 + 5)
+    stats_table.add_row("", "")
+    stats_table.add_row("[yellow]PROC[/]", f"[bold yellow]{stats_pulse}[/]")
+    stats_table.add_row("[dim]LATENCY[/]", f"[dim]{random.randint(12, 18)}ms[/]")
+    layout["stats"].update(Panel(stats_table, title=f"[bold white]📊 LIVE STATS[/bold white]", border_style="yellow" if frame % 4 != 2 else "bright_yellow"))
 
-    sin_val = math.sin(frame * 0.5) * 8 + 8
-    layout["pulse"].update(Panel(Align.center(Text(f"\n{'█' * int(sin_val)}\nPULSE ACTIVE", style=f"bold {theme_color}")), border_style=theme_color))
+    # 4. Hollywood Decryption Stream
+    hex_chars = "0123456789ABCDEF"
+    dec_msg = "".join(random.choice(hex_chars) for _ in range(16)) + "\n" + "".join(random.choice(hex_chars) for _ in range(16))
+    layout["decryption"].update(Panel(Align.center(Text(dec_msg, style="dim green")), title="[dim]DECRYPTION[/]", border_style="dim green"))
+
+    # 5. Neural Waveform Pulse
+    wave = ""
+    for i in range(15):
+        h = int(math.sin((frame + i) * 0.5) * 2 + 2)
+        wave += " " if h < 1 else "▂" if h == 1 else "▃" if h == 2 else "▅" if h == 3 else "▆"
+    layout["pulse"].update(Panel(Align.center(Text(f"\n{wave}\nSCANNING...", style=f"bold {theme_color}")), border_style=theme_color))
 
     matrix_table = Table(expand=True, border_style="grey37")
     matrix_table.add_column("TF", justify="center", style="bold white"); matrix_table.add_column("CMP", justify="center"); matrix_table.add_column("STATUS", justify="center"); matrix_table.add_column("SNR", justify="center", style="dim")
@@ -139,7 +167,7 @@ def boot_sequence():
             t = progress.add_task(f"[ {i+1}/10 ] {task_name}", total=100)
             while not progress.finished:
                 progress.update(t, advance=random.uniform(5, 15))
-                time.sleep(0.1)
+                time.sleep(0.08)
                 if progress.tasks[i].finished: break
 
     logo = """[bold gold1]
