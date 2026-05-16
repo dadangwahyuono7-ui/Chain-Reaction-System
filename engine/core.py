@@ -267,4 +267,19 @@ class SacredDoctrineAnalyst:
             else:
                 return f"MARKET STATUS: [bold blue]RECOVERY[/]. Market mulai kembali ke jalur {direction} setelah retracement."
                 
-        return "MARKET STATUS: ANALYZING STRUCTURE..."
+    def get_total_sentiment(self):
+        """Calculates the total alignment across all timeframes."""
+        buy_score = 0
+        sell_score = 0
+        weights = {"MN1": 10, "W1": 8, "D1": 6, "H4": 5, "H1": 3, "M30": 2, "M15": 1, "M5": 1}
+        
+        for name, weight in weights.items():
+            st = self.states[name]
+            if st.cmp == "BUY": buy_score += weight
+            elif st.cmp == "SELL": sell_score += weight
+            
+        total = sum(weights.values())
+        buy_pct = (buy_score / total) * 100
+        sell_pct = (sell_score / total) * 100
+        
+        return buy_pct, sell_pct
