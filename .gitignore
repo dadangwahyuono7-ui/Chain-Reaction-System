@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+crash_log.txt
+*.log
+*.lnk
+sultan_live_engine.py
+.gemini/
+venv/
+.idea/
+.vscode/
