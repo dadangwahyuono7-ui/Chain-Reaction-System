@@ -1,0 +1,10 @@
+{
+    "symbol": "XAUUSD",
+    "auto_trade": true,
+    "lot_size": 0.01,
+    "max_layers": 3,
+    "magic_number": 2026,
+    "barrier_limit": 3.5,
+    "risk_per_trade_percent": 1.0,
+    "napas_lega_sl_pips": 150
+}
