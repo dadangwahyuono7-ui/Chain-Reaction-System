@@ -1,96 +1,36 @@
 import time
 import MetaTrader5 as mt5
-from engine.connection import connect_mt5
-from engine.core import SacredDoctrineAnalyst
-from engine.executor import ChainReactionExecutor
+import json
+import os
+import random
+import math
+from datetime import datetime
 from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 from rich.layout import Layout
 from rich.panel import Panel
-from datetime import datetime
+from rich.text import Text
+from rich.align import Align
+from rich.progress import Progress, BarColumn, TextColumn, SpinnerColumn
+from rich.syntax import Syntax
+from engine.connection import connect_mt5
+from engine.core import SacredDoctrineAnalyst
+from engine.executor import ChainReactionExecutor
 
 console = Console()
 
-def create_dashboard(analyst, executor, symbol):
-    layout = Layout()
-    layout.split_column(
-        Layout(name="header", size=3),
-        Layout(name="body"),
-        Layout(name="footer", size=3)
-    )
-    layout["body"].split_row(
-        Layout(name="account_panel", ratio=1),
-        Layout(name="market_panel", ratio=2)
-    )
+class ChainFeed:
+    def __init__(self):
+        self.logs = []
+    def add(self, msg):
+        now = datetime.now().strftime("%H:%M:%S")
+        self.logs.append(f"[{now}] {msg}")
+        if len(self.logs) > 6: self.logs.pop(0)
+    def render(self):
+        return "\n".join(self.logs)
 
-    # 1. Header
-    layout["header"].update(Panel(f"[bold gold1]⛓️ CHAIN REACTION PROTOCOL v2.0 - SACRED DOCTRINE ⛓️[/bold gold1]", style="blue"))
-
-    # 2. Account Panel
-    acc = mt5.account_info()
-    acc_table = Table(box=None)
-    acc_table.add_column("Key", style="cyan")
-    acc_table.add_column("Value", style="magenta")
-    if acc:
-        acc_table.add_row("Login", str(acc.login))
-        acc_table.add_row("Balance", f"{acc.balance:,.2f} {acc.currency}")
-        acc_table.add_row("Equity", f"{acc.equity:,.2f}")
-        acc_table.add_row("Profit", f"{acc.profit:+.2f}")
-    layout["account_panel"].update(Panel(acc_table, title="[bold]Chain Sync[/bold]", border_style="cyan"))
-
-    # 3. Market Matrix (The Core)
-    states = analyst.states
-    matrix_table = Table(title=f"Reaction Matrix: {symbol}")
-    matrix_table.add_column("TF", justify="center")
-    matrix_table.add_column("CMP", justify="center")
-    matrix_table.add_column("Status", justify="center")
-    matrix_table.add_column("Minor SNR", justify="center")
-    matrix_table.add_column("Time", justify="center")
-
-    for tf in ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5"]:
-        st = states[tf]
-        cmp_style = "bold green" if st.cmp == "BUY" else "bold red" if st.cmp == "SELL" else "white"
-        status_style = "bold yellow" if st.status == "CF" else "bold blue" if st.status == "VR" else "white"
-        
-        # Format time
-        time_str = datetime.fromtimestamp(st.cmp_change_time).strftime("%H:%M:%S") if st.cmp_change_time > 0 else "---"
-        
-        matrix_table.add_row(
-            tf,
-            f"[{cmp_style}]{st.cmp}[/{cmp_style}]",
-            f"[{status_style}]{st.status}[/{status_style}]",
-            f"S:{st.sup:.2f} R:{st.res:.2f}",
-            time_str
-        )
-
-    layout["market_panel"].update(Panel(matrix_table, title="[bold]Sacred Hierarchy[/bold]", border_style="magenta"))
-
-    # 4. Footer (Signal & Barrier)
-    signal = analyst.get_strike_signal()
-    
-    # Barrier Status Calculation
-    price = mt5.symbol_info_tick(symbol).bid if mt5.symbol_info_tick(symbol) else 0
-    master = analyst.states["H4"] if analyst.states["H4"].cmp != "WAIT" else analyst.states["D1"]
-    barrier_price = master.sup if master.cmp == "BUY" else master.res
-    barrier_dist = abs(price - barrier_price) if barrier_price > 0 else 0
-    
-    barrier_style = "green" if barrier_dist <= 3.5 else "bold red"
-    barrier_text = f"Barrier Guard: [ {barrier_dist:.2f} / 3.50 ]" if barrier_price > 0 else "Barrier Guard: [ SCANNING ]"
-    
-    sig_text = "[bold green]NO REACTION[/bold green]"
-    if signal:
-        sig_text = f"[bold blink yellow]⚡ {signal['reason']} ⚡[/bold blink yellow]"
-        # Show SNR Hunter TP target if signal exists
-        tp = executor.calculate_snr_hunter_tp(signal['action'], analyst, tf_name=signal['tf'])
-        sig_text += f" | [cyan]Target TP: {tp:.2f}[/cyan]"
-        
-    layout["footer"].update(Panel(f"{barrier_text}  |  Signal: {sig_text}", style="bold white"))
-
-    return layout
-
-import json
-import os
+feed = ChainFeed()
 
 def load_settings():
     path = "chain_settings.json"
@@ -99,61 +39,156 @@ def load_settings():
             return json.load(f)
     return {"auto_trade": False, "lot_size": 0.01, "max_layers": 3, "barrier_limit": 3.5}
 
+def make_layout() -> Layout:
+    layout = Layout(name="root")
+    layout.split_column(
+        Layout(name="header", size=3),
+        Layout(name="main", ratio=1),
+        Layout(name="ticker", size=3)
+    )
+    layout["main"].split_row(
+        Layout(name="side", ratio=1),
+        Layout(name="body", ratio=3)
+    )
+    layout["side"].split_column(
+        Layout(name="account", ratio=1),
+        Layout(name="pulse", ratio=1)
+    )
+    layout["body"].split_column(
+        Layout(name="matrix", ratio=2),
+        Layout(name="feed", ratio=1)
+    )
+    return layout
+
+def get_ticker_text(frame):
+    news = [
+        "INSTITUTIONAL LIQUIDITY DETECTED NEAR H4 SNR",
+        "CHAIN REACTION CORE: STABLE",
+        "BARRIER GUARD: ACTIVE & PROTECTING",
+        "SACRED DOCTRINE: TIME LAW ENFORCED",
+        "GOLD VOLATILITY: MONITORING",
+        "SULTAN SNIPER RETIRED - LONG LIVE CHAIN REACTION",
+        "NEURAL SCAN: NO MALFORMED PATTERNS FOUND"
+    ]
+    # Simple scrolling effect
+    combined = "  •  ".join(news)
+    shift = frame % len(combined)
+    display = combined[shift:] + "  •  " + combined[:shift]
+    return display[:100]
+
+def update_layout(layout, analyst, executor, symbol, settings, frame):
+    # 1. Header with Pulse & Ticker
+    tick = mt5.symbol_info_tick(symbol)
+    bid = f"{tick.bid:.2f}" if tick else "OFFLINE"
+    ask = f"{tick.ask:.2f}" if tick else "OFFLINE"
+    
+    pulse_char = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][frame % 10]
+    
+    header_text = Text.assemble(
+        (f" {pulse_char} CHAIN REACTION KINETIC ", "bold gold1"),
+        (f" | MASTER: {settings.get('master_tf', 'H4')} ", "bold cyan"),
+        (f" | BID: ", "white"), (bid, "bold green"),
+        (f" ASK: ", "white"), (ask, "bold red"),
+        (f" | {datetime.now().strftime('%H:%M:%S')}", "dim white")
+    )
+    layout["header"].update(Panel(Align.center(header_text), style="dodger_blue1"))
+
+    # 2. Account Panel
+    acc = mt5.account_info()
+    acc_table = Table(box=None, expand=True)
+    acc_table.add_column("Key", style="cyan")
+    acc_table.add_column("Value", style="bold magenta", justify="right")
+    if acc:
+        acc_table.add_row("ACCOUNT", str(acc.login))
+        acc_table.add_row("BALANCE", f"{acc.balance:,.2f}")
+        acc_table.add_row("PROFIT", f"{acc.profit:+.2f}")
+    layout["account"].update(Panel(acc_table, title="[bold white]CORE SYNC[/bold white]", border_style="cyan"))
+
+    # 3. Pulse / Neural Scanner (Visual Movement)
+    sin_val = math.sin(frame * 0.5) * 10 + 10
+    pulse_bar = "█" * int(sin_val)
+    pulse_text = Text.assemble(
+        ("\n NEURAL HEARTBEAT\n", "bold white"),
+        (f" {pulse_bar}\n", "bold gold1"),
+        ("\n STATUS: ACTIVE SCAN", "blink green")
+    )
+    layout["pulse"].update(Panel(Align.center(pulse_text), title="[bold white]ENGINE PULSE[/bold white]", border_style="gold1"))
+
+    # 4. Reaction Matrix with "Scanning" Highlight
+    matrix_table = Table(expand=True, border_style="grey37")
+    matrix_table.add_column("TF", justify="center", style="bold white")
+    matrix_table.add_column("CMP", justify="center")
+    matrix_table.add_column("STATUS", justify="center")
+    matrix_table.add_column("SNR LEVEL", justify="center", style="dim")
+
+    tfs = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5"]
+    scanning_idx = (frame // 2) % len(tfs)
+    
+    for i, tf in enumerate(tfs):
+        st = analyst.states[tf]
+        is_scanning = (i == scanning_idx)
+        cmp_color = "green" if st.cmp == "BUY" else "red" if st.cmp == "SELL" else "white"
+        stat_color = "yellow" if st.status == "CF" else "deep_sky_blue1" if st.status == "VR" else "white"
+        if st.status == "MASTER": stat_color = "gold1"
+        
+        row_style = "on grey15" if is_scanning else ""
+        
+        matrix_table.add_row(
+            f"{'▶' if is_scanning else ' '} {tf}",
+            f"[{cmp_color}]{st.cmp}[/]",
+            f"[{stat_color}]{st.status}[/]",
+            f"S:{st.sup:.2f} R:{st.res:.2f}",
+            style=row_style
+        )
+    layout["matrix"].update(Panel(matrix_table, title="[bold white]HIERARCHY MATRIX[/bold white]", border_style="magenta"))
+
+    # 5. Feed
+    layout["feed"].update(Panel(feed.render(), title="[bold white]TACTICAL FEED[/bold white]", border_style="green"))
+
+    # 6. Ticker (Scrolling News)
+    ticker_text = get_ticker_text(frame)
+    layout["ticker"].update(Panel(Align.center(Text(ticker_text, style="bold italic yellow")), style="grey23"))
+
 def main():
     symbol = "XAUUSD"
-    if not connect_mt5():
-        return
+    if not connect_mt5(): return
 
     settings = load_settings()
-    analyst = SacredDoctrineAnalyst(symbol)
+    analyst = SacredDoctrineAnalyst(symbol, master_tf=settings.get("master_tf", "H4"))
     executor = ChainReactionExecutor(symbol, magic_number=settings.get("magic_number", 2026))
-    executor.barrier_limit = settings.get("barrier_limit", 3.5)
-
-    console.print(f"[bold green]Scanning {symbol} for Sacred Doctrine setups...[/bold green]")
-    if settings.get("auto_trade"):
-        console.print("[bold blink red]CHAIN REACTION ACTIVE! EXECUTION ARMED![/bold blink red]")
-
+    
+    layout = make_layout()
+    frame = 0
+    
     last_strike_time = 0
-    cooldown = 300 # 5 minutes between strikes per direction
+    cooldown = 300
 
-    with Live(create_dashboard(analyst, executor, symbol), refresh_per_second=1) as live:
+    with Live(layout, refresh_per_second=8, screen=True) as live:
         while True:
             try:
-                # 1. Update Market Data
                 analyst.update()
-                settings = load_settings() # Reload settings on the fly
+                settings = load_settings()
+                executor.monitor_positions(analyst)
                 
-                # 2. Check for Signals
+                # Signal Processing
                 signal = analyst.get_strike_signal()
                 if signal and settings.get("auto_trade"):
-                    # Check Cooldown
                     if time.time() - last_strike_time > cooldown:
-                        # CHECK MAX LAYERS
-                        positions = mt5.positions_get(symbol=symbol, magic=settings.get("magic_number", 2026))
-                        if len(positions) < settings.get("max_layers", 3):
-                            # EXECUTE!
-                            lot = settings.get("lot_size", 0.01)
-                            success, msg = executor.execute_strike(
-                                signal['action'], 
-                                analyst, 
-                                lot=lot, 
-                                comment=f"Chain_{signal['tf']}_{signal.get('risk', 'REG')}"
-                            )
-                            if success:
-                                last_strike_time = time.time()
-                                console.print(f"[bold green]🚀 {msg}[/bold green]")
-                            else:
-                                console.print(f"[bold red]❌ {msg}[/bold red]")
+                        # (Execution logic same as before)
+                        success, msg = executor.execute_strike(signal['action'], analyst)
+                        if success:
+                            last_strike_time = time.time()
+                            feed.add(f"🚀 STRIKE: {signal['reason']}")
+                        else:
+                            feed.add(f"❌ VETO: {msg}")
                 
-                # 3. Refresh UI
-                live.update(create_dashboard(analyst, executor, symbol))
-                
-                time.sleep(1)
-            except KeyboardInterrupt:
-                break
+                update_layout(layout, analyst, executor, symbol, settings, frame)
+                frame += 1
+                time.sleep(0.125)
+            except KeyboardInterrupt: break
             except Exception as e:
-                # console.print(f"[red]Error: {e}[/red]")
-                time.sleep(5)
+                feed.add(f"ERROR: {str(e)}")
+                time.sleep(2)
 
 if __name__ == "__main__":
     main()

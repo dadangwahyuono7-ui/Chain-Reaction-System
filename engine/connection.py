@@ -16,7 +16,7 @@ def connect_mt5():
         return False
     
     # Display Account Info (Universal)
-    table = Table(title="Sultan Sniper - Account Sync")
+    table = Table(title="CHAIN REACTION - Account Sync")
     table.add_column("Property", style="cyan")
     table.add_column("Value", style="magenta")
     
