@@ -239,20 +239,21 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
         bs_table.add_row("[bold dim yellow]🛰️ MZ RADAR[/]", f"[dim yellow]{scanner} SCANNING FOR SB/SS ZONE[/]")
         bs_table.add_row("   SYSTEM FREQ", f"[cyan]FREQ: 433.9MHz[/] | [magenta]{scan_wave}[/]")
         
-    # Dynamic pulse identity banner for Commander Dadang (Centered, Large and Bold)
+    # Dynamic pulse identity banner for Commander Dadang (Centered, Large and Bold with Wide Letter Spacing)
     blink_dot = "[blink green]●[/blink green]" if frame % 2 == 0 else "[green] [/green]"
     pulse_colors = ["bold bright_cyan", "bold yellow", "bold bright_green", "bold bright_magenta"]
     col_name = pulse_colors[(frame // 2) % len(pulse_colors)]
     
-    # Render a beautiful centered commander badge
+    # Render a beautiful, large and wide centered commander badge
     commander_banner = Align.center(
-        Text.from_markup(f"⚔️  [{col_name}]COMMANDER DADANG WAHYUONO[/{col_name}]  {blink_dot}", style="bold")
+        Text.from_markup(f"[bold red]⚔️[/bold red]  [{col_name}]D A D A N G   W A H Y U O N O[/{col_name}]  {blink_dot}", style="bold")
     )
     
-    # Wrap both the table and the centered banner in a Group for clean display
+    # Wrap both the table, a spacing blank row, and the centered banner in a Group for clean vertical spacing
     from rich.console import Group
     bs_panel_content = Group(
         bs_table,
+        Text(""), # Pushes the banner down by exactly 1 line to prevent crowding!
         commander_banner
     )
         
