@@ -239,20 +239,24 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
         bs_table.add_row("[bold dim yellow]🛰️ MZ RADAR[/]", f"[dim yellow]{scanner} SCANNING FOR SB/SS ZONE[/]")
         bs_table.add_row("   SYSTEM FREQ", f"[cyan]FREQ: 433.9MHz[/] | [magenta]{scan_wave}[/]")
         
-    # Dynamic pulse identity badge for Commander Dadang
-    bs_table.add_row("", "")
+    # Dynamic pulse identity banner for Commander Dadang (Centered, Large and Bold)
     blink_dot = "[blink green]●[/blink green]" if frame % 2 == 0 else "[green] [/green]"
-    colors = ["cyan", "green", "yellow", "magenta"]
-    curr_color = colors[(frame // 3) % len(colors)]
-    pulse_colors = ["bold white", "bold bright_cyan", "bold yellow", "bold bright_green"]
+    pulse_colors = ["bold bright_cyan", "bold yellow", "bold bright_green", "bold bright_magenta"]
     col_name = pulse_colors[(frame // 2) % len(pulse_colors)]
     
-    bs_table.add_row(
-        f"[bold {curr_color}]⚔️ USER IDENT[/]",
-        f"[{col_name}]COMMANDER DADANG[/] [dim white]SECURE[/] {blink_dot}"
+    # Render a beautiful centered commander badge
+    commander_banner = Align.center(
+        Text.from_markup(f"⚔️  [{col_name}]COMMANDER DADANG WAHYUONO[/{col_name}]  {blink_dot}", style="bold")
+    )
+    
+    # Wrap both the table and the centered banner in a Group for clean display
+    from rich.console import Group
+    bs_panel_content = Group(
+        bs_table,
+        commander_banner
     )
         
-    layout["bs_matrix"].update(Panel(bs_table, title=f"[{title_style}]BS TRADING SOP ENGINE[/{title_style}]", border_style="green" if not bs_analyst.safety_veto else "red"))
+    layout["bs_matrix"].update(Panel(bs_panel_content, title=f"[{title_style}]BS TRADING SOP ENGINE[/{title_style}]", border_style="green" if not bs_analyst.safety_veto else "red"))
 
     # Liquidity Map
     h4 = analyst.states["H4"]; d1 = analyst.states["D1"]; cp = tick.bid if tick else 0
