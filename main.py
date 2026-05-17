@@ -15,7 +15,7 @@ from rich.text import Text
 from rich.align import Align
 from rich.progress import Progress, BarColumn, TextColumn, SpinnerColumn
 from engine.connection import connect_mt5
-from engine.core import SacredDoctrineAnalyst
+from engine.core import SacredDoctrineAnalyst, BSTradingAnalyst
 from engine.executor import ChainReactionExecutor
 
 console = Console()
@@ -68,14 +68,17 @@ def make_layout() -> Layout:
         Layout(name="account", ratio=2),
         Layout(name="stats", ratio=2),
         Layout(name="sentiment", size=5),
-        Layout(name="decryption", size=4),
-        Layout(name="pulse", size=5)
+        Layout(name="sniper_hud", size=9)
     )
     layout["body"].split_column(
         Layout(name="intel", size=3),
-        Layout(name="matrix", ratio=2),
+        Layout(name="matrix_row", ratio=2),
         Layout(name="liquidity", size=6),
         Layout(name="news_feed", ratio=1)
+    )
+    layout["matrix_row"].split_row(
+        Layout(name="matrix", ratio=1),
+        Layout(name="bs_matrix", ratio=1)
     )
     layout["news_feed"].split_row(
         Layout(name="news", ratio=1),
@@ -95,7 +98,7 @@ def get_real_stats(magic):
     wins = len([d for d in closed_deals if d.profit > 0])
     return {"win_rate": (wins / len(closed_deals) * 100) if closed_deals else 0, "strikes": strikes, "pnl": pnl}
 
-def update_layout(layout, analyst, executor, symbol, settings, frame):
+def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame):
     pulse_colors = ["white", "bright_cyan", "gold1", "bright_cyan"]
     title_style = f"bold {pulse_colors[frame % 4]}"
     
@@ -133,15 +136,24 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     sentiment_bar = f"[green]{'█' * int(buy_pct/10)}[/][red]{'█' * int(sell_pct/10)}[/]"
     layout["sentiment"].update(Panel(Align.center(Text(f"BUY {buy_pct:.0f}% | SELL {sell_pct:.0f}%\n{sentiment_bar}\nOVERLORD SENTIMENT", style="bold white")), title="[dim]RADAR[/]", border_style="bright_magenta"))
 
-    # Decryption
-    hex_chars = "0123456789ABCDEF"; dec_msg = "".join(random.choice(hex_chars) for _ in range(16)) + "\n" + "".join(random.choice(hex_chars) for _ in range(16))
-    layout["decryption"].update(Panel(Align.center(Text(dec_msg, style="dim green")), title="[dim]DECRYPTION[/]", border_style="dim green"))
-
-    # Neural Waveform
-    wave = ""; 
-    for i in range(15):
-        h = int(math.sin((frame + i) * 0.5) * 2 + 2); wave += " " if h < 1 else "▂" if h == 1 else "▃" if h == 2 else "▅" if h == 3 else "▆"
-    layout["pulse"].update(Panel(Align.center(Text(f"\n{wave}\nSCANNING...", style=f"bold {theme_color}")), border_style=theme_color))
+    # Unified Sniper HUD with ASCII Art and Waveform
+    wave = ""
+    for i in range(12):
+        h = int(math.sin((frame + i) * 0.5) * 2 + 2)
+        wave += " " if h < 1 else "▂" if h == 1 else "▃" if h == 2 else "▅" if h == 3 else "▆"
+    
+    # Blinking target center
+    dot = "[blink red]●[/blink red]" if frame % 2 == 0 else " "
+    
+    hud_art = (
+        f"     _.-'''''-._     [bold cyan]UPLINK: ONLINE[/bold cyan]\n"
+        f"   .'   _ | _   '.   [bold green]TARGET: {symbol}[/bold green]\n"
+        f"  /   /   {dot}   \\   \\  [bold yellow]SOP: ACTIVE[/bold yellow]\n"
+        f" |   |----+----|   | ----------------\n"
+        f"  \\   \\   {dot}   /   /  [bold magenta]WAVE:[/bold magenta] {wave}\n"
+        f"   '.   '-...-'   .' [dim white]{sync_icon} SCANNING SYSTEMS...[/dim white]"
+    )
+    layout["sniper_hud"].update(Panel(Align.center(Text.from_markup(hud_art)), title=f"[{title_style}]🎯 COMMANDER HUD[/{title_style}]", border_style="green"))
 
     # Hierarchy Matrix
     matrix_table = Table(expand=True, border_style="grey37")
@@ -152,7 +164,82 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         c = "green" if st.cmp == "BUY" else "red" if st.cmp == "SELL" else "white"; s_c = "yellow" if st.status == "CF" else "deep_sky_blue1" if st.status == "VR" else "white"
         if st.status == "MASTER": s_c = "gold1"
         row_style = "bold on grey19" if is_scanning else ""; matrix_table.add_row(f"{'📡' if is_scanning else '  '} {tf}", f"[{c}]{st.cmp}[/]", f"{blink}[{s_c}]{st.status}[/]{blink if blink else ''}", f"{st.sup:.1f}/{st.res:.1f}", style=row_style)
+    
+    # Telemetry spacer & status row to fill the empty space (hacker-vibe!)
+    matrix_table.add_row("", "", "", "")
+    aligned_tfs = sum(1 for tf in tfs if analyst.states[tf].cmp == analyst.states["H4"].cmp)
+    wib_str = datetime.now(pytz.timezone("Asia/Jakarta")).strftime("%H:%M:%S")
+    matrix_table.add_row(
+        "[bold cyan]📡 TELEMETRY[/]",
+        f"[green]ALIGN: {aligned_tfs}/8[/]",
+        f"[yellow]WIB: {wib_str}[/]",
+        f"[green]LATENCY: {random.randint(11, 24)}ms[/]"
+    )
     layout["matrix"].update(Panel(matrix_table, title=f"[{title_style}]HIERARCHY MATRIX[/{title_style}]", border_style="magenta"))
+
+    # BS Trading SOP Engine Panel
+    bs_table = Table(box=None, expand=True)
+    bs_table.add_column("Property", style="cyan")
+    bs_table.add_column("Value", justify="right")
+    
+    dir_style = "bold green" if bs_analyst.locked_direction == "BUY" else "bold red" if bs_analyst.locked_direction == "SELL" else "white"
+    bs_table.add_row("1. DIRECTION LOCK", f"[{dir_style}]{bs_analyst.locked_direction} LOCK {'🟢' if bs_analyst.locked_direction == 'BUY' else '🔴'}[/]")
+    
+    mz_style = "blink bold green" if bs_analyst.standby_state == "READY" else "bold yellow"
+    mz_icon = "🟢" if bs_analyst.standby_state == "READY" else "🟡"
+    bs_table.add_row("2. STANDBY STATE", f"[{mz_style}]{bs_analyst.standby_state} {mz_icon}[/]")
+    
+    active_mz_str = "None"
+    if bs_analyst.active_mz:
+        mz = bs_analyst.active_mz
+        active_mz_str = f"[bold magenta]{mz['tf']} {mz['type']}[/] ({mz['low']:.1f}-{mz['high']:.1f})"
+    bs_table.add_row("   ACTIVE MZ", active_mz_str)
+    
+    trigger_str = "[dim]NO TRIGGER 📡[/]"
+    if bs_analyst.pmb_trigger:
+        trig = bs_analyst.pmb_trigger
+        trigger_str = f"[blink bold red]🔥 {trig['type']} Sweep ({trig['risk']})[/]"
+    bs_table.add_row("3. PMB TRIGGER", trigger_str)
+    
+    if bs_analyst.pmb_trigger:
+        trig = bs_analyst.pmb_trigger
+        bs_table.add_row("   ENTRY DETAILS", f"[green]SL: {trig['sl']:.1f}[/] | [yellow]TP: {trig['tp']:.1f}[/]")
+        
+    safety_str = f"[bold green]🛡️ SECURE[/]" if not bs_analyst.safety_veto else f"[bold red]🚨 VETO: {bs_analyst.safety_msg}[/]"
+    bs_table.add_row("4. SAFETY FILTER", safety_str)
+    
+    trend_labels = []
+    for tf in ["D1", "H4", "H1", "M30", "M15", "M5", "M1"]:
+        tr = bs_analyst.tf_trends[tf]
+        col = "green" if tr == "BUY" else "red" if tr == "SELL" else "white"
+        trend_labels.append(f"[{col}]{tf}:{tr[:3]}[/]")
+    bs_table.add_row("5. TF TRENDS", " ".join(trend_labels))
+    
+    # Interactive MZ boundary visual slider & hacker telemetry to fill the empty space!
+    bs_table.add_row("", "")
+    if bs_analyst.active_mz:
+        mz = bs_analyst.active_mz
+        low = float(mz['low'])
+        high = float(mz['high'])
+        current = float(bs_analyst.current_price)
+        pct = (current - low) / (high - low) if high > low else 0.5
+        pct = max(0.0, min(1.0, pct))
+        width = 24
+        filled = int(pct * width)
+        slider = "─" * filled + "[blink bold green]●[/blink bold green]" + "─" * (width - filled)
+        
+        bs_table.add_row("[bold cyan]🎯 MZ BOUNDARY[/]", f"[dim]{low:.1f}[/] {slider} [dim]{high:.1f}[/]")
+        dist_to_low = current - low
+        dist_to_high = high - current
+        bs_table.add_row("   ZONE METRICS", f"[green]DL: {dist_to_low:.2f}[/] | [yellow]DH: {dist_to_high:.2f}[/]")
+    else:
+        scanners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        scanner = scanners[frame % len(scanners)]
+        scan_wave = "".join(random.choice(["░", "▒", "▓", "█", " "]) for _ in range(12))
+        bs_table.add_row("[bold dim yellow]🛰️ MZ RADAR[/]", f"[dim yellow]{scanner} SCANNING FOR SB/SS ZONE[/]")
+        bs_table.add_row("   SYSTEM FREQ", f"[cyan]FREQ: 433.9MHz[/] | [magenta]{scan_wave}[/]")
+        
+    layout["bs_matrix"].update(Panel(bs_table, title=f"[{title_style}]BS TRADING SOP ENGINE[/{title_style}]", border_style="green" if not bs_analyst.safety_veto else "red"))
 
     # Liquidity Map
     h4 = analyst.states["H4"]; d1 = analyst.states["D1"]; cp = tick.bid if tick else 0
@@ -225,26 +312,51 @@ def main():
     if not connect_mt5(): return
     boot_sequence()
     settings = load_settings(); analyst = SacredDoctrineAnalyst(symbol, master_tf=settings.get("master_tf", "H4"))
+    bs_analyst = BSTradingAnalyst(symbol)
     executor = ChainReactionExecutor(symbol, magic_number=settings.get("magic_number", 2026))
-    layout = make_layout(); frame = 0; last_strike_time = 0
+    layout = make_layout(); frame = 0; last_strike_time_chain = 0; last_strike_time_bs = 0
     feed.add(f"🔗 OVERLORD ONLINE: Standing by for Market Ignition")
     feed.add(f"⚖️ DOCTRINE ARMED: Time Law v4.0 Enforced")
     feed.add(f"🛰️ RADAR ACTIVE: Scanning for {symbol} Liquidity")
     with Live(layout, refresh_per_second=8, screen=True) as live:
         while True:
             try:
-                analyst.update(); settings = load_settings()
+                analyst.update(); bs_analyst.update(analyst); settings = load_settings()
                 events = executor.monitor_positions(analyst)
                 for e in events: feed.add(e)
+                
+                # 1. Sultan Sniper Chain Reaction - Independent Execution
                 signal = analyst.get_strike_signal()
                 if signal and settings.get("auto_trade"):
-                    if time.time() - last_strike_time > 300:
+                    if time.time() - last_strike_time_chain > 300:
                         positions = mt5.positions_get(symbol=symbol, magic=settings.get("magic_number", 2026))
-                        if len(positions) < settings.get("max_layers", 3):
+                        chain_pos = [p for p in positions if p.comment.startswith("Chain_")] if positions else []
+                        if len(chain_pos) < settings.get("max_layers", 3):
                             success, msg = executor.execute_strike(signal['action'], analyst, lot=settings.get("lot_size", 0.01), comment=f"Chain_{signal['tf']}")
                             feed.add(msg)
-                            if success: last_strike_time = time.time()
-                update_layout(layout, analyst, executor, symbol, settings, frame)
+                            if success: last_strike_time_chain = time.time()
+                
+                # 2. BS Trading SOP - Independent Execution
+                if settings.get("enable_bs_trading"):
+                    bs_signal = bs_analyst.get_bs_signal()
+                    if bs_signal:
+                        if time.time() - last_strike_time_bs > 300:
+                            positions = mt5.positions_get(symbol=symbol, magic=settings.get("magic_number", 2026))
+                            bs_pos = [p for p in positions if p.comment.startswith("BS_")] if positions else []
+                            if len(bs_pos) < settings.get("max_layers", 3):
+                                lot_multiplier = 0.5 if bs_signal['level'] == 1 else 1.0
+                                success, msg = executor.execute_strike(
+                                    direction=bs_signal['action'],
+                                    analyst=analyst,
+                                    lot=settings.get("lot_size", 0.01) * lot_multiplier,
+                                    comment=f"BS_L{bs_signal['level']}",
+                                    tp_price=bs_signal['tp'],
+                                    sl_price=bs_signal['sl']
+                                )
+                                feed.add(msg)
+                                if success: last_strike_time_bs = time.time()
+                                
+                update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame)
                 frame += 1; time.sleep(0.1)
             except KeyboardInterrupt: break
             except Exception as e: feed.add(f"ERR: {str(e)}"); time.sleep(2)

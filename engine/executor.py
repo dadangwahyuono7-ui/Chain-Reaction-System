@@ -92,7 +92,7 @@ class ChainReactionExecutor:
         mt5.order_send(request)
         console.print(f"[bold red]🚪 EXIT: {reason} | Ticket {p.ticket}[/bold red]")
 
-    def execute_strike(self, direction, analyst, lot=0.01, comment="Chain Strike"):
+    def execute_strike(self, direction, analyst, lot=0.01, comment="Chain Strike", tp_price=0.0, sl_price=0.0):
         """Executes a trade with all Chain Reaction rules applied."""
         tick = mt5.symbol_info_tick(self.symbol)
         if not tick:
@@ -105,26 +105,33 @@ class ChainReactionExecutor:
         if not passed:
             return False, f"VETO: {msg}"
             
-        # 2. TP HIERARCHY LAW
-        m15 = analyst.states["M15"]
-        m30 = analyst.states["M30"]
-        trigger_tf = "M5"
-        tp = self.calculate_snr_hunter_tp(direction, analyst, tf_name=trigger_tf)
-        
-        # ADAPTIVE TP
+        # 2. TP HIERARCHY LAW / Custom TP
         is_adaptive = False
-        if m15.status == "VR" or m30.status == "VR":
-            scalp_tp = price + 2.0 if direction == "BUY" else price - 2.0
-            if tp > 0:
-                tp = min(tp, scalp_tp) if direction == "BUY" else max(tp, scalp_tp)
-            else:
-                tp = scalp_tp
-            is_adaptive = True
+        if tp_price > 0:
+            tp = tp_price
+        else:
+            m15 = analyst.states["M15"]
+            m30 = analyst.states["M30"]
+            trigger_tf = "M5"
+            tp = self.calculate_snr_hunter_tp(direction, analyst, tf_name=trigger_tf)
+            
+            # ADAPTIVE TP
+            if m15.status == "VR" or m30.status == "VR":
+                scalp_tp = price + 2.0 if direction == "BUY" else price - 2.0
+                if tp > 0:
+                    tp = min(tp, scalp_tp) if direction == "BUY" else max(tp, scalp_tp)
+                else:
+                    tp = scalp_tp
+                is_adaptive = True
 
-        # 3. TECHNICAL SL
-        trigger_state = analyst.states[trigger_tf]
-        technical_sl = trigger_state.sup if direction == "BUY" else trigger_state.res
-        sl = technical_sl if technical_sl > 0 else (price - 1.5 if direction == "BUY" else price + 1.5)
+        # 3. TECHNICAL SL / Custom SL
+        if sl_price > 0:
+            sl = sl_price
+        else:
+            trigger_tf = "M5"
+            trigger_state = analyst.states[trigger_tf]
+            technical_sl = trigger_state.sup if direction == "BUY" else trigger_state.res
+            sl = technical_sl if technical_sl > 0 else (price - 1.5 if direction == "BUY" else price + 1.5)
 
         # 4. Check Pyramiding
         positions = mt5.positions_get(symbol=self.symbol, magic=self.magic_number)
