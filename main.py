@@ -48,6 +48,27 @@ def get_session_times():
         results.append(f"[{'green' if is_active else 'dim'}]{name}[/]")
     return " | ".join(results)
 
+def get_market_volatility():
+    try:
+        rates = mt5.copy_rates_from_pos("XAUUSD", mt5.TIMEFRAME_M5, 0, 5)
+        if rates is None or len(rates) == 0:
+            return "[dim]SCANNING...[/dim]"
+        tot = 0.0
+        for r in rates:
+            # Safe access for numpy structured array
+            h = float(r['high'] if rates.dtype and 'high' in rates.dtype.names else r[2])
+            l = float(r['low'] if rates.dtype and 'low' in rates.dtype.names else r[3])
+            tot += (h - l)
+        avg_range = tot / len(rates)
+        if avg_range < 0.6:
+            return f"[green]LOW[/green] ({avg_range:.2f} USD)"
+        elif avg_range < 1.8:
+            return f"[yellow]MODERATE[/yellow] ({avg_range:.2f} USD)"
+        else:
+            return f"[blink bold red]🚨 HIGH[/blink bold red] ({avg_range:.2f} USD)"
+    except Exception:
+        return "[dim]STANDBY[/dim]"
+
 def get_commander_greeting():
     hour = datetime.now().hour
     if 5 <= hour < 12: return "Good Morning, Commander. Markets are waking up."
@@ -302,7 +323,15 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
     layout["news"].update(Panel(Align.center(news_text), title=f"[{title_style}]🌍 GLOBAL INTEL & RED RADAR[/{title_style}]", border_style="bright_blue"))
 
     layout["feed"].update(Panel(feed.render(), title=f"[{title_style}]TACTICAL FEED[/{title_style}]", border_style="green"))
-    layout["ticker"].update(Panel(Align.center(Text(f" SESSIONS: {get_session_times()}  •  CHAIN REACTION CORE: STABLE  •  SACRED DOCTRINE: TIME LAW ENFORCED ", style="bold yellow")), style="grey23"))
+    vol = get_market_volatility()
+    ticker_text = Text.from_markup(
+        f"🌐 [bold cyan]SESSIONS:[/bold cyan] {get_session_times()}   •   "
+        f"📊 [bold cyan]XAUUSD VOLATILITY:[/bold cyan] {vol}   •   "
+        f"📡 [bold green]CORE STATUS: ACTIVE[/bold green]   •   "
+        f"⚔️ [bold gold1]COMMANDER PROTOCOL: SECURED[/bold gold1]",
+        style="bold"
+    )
+    layout["ticker"].update(Panel(Align.center(ticker_text), border_style="grey37"))
 
 def boot_sequence():
     console.clear()
