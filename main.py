@@ -239,6 +239,19 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
         bs_table.add_row("[bold dim yellow]🛰️ MZ RADAR[/]", f"[dim yellow]{scanner} SCANNING FOR SB/SS ZONE[/]")
         bs_table.add_row("   SYSTEM FREQ", f"[cyan]FREQ: 433.9MHz[/] | [magenta]{scan_wave}[/]")
         
+    # Dynamic pulse identity badge for Commander Dadang
+    bs_table.add_row("", "")
+    blink_dot = "[blink green]●[/blink green]" if frame % 2 == 0 else "[green] [/green]"
+    colors = ["cyan", "green", "yellow", "magenta"]
+    curr_color = colors[(frame // 3) % len(colors)]
+    pulse_colors = ["bold white", "bold bright_cyan", "bold yellow", "bold bright_green"]
+    col_name = pulse_colors[(frame // 2) % len(pulse_colors)]
+    
+    bs_table.add_row(
+        f"[bold {curr_color}]⚔️ USER IDENT[/]",
+        f"[{col_name}]COMMANDER DADANG[/] [dim white]SECURE[/] {blink_dot}"
+    )
+        
     layout["bs_matrix"].update(Panel(bs_table, title=f"[{title_style}]BS TRADING SOP ENGINE[/{title_style}]", border_style="green" if not bs_analyst.safety_veto else "red"))
 
     # Liquidity Map
