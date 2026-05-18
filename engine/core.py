@@ -188,101 +188,330 @@ class SacredDoctrineAnalyst:
 
     def get_strike_signal(self):
         """
-        CHAIN REACTION GHOST STRIKE (Recursive Nested Logic):
-        Ensures we don't miss strong trends by looking for micro-VR/CF.
+        Daily Deploy Storyline: CMP → VR → CF → ENTRY
+
+        MAX TRADING CMP = M30. Tiga valid entry sequence:
+
+          ① MINOR_CF  (paling aman) : M30 CMP + M15 solid + M5 VR → M5 CF
+                                       SL=M5 SNR | TP=M15 SNR
+          ② CF_HIGH   (sedang)      : M30 CMP + M15 VR → M5 CF (M15 masih VR)
+                                       SL=M15 SNR | TP=M30 SNR
+          ③ CF_LOW    (rendah)      : M30 CMP + M15 VR → M15 CF
+                                       SL=M15 SNR | TP=M30 SNR
+
+        Guard: Jika M15 VR ke M30 → JANGAN entry MINOR_CF (M15 sedang menguji M30,
+               tunggu M15 CF dulu sebelum masuk = CF_LOW).
+
+        Breakout detection (CMPDetector / TFState) TIDAK DIUBAH.
         """
-        master = self.states[self.master_tf]
-        if master.cmp == "WAIT": return None
-        
-        # TF Setup Scale
+        h4  = self.states["H4"]
+        h1  = self.states["H1"]
         m30 = self.states["M30"]
         m15 = self.states["M15"]
-        m5 = self.states["M5"]
-        
-        # --- GHOST STRIKE: Standard (M5 CF to M15 VR) ---
-        if m30.cmp == master.cmp and not m30.vr_occurred:
-            if m15.status == "VR" and m5.status == "CF" and m5.cmp == master.cmp:
+        m5  = self.states["M5"]
+
+        if m30.cmp == "WAIT":
+            return None
+
+        direction = m30.cmp  # M30 = max trading CMP
+
+        # ── Macro Guard: M30 harus ALIGNED dengan H4 (master) ────────────────────
+        # Jika M30 counter H4 → M30 sedang VR ke H4 (testing H4 CMP dari atas)
+        # Bahaya masuk ikut M30 karena kita lawan master.
+        # Tunggu M30 CF balik ke arah H4 dulu baru boleh trade.
+        if h4.cmp != "WAIT" and m30.cmp != h4.cmp:
+            return None  # M30 VR to H4 — block all entries
+
+        # ─── Evaluate M15 state relative to M30 ─────────────────────────────────
+        m15_is_vr = (
+            m15.cmp != direction and
+            m15.cmp != "WAIT" and
+            m15.cmp_change_time > m30.cmp_change_time
+        )
+        m15_solid = (
+            m15.cmp == direction and
+            m15.cmp != "WAIT" and
+            not m15_is_vr
+        )
+
+        # ── ① MINOR_CF: M15 solid, M5 VR ke M15 lalu CF ─────────────────────────
+        # Guard: M15 tidak boleh VR ke M30 (kalau M15 VR, bahaya masuk ikut M30)
+        # Kondisi: M30 kuat, M15 aligned solid, M5 sudah VR lalu balik ke direction
+        if m15_solid:
+            m5_cf_after_vr = (
+                m5.vr_occurred and
+                m5.cmp == direction and
+                m5.cmp_change_time > getattr(m5, 'vr_change_time', 0) and
+                m5.cmp_change_time > m15.cmp_change_time
+            )
+            if m5_cf_after_vr:
                 return {
-                    "action": m5.cmp,
-                    "reason": f"Ghost Strike: M15 VR + M5 CF",
-                    "tf": "M5",
-                    "type": "GHOST_STRIKE"
+                    "action": direction,
+                    "type":   "MINOR_CF",
+                    "tf":     "M5",
+                    "tp_tf":  "M15",  # TP = SNR M15 (parent yg diuji M5 VR)
+                    "sl_tf":  "M5",   # SL = SNR M5 (VR TF)
+                    "reason": f"Minor CF: M30 {direction} | M15 solid | M5 VR → M5 CF"
+                }
+            return None  # M15 solid tapi M5 belum CF → tunggu
+
+        # ─── Jika M15 bukan solid dan bukan VR → tidak ada setup ─────────────────
+        if not m15_is_vr:
+            return None
+
+        # ── Rule 2: M30 CMP harus STABIL sejak M15 VR mulai ─────────────────────
+        # Jika M30 flip SETELAH M15 VR → VR berhasil break M30 → bukan CF, setup baru
+        if m30.cmp_change_time > m15.cmp_change_time:
+            return None
+
+        # ── ③ CF_LOW: M15 VR → M15 sendiri balik ke arah M30 ────────────────────
+        if m15.cmp == direction and m15.vr_occurred and \
+           m15.cmp_change_time > getattr(m15, 'vr_change_time', 0):
+            return {
+                "action": direction,
+                "type":   "CF_LOW",
+                "tf":     "M15",
+                "tp_tf":  "M30",
+                "sl_tf":  "M15",
+                "reason": f"CF Low: M30 {direction} | M15 VR → M15 CF"
+            }
+
+        # ── ② CF_HIGH: M15 masih VR, M5 balik ke arah M30 ───────────────────────
+        if m15.cmp != direction:
+            if m5.cmp == direction and m5.cmp_change_time > m15.cmp_change_time:
+                return {
+                    "action": direction,
+                    "type":   "CF_HIGH",
+                    "tf":     "M5",
+                    "tp_tf":  "M30",
+                    "sl_tf":  "M15",
+                    "reason": f"CF High: M30 {direction} | M15 VR → M5 CF"
                 }
 
-        # --- CHEAT CODE: Counter-Master Scalp ---
-        if m30.status == "VR":
-            if m5.cmp == m30.cmp and m5.status == "CF":
-                return {
-                    "action": m5.cmp,
-                    "reason": f"Cheat Code: M30 VR + M5 CF",
-                    "tf": "M5",
-                    "type": "CHEAT_SCALP"
-                }
+        return None  # VR ada tapi CF belum terkonfirmasi
+            
+    def get_chain_status(self):
+        """Returns structured chain state for dashboard panels."""
+        h4  = self.states["H4"]
+        h1  = self.states["H1"]
+        m30 = self.states["M30"]
+        m15 = self.states["M15"]
+        m5  = self.states["M5"]
+        direction = m30.cmp
+        opp = "SELL" if direction == "BUY" else "BUY"
 
-        # --- PRE-VR MOMENTUM: Pro-Master ---
-        if m5.cmp == master.cmp:
-            if not m30.vr_occurred:
-                return {
-                    "action": m5.cmp,
-                    "reason": f"Pre-VR Momentum: {self.master_tf} {master.cmp} + M30 Fresh",
-                    "tf": "M5",
-                    "type": "PRE_VR"
-                }
-            
-            if m5.status == "CF":
-                return {
-                    "action": m5.cmp,
-                    "reason": f"Confirmation Strike: M5 CF to Master {self.master_tf}",
-                    "tf": "M5",
-                    "type": "CF_STRIKE"
-                }
-            
+        # ── Macro context: M30's role relative to H4/H1 ──────────────────────────
+        m30_vr_to_h4  = (h4.cmp != "WAIT" and m30.cmp != "WAIT" and m30.cmp != h4.cmp)
+        h1_vr_to_h4   = (h4.cmp != "WAIT" and h1.cmp != "WAIT" and h1.cmp != h4.cmp)
+        # CF High Risk to H4: H1 VR + M30 aligned with H4 (M30 menguji H1, bukan H4)
+        m30_cf_h4     = (not m30_vr_to_h4 and h1_vr_to_h4 and m30.vr_occurred)
+        # CF Low Risk to H4: H1 VR → H1 CF → M30 aligned = M30 solid (H1 completed CF)
+        m30_solid_h4  = (not m30_vr_to_h4 and not h1_vr_to_h4)
+
+        if m30_vr_to_h4:
+            macro_role = "VR_H4"       # M30 counter H4 — bahaya, block
+        elif m30_cf_h4:
+            macro_role = "CF_HIGH_H4"  # M30 CF High Risk ke H4 via H1 VR — power signal
+        elif m30_cf_h4 is False and not m30_vr_to_h4 and h1_vr_to_h4:
+            macro_role = "CF_H4"       # H1 VR tapi M30 belum vr_occurred — building
+        else:
+            macro_role = "SOLID_H4"    # M30 solid aligned H4, no H1 VR — normal
+
+        step1_ok = direction != "WAIT"
+        m15_is_vr = (
+            step1_ok and
+            m15.cmp != direction and m15.cmp != "WAIT" and
+            m15.cmp_change_time > m30.cmp_change_time
+        )
+        m15_solid = (
+            step1_ok and
+            m15.cmp == direction and
+            not m15_is_vr
+        )
+        m30_broken = (
+            step1_ok and m15_is_vr and
+            m30.cmp_change_time > m15.cmp_change_time
+        )
+        m30_stable = not m30_broken
+
+        cf_ready = False
+        cf_type  = ""
+
+        # MINOR_CF: M15 solid + M5 VR → M5 CF
+        if m15_solid:
+            if m5.vr_occurred and m5.cmp == direction and \
+               m5.cmp_change_time > getattr(m5, 'vr_change_time', 0) and \
+               m5.cmp_change_time > m15.cmp_change_time:
+                cf_ready = True
+                cf_type  = "MINOR_CF"
+
+        # CF_LOW / CF_HIGH: M15 VR ke M30
+        elif m15_is_vr and m30_stable:
+            if m15.cmp == direction and m15.vr_occurred and \
+               m15.cmp_change_time > getattr(m15, 'vr_change_time', 0):
+                cf_ready = True
+                cf_type  = "CF_LOW"
+            elif m5.cmp == direction and m5.cmp_change_time > m15.cmp_change_time:
+                cf_ready = True
+                cf_type  = "CF_HIGH"
+
+        # ── Cascade depth: berapa TF yang sudah counter ke H4 direction ─────────
+        # VR/CF hanyalah CMP di TF itu sendiri — cascade = CMP counter merambat naik
+        # Depth 0 = semua aligned (terkuat)
+        # Depth 1 = M5 counter saja (M5 VR ke M15) — safe untuk MINOR_CF
+        # Depth 2 = M5+M15 counter (M15 VR ke M30) — CF_HIGH/CF_LOW territory
+        # Depth 3 = M5+M15+M30 counter (M30 VR ke H4) — BLOCK, lawan master
+        # Depth 4 = + H1 counter (H1 VR ke H4) — macro reversal warning
+        h4_dir = h4.cmp
+        cascade_tfs   = []  # TFs yang sedang counter terhadap H4 direction
+        cascade_roles = {}  # role tiap TF dalam konteks H4
+        for tf_name, st in [("H1", h1), ("M30", m30), ("M15", m15), ("M5", m5)]:
+            if h4_dir == "WAIT" or st.cmp == "WAIT":
+                cascade_roles[tf_name] = "WAIT"
+            elif st.cmp != h4_dir:
+                cascade_tfs.append(tf_name)
+                cascade_roles[tf_name] = "VR"   # CMP counter H4 = VR dari sisi H4
+            else:
+                cf_lbl = "CF" if st.vr_occurred else "CMP"
+                cascade_roles[tf_name] = cf_lbl  # CMP searah H4 = CF atau solid CMP
+
+        cascade_depth = len(cascade_tfs)  # 0=all aligned, 1=M5 VR only, dst
+
+        return {
+            "direction":     direction,
+            "opposite":      opp,
+            "step1_ok":      step1_ok,
+            "m15_is_vr":     m15_is_vr,
+            "m15_solid":     m15_solid,
+            "m30_stable":    m30_stable,
+            "m30_broken":    m30_broken,
+            "cf_ready":      cf_ready,
+            "cf_type":       cf_type,
+            "macro_role":    macro_role,
+            "m30_vr_to_h4":  m30_vr_to_h4,
+            "h1_vr_to_h4":   h1_vr_to_h4,
+            "cascade_depth": cascade_depth,   # berapa TF counter ke H4
+            "cascade_tfs":   cascade_tfs,     # list TF yang sedang VR ke H4
+            "cascade_roles": cascade_roles,   # role tiap TF (CMP/VR/CF/WAIT)
+        }
+
     def get_strategic_forecast(self):
-        """Generates a plain-language narrative based on the Sacred Doctrine."""
-        master = self.states[self.master_tf]
-        m30 = self.states["M30"]
-        m15 = self.states["M15"]
-        m5 = self.states["M5"]
-        
-        direction = master.cmp
-        if direction == "WAIT":
-            return "MASTER UNCERTAIN: Scanning for direction in higher timeframes."
-            
-        # Analysis Logic
-        if m5.cmp != direction:
-            # Market is in VR (M5 is opposite to Master)
-            msg = f"MARKET STATUS: [bold yellow]VALID RETRACEMENT (VR)[/]. Master {self.master_tf} is {direction}, but M5 is {m5.cmp}. "
-            if m15.cmp == direction:
-                msg += "M15 masih solid. Tunggu M5 pecah SELL (CF) untuk eksekusi Sniper."
-            else:
-                msg += "M15 sudah VR! Retracement merembet ke atas. Play it safe."
-            return msg
-            
-        elif m5.status == "CF":
-            return f"MARKET STATUS: [bold green]CONFIRMATION (CF)[/]. M5 sudah searah Master {direction} setelah VR. Sinyal valid untuk STRIKE!"
-            
-        elif m5.cmp == direction:
-            if not m15.vr_occurred and not m30.vr_occurred:
-                return f"MARKET STATUS: [bold cyan]MOMENTUM KENCENG[/]. Semua TF searah {direction}. Cari celah Ghost Strike di M5."
-            else:
-                return f"MARKET STATUS: [bold blue]RECOVERY[/]. Market mulai kembali ke jalur {direction} setelah retracement."
+        """Plain-language narrative aligned with actual signal logic (M30→M15→M5)."""
+        cs = self.get_chain_status()
+        direction = cs["direction"]
+        opp       = cs["opposite"]
+        d_col     = "green" if direction == "BUY" else "red" if direction == "SELL" else "white"
+
+        if not cs["step1_ok"]:
+            return "M30 SCANNING: Menunggu breakout Minor SNR M30 untuk menentukan arah CMP."
+
+        if cs["m30_broken"]:
+            return (f"[bold red]⚠ SETUP BATAL[/]: VR M15 berhasil break M30 CMP [{d_col}]{direction}[/]. "
+                    f"Tunggu setup baru — M30 harus breakout ulang.")
+
+        if cs["cf_ready"] and cs["cf_type"] == "MINOR_CF":
+            return (f"[blink bold green]✅ MINOR CF SIAP[/]: "
+                    f"M30 {direction} kuat | M15 SOLID | M5 VR → M5 CF. "
+                    f"SAFEST ENTRY! SL=M5 SNR | TP=M15 SNR")
+
+        if cs["cf_ready"] and cs["cf_type"] == "CF_LOW":
+            return (f"[blink bold green]🔥 CF LOW RISK SIAP[/]: "
+                    f"M30 {direction} → M15 VR → M15 CF. "
+                    f"EXECUTE STRIKE! SL=M15 SNR | TP=M30 SNR")
+
+        if cs["cf_ready"] and cs["cf_type"] == "CF_HIGH":
+            return (f"[blink bold yellow]⚡ CF HIGH RISK SIAP[/]: "
+                    f"M30 {direction} → M15 VR → M5 CF. "
+                    f"CAUTION STRIKE! SL=M15 SNR | TP=M30 SNR")
+
+        # Macro context prefix
+        macro = cs["macro_role"]
+        if macro == "VR_H4":
+            return (f"[bold red]🚫 BLOCK: M30 VR ke H4[/] — M30 [{d_col}]{direction}[/] counter H4. "
+                    f"Bahaya ikut M30, tunggu M30 CF balik [{d_col}]{self.states['H4'].cmp}[/].")
+        if macro == "CF_HIGH_H4":
+            macro_pfx = f"[bold magenta]⚡ POWER: M30 CF High Risk ke H4 via H1 VR[/] | "
+        elif macro == "CF_H4":
+            macro_pfx = f"[bold cyan]📈 BUILDING: H1 VR → M30 menuju CF ke H4[/] | "
+        else:
+            macro_pfx = f"[bold white]M30 SOLID ke H4[/] | "
+
+        if cs["cf_ready"] and cs["cf_type"] == "MINOR_CF":
+            return (macro_pfx + f"[blink bold green]✅ MINOR CF SIAP[/]: "
+                    f"M15 solid | M5 VR → M5 CF {direction}. SAFEST! SL=M5 SNR | TP=M15 SNR")
+        if cs["cf_ready"] and cs["cf_type"] == "CF_LOW":
+            return (macro_pfx + f"[blink bold green]🔥 CF LOW RISK SIAP[/]: "
+                    f"M15 VR → M15 CF {direction}. EXECUTE! SL=M15 SNR | TP=M30 SNR")
+        if cs["cf_ready"] and cs["cf_type"] == "CF_HIGH":
+            return (macro_pfx + f"[blink bold yellow]⚡ CF HIGH RISK SIAP[/]: "
+                    f"M15 VR → M5 CF {direction}. CAUTION! SL=M15 SNR | TP=M30 SNR")
+        if cs["m15_solid"]:
+            return (macro_pfx + f"[bold cyan]M15 SOLID[/]: "
+                    f"Tunggu M5 flip {opp} (VR ke M15) → balik {direction} (MINOR CF).")
+        if cs["m15_is_vr"]:
+            m15_cmp = self.states["M15"].cmp
+            return (macro_pfx + f"[bold blue]M15 VR {m15_cmp}[/]: menguji M30 CMP {direction}. "
+                    f"Tunggu M5 CF {direction} (High) atau M15 balik {direction} (Low). "
+                    f"[red]JANGAN MINOR_CF![/]")
+        return (macro_pfx + f"[bold cyan]M30 CMP={direction}[/]. "
+                f"Tunggu M15 solid+M5 VR (MINOR_CF) atau M15 VR {opp} ke M30.")
                 
     def get_total_sentiment(self):
         """Calculates the total alignment across all timeframes."""
         buy_score = 0
         sell_score = 0
         weights = {"MN1": 10, "W1": 8, "D1": 6, "H4": 5, "H1": 3, "M30": 2, "M15": 1, "M5": 1}
-        
+
         for name, weight in weights.items():
             st = self.states[name]
             if st.cmp == "BUY": buy_score += weight
             elif st.cmp == "SELL": sell_score += weight
-            
+
         total = sum(weights.values())
         buy_pct = (buy_score / total) * 100
         sell_pct = (sell_score / total) * 100
-        
+
         return buy_pct, sell_pct
+
+    def get_market_regime(self):
+        """
+        Deteksi trending vs sideways.
+
+        Sistem CMP→VR→CF HANYA bekerja di market trending.
+        Di sideways: H4 tidak punya CMP kuat → cascade tidak selesai →
+        VR terus muncul tanpa CF yang valid → terus rugi kecil-kecil.
+
+        Cara deteksi:
+        1. H4 CMP = WAIT → belum ada breakout master → sideways pasti
+        2. Sentiment seimbang (gap < 20%) → tidak ada dominasi arah → sideways
+        3. H4 range (res-sup) terlalu kecil → harga terkompresi → konsolidasi
+        4. Cascade depth terlalu tinggi (≥3) → counter-move sudah merembet jauh → choppy
+        """
+        h4  = self.states["H4"]
+        buy_pct, sell_pct = self.get_total_sentiment()
+        sentiment_gap = abs(buy_pct - sell_pct)
+
+        # 1. H4 master belum breakout
+        if h4.cmp == "WAIT":
+            return "SIDEWAYS", "H4 belum breakout Minor SNR — master tanpa arah"
+
+        # 2. Sentiment terlalu seimbang (semua TF bolak-balik, tidak ada dominasi)
+        if sentiment_gap < 15:
+            return "SIDEWAYS", f"Sentiment seimbang ({buy_pct:.0f}%/{sell_pct:.0f}%) — tidak ada trend"
+
+        # 3. H4 range terlalu sempit (harga terkompresi di dalam range kecil)
+        h4_range = h4.res - h4.sup if h4.res > h4.sup > 0 else 0
+        if 0 < h4_range < 2.5:  # < 2.5 USD = sangat sempit untuk XAUUSD
+            return "SIDEWAYS", f"H4 range {h4_range:.1f} USD — market compressed, hindari entry"
+
+        # 4. Trending kuat — cascade dari bawah bisa naik sampai H4
+        if sentiment_gap > 45:
+            dominant = "BUY" if buy_pct > sell_pct else "SELL"
+            return "TRENDING", f"Strong {dominant} ({sentiment_gap:.0f}% gap) — CF cascade valid"
+
+        # 5. Ranging — ada trend tapi tidak kuat, CF bisa gagal di tengah
+        dominant = "BUY" if buy_pct > sell_pct else "SELL"
+        return "RANGING", f"Moderate {dominant} ({sentiment_gap:.0f}% gap) — hati-hati sideways lokal"
 
 
 class BSTradingAnalyst:
@@ -328,6 +557,7 @@ class BSTradingAnalyst:
         self.vp_counts = {name: 0 for name in self.timeframes} # counter-direction hits
         self.safety_veto = False
         self.safety_msg = "OK"
+        self.last_locked_direction = "WAIT"  # tracks direction changes for counter reset
 
     @staticmethod
     def detect_structural_sb_ss(df):
@@ -496,6 +726,12 @@ class BSTradingAnalyst:
                 break
         if self.locked_direction == "WAIT":
             self.locked_direction = "BUY" # Default fallback
+
+        # Reset VP/VR counters whenever the locked direction flips — prevents veto
+        # bleeding into a new trend that hasn't triggered any reversal yet.
+        if self.locked_direction != self.last_locked_direction:
+            self.vp_counts = {name: 0 for name in self.timeframes}
+            self.last_locked_direction = self.locked_direction
             
         # --- FASE 5: VP/VR SAFETY LOGIC ---
         # Rule 3: No skip timeframe.
@@ -683,4 +919,157 @@ class BSTradingAnalyst:
                 'sl': self.pmb_trigger['sl']
             }
         return None
+
+
+class DailyDeployAnalyst:  # kept for import compatibility — logic now inside get_strike_signal()
+    """
+    Daily Deploy System — "Cheat Code of Direction"
+    (Seminar Daily Deploy PDF by Bonker)
+
+    Three cascading setup layers run in parallel:
+      D1_DEPLOY : direction=D1  → VR=H4  → CF_Low=H4  / CF_High=H1
+      H4_DEPLOY : direction=H4  → VR=H1  → CF_Low=H1  / CF_High=M30
+      H1_DEPLOY : direction=H1  → VR=M30 → CF_Low=M30 / CF_High=M15
+
+    Signal types per layer:
+      CONTI    — trade every direction-aligned BO at VR TF *before* VR occurs
+      CF_LOW   — 2-TF system: VR TF itself flips back → entry (lower risk)
+      CF_HIGH  — 3-TF system: one TF below VR gives direction BO → entry (higher risk)
+
+    Rules enforced:
+      • VR only counted ONCE per setup (resets on direction flip)
+      • VR must occur AFTER the direction TF breakout (Time Law)
+      • CF must occur AFTER VR time
+      • CF_HIGH only fires when CF_LOW has not yet fired (hierarchy)
+    """
+
+    LAYERS = [
+        {"name": "D1_DEPLOY", "dir_tf": "D1",  "vr_tf": "H4",  "cf_low_tf": "H4",  "cf_high_tf": "H1"},
+        {"name": "H4_DEPLOY", "dir_tf": "H4",  "vr_tf": "H1",  "cf_low_tf": "H1",  "cf_high_tf": "M30"},
+        {"name": "H1_DEPLOY", "dir_tf": "H1",  "vr_tf": "M30", "cf_low_tf": "M30", "cf_high_tf": "M15"},
+    ]
+
+    def __init__(self, symbol):
+        self.symbol = symbol
+        self.current_price = 0.0
+        self.active_signals = []
+        self.layer_states = {
+            l["name"]: {"direction": "WAIT", "vr_occurred": False, "vr_time": 0}
+            for l in self.LAYERS
+        }
+
+    def update(self, analyst):
+        """
+        Evaluate all three cascade layers using live TFState data from
+        the SacredDoctrineAnalyst. Must be called AFTER analyst.update().
+        """
+        tick = mt5.symbol_info_tick(self.symbol)
+        if tick:
+            self.current_price = tick.bid
+
+        self.active_signals = []
+
+        for layer in self.LAYERS:
+            name    = layer["name"]
+            state   = self.layer_states[name]
+            dir_st  = analyst.states[layer["dir_tf"]]
+            vr_st   = analyst.states[layer["vr_tf"]]
+            cfl_st  = analyst.states[layer["cf_low_tf"]]
+            cfh_st  = analyst.states.get(layer["cf_high_tf"])
+            direction = dir_st.cmp
+
+            # Reset layer on direction flip or WAIT
+            if direction == "WAIT" or direction != state["direction"]:
+                state["direction"] = direction
+                state["vr_occurred"] = False
+                state["vr_time"] = 0
+                if direction == "WAIT":
+                    continue
+
+            # ── VR Detection ──────────────────────────────────────────────
+            # VR = vr_tf broke COUNTER to direction, AFTER direction_tf breakout
+            vr_counter = vr_st.cmp != direction and vr_st.cmp != "WAIT"
+            vr_after   = vr_st.cmp_change_time > dir_st.cmp_change_time
+
+            if vr_counter and vr_after and not state["vr_occurred"]:
+                state["vr_occurred"] = True
+                state["vr_time"]     = vr_st.cmp_change_time
+
+            if not state["vr_occurred"]:
+                # ── CONTI (Pre-VR) ────────────────────────────────────────
+                # Trade every BO at vr_tf that aligns with direction,
+                # while waiting for the VR to occur.
+                if vr_st.cmp == direction and vr_st.cmp_change_time > dir_st.cmp_change_time:
+                    self.active_signals.append({
+                        "layer":    name,
+                        "action":   direction,
+                        "type":     "CONTI",
+                        "risk":     "MEDIUM",
+                        "dir_tf":   layer["dir_tf"],
+                        "entry_tf": layer["vr_tf"],
+                        "reason":   f"CONTI {layer['dir_tf']}→{layer['vr_tf']} (pre-VR, direction {direction})"
+                    })
+            else:
+                # ── CF Low Risk ───────────────────────────────────────────
+                # cf_low_tf (same TF as vr_tf) returns to direction AFTER vr_time
+                cf_low_ok = (
+                    cfl_st.cmp == direction and
+                    cfl_st.cmp_change_time > state["vr_time"]
+                )
+                if cf_low_ok:
+                    self.active_signals.append({
+                        "layer":    name,
+                        "action":   direction,
+                        "type":     "CF_LOW",
+                        "risk":     "LOW",
+                        "dir_tf":   layer["dir_tf"],
+                        "entry_tf": layer["cf_low_tf"],
+                        "reason":   f"CF Low {layer['dir_tf']}→{layer['vr_tf']}→{layer['cf_low_tf']}"
+                    })
+
+                # ── CF High Risk ──────────────────────────────────────────
+                # One TF below VR aligns with direction AFTER vr_time.
+                # Only fires when CF_LOW has NOT yet fired (hierarchy).
+                elif cfh_st and not cf_low_ok:
+                    cf_high_ok = (
+                        cfh_st.cmp == direction and
+                        cfh_st.cmp_change_time > state["vr_time"]
+                    )
+                    if cf_high_ok:
+                        self.active_signals.append({
+                            "layer":    name,
+                            "action":   direction,
+                            "type":     "CF_HIGH",
+                            "risk":     "HIGH",
+                            "dir_tf":   layer["dir_tf"],
+                            "entry_tf": layer["cf_high_tf"],
+                            "reason":   f"CF High {layer['dir_tf']}→{layer['vr_tf']}→{layer['cf_high_tf']}"
+                        })
+
+    def get_best_signal(self):
+        """
+        Return highest-priority active signal.
+        Priority: CF_LOW > CF_HIGH > CONTI, then D1_DEPLOY > H4_DEPLOY > H1_DEPLOY.
+        """
+        if not self.active_signals:
+            return None
+        type_pri  = {"CF_LOW": 0, "CF_HIGH": 1, "CONTI": 2}
+        layer_pri = {"D1_DEPLOY": 0, "H4_DEPLOY": 1, "H1_DEPLOY": 2}
+        return sorted(
+            self.active_signals,
+            key=lambda s: (type_pri.get(s["type"], 99), layer_pri.get(s["layer"], 99))
+        )[0]
+
+    def get_layer_summary(self):
+        """Returns list of per-layer status strings for UI rendering."""
+        lines = []
+        for layer in self.LAYERS:
+            name  = layer["name"]
+            state = self.layer_states[name]
+            label = name.replace("_DEPLOY", "")
+            direction = state["direction"]
+            phase = "VR✓ waiting CF" if state["vr_occurred"] else "pre-VR (CONTI)"
+            col   = "green" if direction == "BUY" else "red" if direction == "SELL" else "dim white"
+            lines.append(f"[bold {col}]{label}[/] [{col}]{direction}[/] | [dim]{phase}[/]")
+        return lines
 

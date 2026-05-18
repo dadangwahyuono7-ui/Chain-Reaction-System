@@ -3,10 +3,27 @@
     "master_tf": "H4",
     "auto_trade": true,
     "lot_size": 0.01,
+    "max_lot_size": 0.5,
     "max_layers": 3,
     "magic_number": 2026,
-    "barrier_limit": 3.5,
     "risk_per_trade_percent": 1.0,
     "napas_lega_sl_pips": 150,
-    "enable_bs_trading": true
+    "enable_bs_trading": true,
+    "enable_daily_deploy": true,
+    "barrier_limit": 3.5,
+    "be_protect_pips": 10.0,
+    "trail_stop_pips": 5.0,
+    "adaptive_tp_scalp_usd": 2.0,
+    "fallback_sl_pips": 1.5,
+    "drawdown_block_percent": 2.0,
+    "session_filter": true,
+    "max_spread_points": 30,
+    "news_blackout_minutes": 15,
+    "news_schedule_wib": [
+        {"day": 3, "time": "01:00"},
+        {"day": 3, "time": "20:45"}
+    ],
+    "pmb_momentum_multiplier": 1.5,
+    "pmb_min_body_usd": 0.5,
+    "news_refresh_seconds": 300
 }
