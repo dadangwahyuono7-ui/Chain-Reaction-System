@@ -17,7 +17,7 @@ from rich.text import Text
 from rich.align import Align
 from rich.progress import Progress, BarColumn, TextColumn, SpinnerColumn
 from engine.connection import connect_mt5
-from engine.core import SacredDoctrineAnalyst, BSTradingAnalyst
+from engine.core import SacredDoctrineAnalyst
 from engine.executor import ChainReactionExecutor
 
 console = Console()
@@ -117,8 +117,7 @@ def make_layout() -> Layout:
         Layout(name="greeting", size=3),
         Layout(name="account", ratio=2),
         Layout(name="stats", ratio=2),
-        Layout(name="sentiment", size=5),
-        Layout(name="sniper_hud", size=13)
+        Layout(name="sentiment", size=5)
     )
     layout["body"].split_column(
         Layout(name="intel", size=3),
@@ -148,7 +147,7 @@ def get_real_stats(magic):
     wins = len([d for d in closed_deals if d.profit > 0])
     return {"win_rate": (wins / len(closed_deals) * 100) if closed_deals else 0, "strikes": strikes, "pnl": pnl}
 
-def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame):
+def update_layout(layout, analyst, executor, symbol, settings, frame):
     pulse_colors = ["white", "bright_cyan", "gold1", "bright_cyan"]
     title_style = f"bold {pulse_colors[frame % 4]}"
     
@@ -392,48 +391,6 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
     )
     chain_border = "blink bold green" if cf_fired else ("red" if _cs["m30_broken"] else "cyan")
 
-    # ── BS Trading kompak → sniper_hud (kiri, lebih kecil) ───────────────────
-    bs_compact = Table(box=None, expand=True)
-    bs_compact.add_column("", style="dim cyan", no_wrap=True)
-    bs_compact.add_column("", justify="right", no_wrap=True)
-    _dir_s = "bold green" if bs_analyst.locked_direction == "BUY" else "bold red" if bs_analyst.locked_direction == "SELL" else "white"
-    _dot_s = "🟢" if bs_analyst.locked_direction == "BUY" else "🔴" if bs_analyst.locked_direction == "SELL" else "⚪"
-    bs_compact.add_row("DIR LOCK", f"[{_dir_s}]{bs_analyst.locked_direction} {_dot_s}[/]")
-    _mz_s = "blink bold green" if bs_analyst.standby_state == "READY" else "bold yellow"
-    bs_compact.add_row("STANDBY", f"[{_mz_s}]{bs_analyst.standby_state}[/]")
-    if bs_analyst.active_mz:
-        _mz = bs_analyst.active_mz
-        bs_compact.add_row("MZ", f"[magenta]{_mz['tf']} {_mz['type']}[/] ({_mz['low']:.0f}─{_mz['high']:.0f})")
-    else:
-        bs_compact.add_row("MZ", "[dim]SCANNING...[/]")
-    if bs_analyst.pmb_trigger:
-        _trig = bs_analyst.pmb_trigger
-        bs_compact.add_row("PMB", f"[blink bold red]🔥 {_trig['type']} ({_trig['risk']})[/]")
-        bs_compact.add_row("SL/TP", f"[green]{_trig['sl']:.1f}[/] | [yellow]{_trig['tp']:.1f}[/]")
-    else:
-        bs_compact.add_row("PMB", "[dim]NO TRIGGER 📡[/]")
-    _safety_s = "[bold green]🛡 SECURE[/]" if not bs_analyst.safety_veto else f"[bold red]🚨 VETO[/]"
-    bs_compact.add_row("SAFETY", _safety_s)
-    _trend_s = []
-    for _tf_s in ["H4", "H1", "M30", "M15", "M5"]:
-        _tr_s = bs_analyst.tf_trends[_tf_s]
-        _tc_s = "green" if _tr_s == "BUY" else "red" if _tr_s == "SELL" else "white"
-        _ta_s = "▲" if _tr_s == "BUY" else "▼" if _tr_s == "SELL" else "?"
-        _trend_s.append(f"[{_tc_s}]{_tf_s}{_ta_s}[/]")
-    bs_compact.add_row("TREND", " ".join(_trend_s))
-    _blink_dot_s = "[blink green]●[/]" if frame % 2 == 0 else "  "
-    _pc_s = ["bold bright_cyan", "bold yellow", "bold bright_green", "bold bright_magenta"]
-    _cn_s = _pc_s[(frame // 2) % len(_pc_s)]
-    from rich.console import Group as RichGroup
-    _cmd_banner_s = Align.center(Text.from_markup(
-        f"[bold red]⚔[/] [{_cn_s}]DADANG WAHYUONO[/{_cn_s}] {_blink_dot_s}"
-    ))
-    layout["sniper_hud"].update(Panel(
-        RichGroup(bs_compact, Text(""), _cmd_banner_s),
-        title=f"[{title_style}]BS SOP ENGINE[/{title_style}]",
-        border_style="green" if not bs_analyst.safety_veto else "red",
-    ))
-
     # Hierarchy Matrix — chain-aware STATUS column
     cs = analyst.get_chain_status()
     m30_state = analyst.states["M30"]
@@ -649,13 +606,11 @@ def main():
     if not connect_mt5(): return
     boot_sequence()
     settings   = load_settings()
-    analyst    = SacredDoctrineAnalyst(symbol, master_tf=settings.get("master_tf", "H4"))
-    bs_analyst = BSTradingAnalyst(symbol)
-    executor   = ChainReactionExecutor(symbol, magic_number=settings.get("magic_number", 2026))
+    analyst  = SacredDoctrineAnalyst(symbol, master_tf=settings.get("master_tf", "H4"))
+    executor = ChainReactionExecutor(symbol, magic_number=settings.get("magic_number", 2026))
     layout = make_layout()
     frame = 0
     last_strike_time_chain = 0
-    last_strike_time_bs    = 0
     feed.add(f"🔗 OVERLORD ONLINE: Standing by for Market Ignition")
     feed.add(f"⚖️ DOCTRINE ARMED: Time Law v4.0 Enforced")
     feed.add(f"🛰️ RADAR ACTIVE: Scanning for {symbol} Liquidity")
@@ -666,7 +621,6 @@ def main():
                 executor.update_settings(settings)  # sync all magic numbers from config
 
                 analyst.update()
-                bs_analyst.update(analyst)
 
                 events = executor.monitor_positions(analyst)
                 for e in events:
@@ -700,30 +654,7 @@ def main():
                                 all_positions = mt5.positions_get(symbol=symbol, magic=magic) or []
                                 total_open = len(all_positions)
 
-                # 2. BS Trading SOP — Independent Execution
-                if settings.get("enable_bs_trading"):
-                    bs_signal = bs_analyst.get_bs_signal()
-                    if bs_signal:
-                        if time.time() - last_strike_time_bs > 300:
-                            bs_pos = [p for p in all_positions if p.comment.startswith("BS_")]
-                            if len(bs_pos) < max_layers and total_open < max_layers:
-                                # Level 1 (skip step = high risk) → half risk weight
-                                bs_settings = dict(settings)
-                                if bs_signal['level'] == 1:
-                                    bs_settings['risk_per_trade_percent'] = settings.get('risk_per_trade_percent', 1.0) * 0.5
-                                success, msg = executor.execute_strike(
-                                    direction=bs_signal['action'],
-                                    analyst=analyst,
-                                    comment=f"BS_L{bs_signal['level']}",
-                                    tp_price=bs_signal['tp'],
-                                    sl_price=bs_signal['sl'],
-                                    settings=bs_settings
-                                )
-                                feed.add(msg)
-                                if success:
-                                    last_strike_time_bs = time.time()
-
-                update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame)
+                update_layout(layout, analyst, executor, symbol, settings, frame)
                 frame += 1
                 time.sleep(0.1)
             except KeyboardInterrupt:

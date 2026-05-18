@@ -8,7 +8,6 @@
     "magic_number": 2026,
     "risk_per_trade_percent": 1.0,
     "napas_lega_sl_pips": 150,
-    "enable_bs_trading": true,
     "enable_daily_deploy": true,
     "barrier_limit": 3.5,
     "be_protect_pips": 10.0,
@@ -23,7 +22,5 @@
         {"day": 3, "time": "01:00"},
         {"day": 3, "time": "20:45"}
     ],
-    "pmb_momentum_multiplier": 1.5,
-    "pmb_min_body_usd": 0.5,
     "news_refresh_seconds": 300
 }
