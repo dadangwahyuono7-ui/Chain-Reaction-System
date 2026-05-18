@@ -17,6 +17,7 @@ from rich.text import Text
 from rich.align import Align
 from rich.progress import Progress, BarColumn, TextColumn, SpinnerColumn
 from rich.console import Group as RichGroup
+from rich import box as rich_box
 from engine.connection import connect_mt5
 from engine.core import SacredDoctrineAnalyst
 from engine.executor import ChainReactionExecutor
@@ -127,8 +128,8 @@ def make_layout() -> Layout:
         Layout(name="news_feed", ratio=1)
     )
     layout["matrix_row"].split_row(
-        Layout(name="matrix", ratio=1),
-        Layout(name="bs_matrix", ratio=1)
+        Layout(name="matrix", ratio=5),
+        Layout(name="bs_matrix", ratio=6)
     )
     layout["news_feed"].split_row(
         Layout(name="news", ratio=1),
@@ -148,438 +149,451 @@ def get_real_stats(magic):
     wins = len([d for d in closed_deals if d.profit > 0])
     return {"win_rate": (wins / len(closed_deals) * 100) if closed_deals else 0, "strikes": strikes, "pnl": pnl}
 
+def _bar(filled, total, fill_char="█", empty_char="░", fill_color="green", empty_color="grey27"):
+    f = int(filled)
+    e = total - f
+    return f"[{fill_color}]{fill_char * f}[/][{empty_color}]{empty_char * e}[/]"
+
 def update_layout(layout, analyst, executor, symbol, settings, frame):
-    pulse_colors = ["white", "bright_cyan", "gold1", "bright_cyan"]
-    title_style = f"bold {pulse_colors[frame % 4]}"
-    
-    # 0. Strategic Intel (Marquee)
-    intel_msg = analyst.get_strategic_forecast().replace("[bold yellow]", "").replace("[bold green]", "").replace("[bold cyan]", "").replace("[bold blue]", "").replace("[/]", "")
-    display_len = 80; combined = "  •  " + intel_msg + "  •  "; shift = (frame // 2) % len(combined); scrolling_text = combined[shift:] + combined[:shift]
-    layout["intel"].update(Panel(Align.center(Text(scrolling_text[:display_len], style="bold gold1")), title=f"[{title_style}]STRATEGIC INTEL[/{title_style}]", border_style="gold1"))
+    BLINK = frame % 2 == 0
+    title_colors = ["bold bright_cyan", "bold gold1", "bold bright_cyan", "bold white"]
+    TS = title_colors[frame % 4]
 
-    # Theme
+    # ── LIVE TICK ──────────────────────────────────────────────────────────────
+    tick   = mt5.symbol_info_tick(symbol)
+    bid    = f"{tick.bid:.2f}" if tick else "──────"
+    ask    = f"{tick.ask:.2f}" if tick else "──────"
     master = analyst.states[settings.get("master_tf", "H4")]
-    theme_color = "green" if master.cmp == "BUY" else "red" if master.cmp == "SELL" else "gold1"
-    sync_icon = "📡" if frame % 4 < 2 else "🛰️"
-    tick = mt5.symbol_info_tick(symbol)
-    bid = f"{tick.bid:.2f}" if tick else "OFFLINE"; ask = f"{tick.ask:.2f}" if tick else "OFFLINE"
-    pulse_char = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][frame % 10]
-    
+    theme  = "green" if master.cmp == "BUY" else "red" if master.cmp == "SELL" else "gold1"
+    spin   = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"][frame % 10]
+
+    # ── HEADER ─────────────────────────────────────────────────────────────────
     header_text = Text.assemble(
-        (f" {pulse_char} CHAIN REACTION ", f"bold {theme_color}"),
-        (" [ ", "blink white"),
-        ("OVERLORD CLEARANCE", "blink bold white"),
-        (" ] ", "blink white"),
-        (" | BY: COMMANDER DADANG ", "bold yellow"),
-        (f" | {symbol}: ", "white"),
-        (bid, "bold green"),
-        ("/", "white"),
-        (ask, "bold red"),
-        (f" | {datetime.now().strftime('%H:%M:%S')}", "dim white"),
+        (f" {spin} ", f"bold {theme}"),
+        ("CHAIN REACTION ", f"bold {theme}"),
+        ("[ OVERLORD v4.0 ] ", "bold white"),
+        ("  BY: COMMANDER DADANG    ", "bold yellow"),
+        (f"{symbol}  ", "dim white"),
+        (bid, "bold bright_green"),
+        (" / ", "dim"),
+        (ask, "bold bright_red"),
+        (f"    {datetime.now().strftime('%H:%M:%S')} WIB", "dim cyan"),
     )
-    layout["header"].update(Panel(Align.center(header_text), style=f"bold {theme_color}"))
-    layout["greeting"].update(Panel(Align.center(Text(get_commander_greeting(), style="bold cyan")), border_style="dim cyan"))
+    layout["header"].update(Panel(Align.center(header_text), style=f"bold {theme}", padding=(0, 1)))
+    layout["greeting"].update(
+        Panel(Align.center(Text(get_commander_greeting(), style="italic cyan")),
+              border_style="dim cyan", padding=(0, 0))
+    )
 
-    # Core Sync & Stats
+    # ── STRATEGIC INTEL MARQUEE ─────────────────────────────────────────────────
+    intel_raw = analyst.get_strategic_forecast()
+    for tag in ["[bold yellow]","[bold green]","[bold cyan]","[bold blue]","[bold magenta]","[/]"]:
+        intel_raw = intel_raw.replace(tag, "")
+    _scroll_src = "    ◆    " + intel_raw
+    _shift = (frame // 2) % len(_scroll_src)
+    _scrolled = (_scroll_src[_shift:] + _scroll_src[:_shift])[:120]
+    layout["intel"].update(
+        Panel(Align.center(Text(_scrolled, style="bold gold1")),
+              title=f"[{TS}]◈  STRATEGIC INTEL[/{TS}]", border_style="gold1", padding=(0, 0))
+    )
+
+    # ── ACCOUNT PANEL ──────────────────────────────────────────────────────────
     acc = mt5.account_info()
-    acc_table = Table(box=None, expand=True)
-    acc_table.add_column("Key", style="cyan")
-    acc_table.add_column("Val", style="bold magenta", justify="right")
+    acc_t = Table(box=None, expand=True, padding=(0, 1))
+    acc_t.add_column("", style="dim cyan", width=6)
+    acc_t.add_column("", style="bold white", justify="right")
     if acc:
-        dd_pct = ((acc.balance - acc.equity) / acc.balance * 100) if acc.balance > 0 else 0
-        eq_pct = (acc.equity / acc.balance * 100) if acc.balance > 0 else 100
-        eq_bar_w = 10
-        eq_filled = int(eq_pct / 100 * eq_bar_w)
-        eq_col = "green" if eq_pct >= 99 else "yellow" if eq_pct >= 97 else "red"
-        eq_bar = f"[{eq_col}]{'█' * eq_filled}[/][dim]{'░' * (eq_bar_w - eq_filled)}[/]"
-        acc_table.add_row("ACC", f"{acc.login}")
-        acc_table.add_row("BAL", f"[white]{acc.balance:,.0f}[/]")
-        acc_table.add_row("EQTY", f"[{eq_col}]{acc.equity:,.0f}[/]")
-        acc_table.add_row("DD%", f"[{'red' if dd_pct > 1 else 'green'}]{dd_pct:.2f}%[/]")
-        acc_table.add_row("", eq_bar)
-    acc_table.add_row("[cyan]UPLINK[/]", f"[bold cyan]{'█' * int(math.sin(frame * 0.8) * 4 + 5)}[/]")
-    layout["account"].update(Panel(acc_table, title=f"[{title_style}]{sync_icon} CORE SYNC[/{title_style}]", border_style="cyan" if frame % 4 != 0 else "bright_cyan"))
-
-    stats = get_real_stats(settings.get("magic_number", 2026)); stats_table = Table(box=None, expand=True)
-    stats_table.add_column("Stat", style="yellow"); stats_table.add_column("Val", style="bold white", justify="right")
-    stats_table.add_row("WIN RATE", f"{stats['win_rate']:.0f}%"); stats_table.add_row("STRIKES", str(stats['strikes'])); stats_table.add_row("PnL TODAY", f"[green]+{stats['pnl']:,.2f}[/]" if stats['pnl'] >= 0 else f"[red]{stats['pnl']:,.2f}[/]")
-    stats_table.add_row("", ""); stats_table.add_row("[yellow]PROC[/]", f"[bold yellow]{'█' * int(math.cos(frame * 0.6) * 4 + 5)}[/]")
-    layout["stats"].update(Panel(stats_table, title=f"[{title_style}]📊 LIVE STATS[/{title_style}]", border_style="yellow" if frame % 4 != 2 else "bright_yellow"))
-
-    # Sentiment Radar — proper block bars
-    buy_pct, sell_pct = analyst.get_total_sentiment()
-    bw = 14
-    b_filled = int(buy_pct / 100 * bw)
-    s_filled = int(sell_pct / 100 * bw)
-    b_bar = f"[green]{'█' * b_filled}[/][dim]{'░' * (bw - b_filled)}[/]"
-    s_bar = f"[red]{'█' * s_filled}[/][dim]{'░' * (bw - s_filled)}[/]"
-    dominant = "BUY" if buy_pct > sell_pct else "SELL"
-    dom_col = "green" if dominant == "BUY" else "red"
-    _regime_s, _ = analyst.get_market_regime()
-    reg_col_s = "green" if _regime_s == "TRENDING" else "yellow" if _regime_s == "RANGING" else "red"
-    reg_icon_s = "📈" if _regime_s == "TRENDING" else "〰" if _regime_s == "RANGING" else "⚠"
-    pulse_dot = "[blink bold green]◆[/]" if dominant == "BUY" else "[blink bold red]◆[/]"
-    sent_text = Text.from_markup(
-        f" BUY  {b_bar} [green]{buy_pct:.0f}%[/]\n"
-        f" SELL {s_bar} [red]{sell_pct:.0f}%[/]\n"
-        f" [{reg_col_s}]{reg_icon_s} {_regime_s}[/]  {pulse_dot} [{dom_col}]{dominant}[/]"
+        dd_pct  = ((acc.balance - acc.equity) / acc.balance * 100) if acc.balance > 0 else 0
+        eq_pct  = (acc.equity  / acc.balance  * 100)               if acc.balance > 0 else 100
+        eq_col  = "bright_green" if eq_pct >= 99 else "yellow" if eq_pct >= 97 else "red"
+        dd_col  = "bright_green" if dd_pct < 0.5 else "yellow" if dd_pct < 2 else "red"
+        eq_bar  = _bar(int(eq_pct / 100 * 12), 12, fill_color=eq_col, empty_color="grey27")
+        acc_t.add_row("LOGIN",   f"[bright_white]{acc.login}[/]")
+        acc_t.add_row("BAL",     f"[white]{acc.balance:,.0f}[/]")
+        acc_t.add_row("EQUITY",  f"[{eq_col}]{acc.equity:,.0f}[/]")
+        acc_t.add_row("DD",      f"[{dd_col}]{dd_pct:.2f}%[/]")
+        acc_t.add_row("",        eq_bar)
+    sync_icon = "📡" if BLINK else "🛰️"
+    uplink_bar = _bar(int(math.sin(frame * 0.8) * 4 + 5), 10, fill_color="bright_cyan", empty_color="grey27")
+    acc_t.add_row("UPLINK",  uplink_bar)
+    layout["account"].update(
+        Panel(acc_t, title=f"[{TS}]{sync_icon} CORE SYNC[/{TS}]",
+              border_style="cyan", padding=(0, 0))
     )
-    layout["sentiment"].update(Panel(sent_text, title=f"[{title_style}]⚡ RADAR[/{title_style}]", border_style="bright_magenta"))
 
-    # CHAIN STORYLINE STATUS PANEL — live CMP→VR→CF progress
-    _cs = analyst.get_chain_status()
+    # ── LIVE STATS ──────────────────────────────────────────────────────────────
+    stats   = get_real_stats(settings.get("magic_number", 2026))
+    pnl_col = "bright_green" if stats['pnl'] >= 0 else "red"
+    wr_col  = "bright_green" if stats['win_rate'] >= 60 else "yellow" if stats['win_rate'] >= 40 else "red"
+    st_t    = Table(box=None, expand=True, padding=(0, 1))
+    st_t.add_column("", style="dim yellow", width=9)
+    st_t.add_column("", style="bold white", justify="right")
+    st_t.add_row("WIN RATE",  f"[{wr_col}]{stats['win_rate']:.0f}%[/]")
+    st_t.add_row("STRIKES",   str(stats['strikes']))
+    st_t.add_row("PnL TODAY", f"[{pnl_col}]{'+' if stats['pnl']>=0 else ''}{stats['pnl']:,.2f}[/]")
+    proc_bar = _bar(int(math.cos(frame * 0.6) * 4 + 5), 10, fill_color="gold1", empty_color="grey27")
+    st_t.add_row("", "")
+    st_t.add_row("PROC",  proc_bar)
+    layout["stats"].update(
+        Panel(st_t, title=f"[{TS}]📊 LIVE STATS[/{TS}]",
+              border_style="yellow", padding=(0, 0))
+    )
+
+    # ── SENTIMENT RADAR ─────────────────────────────────────────────────────────
+    buy_pct, sell_pct = analyst.get_total_sentiment()
+    regime, _         = analyst.get_market_regime()
+    bw = 12
+    b_bar = _bar(int(buy_pct/100*bw),  bw, fill_color="bright_green", empty_color="grey27")
+    s_bar = _bar(int(sell_pct/100*bw), bw, fill_color="bright_red",   empty_color="grey27")
+    dom        = "BUY"  if buy_pct > sell_pct else "SELL"
+    dom_col    = "bright_green" if dom == "BUY" else "bright_red"
+    reg_col    = "bright_green" if regime == "TRENDING" else "yellow" if regime == "RANGING" else "red"
+    reg_icon   = "▲" if regime == "TRENDING" else "≈" if regime == "RANGING" else "⚠"
+    pulse_dot  = "[blink bold bright_green]◆[/]" if dom == "BUY" and BLINK else \
+                 "[blink bold bright_red]◆[/]"   if dom == "SELL" and BLINK else \
+                 "[dim]◆[/]"
+    sent_t = Text.from_markup(
+        f" [dim]BUY [/dim]  {b_bar} [{dom_col if dom=='BUY' else 'dim'}]{buy_pct:.0f}%[/]\n"
+        f" [dim]SELL[/dim]  {s_bar} [{dom_col if dom=='SELL' else 'dim'}]{sell_pct:.0f}%[/]\n"
+        f" [{reg_col}]{reg_icon} {regime}[/]   {pulse_dot} [{dom_col}]{dom}[/]"
+    )
+    layout["sentiment"].update(
+        Panel(sent_t, title=f"[{TS}]⚡ RADAR[/{TS}]", border_style="magenta", padding=(0, 0))
+    )
+
+    # ── CHAIN STATUS DATA (shared) ──────────────────────────────────────────────
+    _cs     = analyst.get_chain_status()
     _dir    = _cs["direction"]
     _opp    = _cs["opposite"]
-    _d_col  = "green" if _dir == "BUY" else "red" if _dir == "SELL" else "white"
-
-    def _step_icon(ok, blink_ok=False):
-        if ok:
-            return "[blink bold green]🔥[/]" if blink_ok else "[green]✅[/]"
-        return "[dim]⬜[/]"
-
-    # Step 1 — M30 CMP
-    s1_icon = _step_icon(_cs["step1_ok"])
-    s1_lbl  = f"[{_d_col}]{_dir}[/]" if _cs["step1_ok"] else "[dim]WAIT[/]"
-    s1_note = "M30 arah terkunci" if _cs["step1_ok"] else "Tunggu breakout M30"
-
-    # Step 2 — M15 state (VR ke M30 atau SOLID)
-    if _cs["m15_is_vr"]:
-        s2_icon = _step_icon(True)
-        s2_lbl  = f"[deep_sky_blue1]VR {_opp}[/]"
-        s2_note = "M15 menguji M30 CMP ⚠"
-    elif _cs["m15_solid"]:
-        s2_icon = "[green]🔒[/]"
-        s2_lbl  = f"[green]SOLID {_dir}[/]"
-        s2_note = "M15 aligned — M30 aman"
-    else:
-        s2_icon = "[dim]⬜[/]"
-        s2_lbl  = f"[dim]WAIT[/]"
-        s2_note = ""
-
-    # Step 3 — CF type + label
+    _d_col  = "bright_green" if _dir == "BUY" else "bright_red" if _dir == "SELL" else "white"
     cf_fired = _cs["cf_ready"]
-    s3_icon  = _step_icon(cf_fired, blink_ok=True)
     cf_type  = _cs.get("cf_type", "")
-    if cf_fired:
-        if cf_type == "MINOR_CF":
-            cf_lbl  = "[blink bold green]MINOR CF ✅[/]"
-            cf_note = "M5 VR→CF | SL=M5 | TP=M15"
-        elif cf_type == "CF_LOW":
-            cf_lbl  = "[blink bold green]CF LOW 🔥[/]"
-            cf_note = "M15 CF | SL=M15 | TP=M30"
-        else:
-            cf_lbl  = "[blink bold yellow]CF HIGH ⚡[/]"
-            cf_note = "M5 CF | SL=M15 | TP=M30"
-    else:
-        cf_lbl  = "[dim]TUNGGU CF[/]"
-        cf_note = "M5 atau M15 balik ke arah M30"
-
-    # M30 Stability (hanya relevan saat M15 VR)
-    if _cs["m30_broken"]:
-        stab_txt = "[blink bold red]⚠ INVALID — VR break M30![/]"
-    elif _cs["m15_is_vr"]:
-        stab_txt = "[green]🔒 LOCKED — M30 stable[/]"
-    elif _cs["m15_solid"]:
-        stab_txt = "[green]✅ KUAT — M15 solid, M30 tidak diuji[/]"
-    else:
-        stab_txt = "[dim]—[/]"
-
-    # Next action
-    if not _cs["step1_ok"]:
-        next_txt = "[dim]Scan M30 SNR breakout...[/]"
-    elif _cs["m30_broken"]:
-        next_txt = "[bold red]Setup batal! Cari M30 setup baru.[/]"
-    elif cf_fired and cf_type == "MINOR_CF":
-        next_txt = f"[blink bold green]🎯 SAFEST FIRE! M5 CF | SL=M5 SNR | TP=M15 SNR[/]"
-    elif cf_fired and cf_type == "CF_LOW":
-        next_txt = f"[blink bold green]🎯 FIRE! CF Low Risk | SL=M15 SNR | TP=M30 SNR[/]"
-    elif cf_fired and cf_type == "CF_HIGH":
-        next_txt = f"[blink bold yellow]⚡ FIRE! CF High Risk | SL=M15 SNR | TP=M30 SNR[/]"
-    elif _cs["m15_solid"]:
-        next_txt = f"[cyan]Tunggu M5 flip [{_d_col}]{_opp}[/] (VR ke M15) → balik [{_d_col}]{_dir}[/] (MINOR CF)[/]"
-    elif _cs["m15_is_vr"]:
-        next_txt = f"[cyan]Tunggu M5 CF [{_d_col}]{_dir}[/] (High) atau M15 balik [{_d_col}]{_dir}[/] (Low)[/]"
-    else:
-        next_txt = f"[cyan]Tunggu M15 solid [{_d_col}]{_dir}[/] + M5 VR, atau M15 VR [{_d_col}]{_opp}[/] ke M30[/]"
-
-    # Macro role label for M30 vs H4
-    macro = _cs.get("macro_role", "SOLID_H4")
-    if macro == "VR_H4":
-        macro_lbl = "[blink bold red]🚫 M30 VR ke H4 — BLOCK[/]"
-    elif macro == "CF_HIGH_H4":
-        macro_lbl = f"[bold magenta]⚡ M30 CF High Risk ke H4 (via H1 VR) — POWER[/]"
-    elif macro == "CF_H4":
-        macro_lbl = f"[bold cyan]📈 H1 VR → M30 CF ke H4 — BUILDING[/]"
-    else:
-        macro_lbl = f"[white]M30 SOLID ke H4 — NORMAL[/]"
-
-    # ── Market Regime ─────────────────────────────────────────────────────────
-    _regime, _regime_msg = analyst.get_market_regime()
-    if _regime == "TRENDING":
-        regime_lbl = f"[bold green]📈 TRENDING[/] — {_regime_msg}"
-    elif _regime == "RANGING":
-        regime_lbl = f"[bold yellow]〰 RANGING[/] — {_regime_msg}"
-    else:
-        regime_lbl = f"[blink bold red]⚠ SIDEWAYS[/] — {_regime_msg}"
-
-    # ── CASCADE CHAIN visual: H4 → H1 → M30 → M15 → M5 ─────────────────────
-    # VR/CF = CMP di TF masing-masing, hanya konteks parent yang memberi label
-    _h4_dir  = analyst.states["H4"].cmp
-    _h4_col  = "green" if _h4_dir == "BUY" else "red" if _h4_dir == "SELL" else "white"
-    _d_arr   = "▲" if _h4_dir == "BUY" else "▼" if _h4_dir == "SELL" else "?"
-    _c_arr   = "▼" if _h4_dir == "BUY" else "▲"
-    _roles   = _cs.get("cascade_roles", {})
     _depth   = _cs.get("cascade_depth", 0)
+    _roles   = _cs.get("cascade_roles", {})
+    _h4_dir  = analyst.states["H4"].cmp
+    _h4_col  = "bright_green" if _h4_dir == "BUY" else "bright_red" if _h4_dir == "SELL" else "white"
+    _d_arr   = "▲" if _h4_dir == "BUY" else "▼" if _h4_dir == "SELL" else "·"
+    _c_arr   = "▼" if _h4_dir == "BUY" else "▲"
 
     def _tf_chip(tf_name):
         role = _roles.get(tf_name, "WAIT")
-        st   = analyst.states[tf_name]
-        if role == "WAIT":
-            return f"[dim]{tf_name}?[/]"
-        if role == "VR":
-            col  = "deep_sky_blue1"
-            arr  = _c_arr
-            tag  = "VR"
-        elif role == "CF":
-            col  = _h4_col
-            arr  = _d_arr
-            tag  = "CF"
-        else:  # CMP
-            col  = _h4_col
-            arr  = _d_arr
-            tag  = ""
-        label = f"{tf_name}{arr}" + (f"[{tag}]" if tag else "")
-        return f"[{col}]{label}[/]"
+        if role == "WAIT":   return f"[dim]{tf_name}?[/]"
+        if role == "VR":     return f"[bright_cyan]{tf_name}{_c_arr}[VR][/]"
+        if role == "CF":     return f"[{_h4_col}]{tf_name}{_d_arr}[CF][/]"
+        return f"[{_h4_col}]{tf_name}{_d_arr}[/]"
 
-    cascade_line = (
-        f"  [{_h4_col}]H4{_d_arr}[/] ──▶ "
-        + " ──▶ ".join(_tf_chip(tf) for tf in ["H1", "M30", "M15", "M5"])
-    )
+    cascade_chips = " → ".join(_tf_chip(tf) for tf in ["H1","M30","M15","M5"])
 
-    # Cascade depth warning
-    if _depth == 0:
-        depth_txt = "[green]DEPTH 0 — semua aligned, momentum kuat[/]"
-    elif _depth == 1:
-        depth_txt = f"[cyan]DEPTH 1 — {_cs['cascade_tfs']} VR, minor retracement[/]"
-    elif _depth == 2:
-        depth_txt = f"[yellow]DEPTH 2 — {_cs['cascade_tfs']} VR, tunggu CF[/]"
-    elif _depth >= 3:
-        depth_txt = f"[blink bold red]DEPTH {_depth} — CASCADE DALAM, JANGAN ENTRY[/]"
+    # Step icons
+    def _sicon(ok):
+        return ("[bright_green]✔[/]" if BLINK else "[green]✔[/]") if ok else "[dim]○[/]"
+
+    s1_ok  = _cs["step1_ok"]
+    s2_ok  = _cs["m15_is_vr"] or _cs["m15_solid"]
+    s3_ok  = cf_fired
+
+    # Step labels
+    s1_lbl = f"[{_d_col}]{_dir}[/]" if s1_ok else "[dim]WAIT[/]"
+    s1_sub = "M30 CMP locked" if s1_ok else "Tunggu breakout M30"
+
+    if _cs["m15_is_vr"]:
+        s2_lbl = "[bright_cyan]VR ACTIVE[/]"
+        s2_sub = f"M15 menguji M30 ⚠"
+    elif _cs["m15_solid"]:
+        s2_lbl = "[bright_green]SOLID ✔[/]"
+        s2_sub = "M15 aligned, M30 aman"
     else:
-        depth_txt = "[dim]—[/]"
+        s2_lbl = "[dim]STANDBY[/]"
+        s2_sub = ""
 
-    # Signal readiness progress bar
-    _steps_done = sum([_cs['step1_ok'], _cs['m15_is_vr'] or _cs['m15_solid'], _cs['cf_ready']])
-    _ready_pct  = int(_steps_done / 3 * 100)
-    _rw = 16
-    _r_filled = int(_steps_done / 3 * _rw)
-    _r_col = "blink bold green" if _steps_done == 3 else "yellow" if _steps_done >= 1 else "dim"
-    _ready_bar = f"[{_r_col}]{'▰' * _r_filled}[/][dim]{'▱' * (_rw - _r_filled)}[/]"
-    _ready_lbl = f"[{_r_col}]{_steps_done}/3  {_ready_pct}%[/]"
-
-    storyline = Text.from_markup(
-        f"  [bold white]CASCADE CHAIN  (VR=CF=CMP di TF masing-masing)[/bold white]\n"
-        f"{cascade_line}\n"
-        f"  [dim]REGIME:[/dim] {regime_lbl}\n"
-        f"  [dim]DEPTH :[/dim] {depth_txt}\n"
-        f"\n"
-        f"  [dim]SIGNAL READY:[/dim] {_ready_bar} {_ready_lbl}\n"
-        f"  {s1_icon} [dim]M30 CMP:[/dim] {s1_lbl}  [dim italic]{s1_note}[/dim italic]\n"
-        f"  {s2_icon} [dim]M15    :[/dim] {s2_lbl}  [dim italic]{s2_note}[/dim italic]\n"
-        f"  {s3_icon} [dim]CF     :[/dim] {cf_lbl}  [dim italic]{cf_note}[/dim italic]\n"
-        f"  [dim]M30/H4 :[/dim] {macro_lbl}\n"
-        f"  [dim]▶ NEXT :[/dim] {next_txt}"
-    )
-    chain_border = "blink bold green" if cf_fired else ("red" if _cs["m30_broken"] else "cyan")
-
-    # Hierarchy Matrix — chain-aware STATUS column
-    cs = analyst.get_chain_status()
-    m30_state = analyst.states["M30"]
-    m15_state = analyst.states["M15"]
-    m5_state  = analyst.states["M5"]
-
-    def chain_role(tf, st):
-        """Return chain role label + color for each TF in context of current setup."""
-        if tf in ("MN1", "W1", "D1"):
-            lbl = "MACRO"
-            col = "gold1" if st.cmp == cs["direction"] else "dim"
-        elif tf == "H4":
-            lbl = "MASTER"
-            col = "gold1"
-        elif tf == "H1":
-            if st.cmp != "WAIT" and st.cmp != analyst.states["H4"].cmp:
-                lbl = "H1 VR"; col = "deep_sky_blue1"
-            else:
-                lbl = "H1 CMP"; col = "white"
-        elif tf == "M30":
-            lbl = "SETUP CMP" if st.cmp != "WAIT" else "M30 WAIT"
-            col = "bold cyan" if st.cmp != "WAIT" else "dim"
-        elif tf == "M15":
-            if cs["m15_is_vr"]:
-                lbl = "VR ACTIVE ⚡"; col = "deep_sky_blue1"
-            elif cs["m15_solid"]:
-                lbl = "SOLID 🔒"; col = "green"
-            else:
-                lbl = "STANDBY"; col = "dim"
-        elif tf == "M5":
-            if cs["cf_ready"] and cs["cf_type"] == "MINOR_CF":
-                lbl = "MINOR CF ✅"; col = "blink bold green"
-            elif cs["cf_ready"] and cs["cf_type"] in ("CF_HIGH", "CF_LOW"):
-                lbl = f"{cs['cf_type']} 🔥"; col = "blink bold green"
-            elif cs["m15_solid"] and st.cmp != cs["direction"] and st.cmp != "WAIT":
-                lbl = "VR→M15"; col = "yellow"
-            elif cs["m15_is_vr"] and st.cmp != cs["direction"]:
-                lbl = "VR"; col = "yellow"
-            elif cs["m15_is_vr"] and st.cmp == cs["direction"]:
-                lbl = "CF ZONE"; col = "green"
-            else:
-                lbl = "STANDBY"; col = "dim"
+    if cf_fired:
+        if cf_type == "MINOR_CF":
+            s3_lbl = "[blink bright_green]MINOR CF[/]" if BLINK else "[bright_green]MINOR CF[/]"
+            s3_sub = "SL=M5 SNR  TP=M15 SNR"
+        elif cf_type == "CF_LOW":
+            s3_lbl = "[blink bright_green]CF  LOW[/]" if BLINK else "[bright_green]CF  LOW[/]"
+            s3_sub = "SL=M15 SNR  TP=M30 SNR"
         else:
-            lbl = st.status; col = "white"
-        return lbl, col
+            s3_lbl = "[blink yellow]CF HIGH[/]" if BLINK else "[yellow]CF HIGH[/]"
+            s3_sub = "SL=M15 SNR  TP=M30 SNR"
+    else:
+        s3_lbl = "[dim]WAIT[/]"
+        s3_sub = "M5/M15 balik ke arah M30"
 
-    matrix_table = Table(expand=True, border_style="grey37")
-    matrix_table.add_column("TF",    justify="center", style="bold white")
-    matrix_table.add_column("CMP",   justify="center")
-    matrix_table.add_column("ROLE",  justify="center")
-    matrix_table.add_column("SNR",   justify="center", style="dim")
-    tfs = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5"]
-    scanning_idx = frame % len(tfs)
+    macro_m = _cs.get("macro_role", "SOLID_H4")
+    if macro_m == "VR_H4":
+        macro_lbl = "[bright_red]M30 VR ← H4  BLOCK[/]"
+    elif macro_m == "CF_HIGH_H4":
+        macro_lbl = "[magenta]M30 CF HIGH RISK ← H4[/]"
+    elif macro_m == "CF_H4":
+        macro_lbl = "[cyan]H1 VR → M30 CF ← H4[/]"
+    else:
+        macro_lbl = "[white]M30 SOLID ← H4[/]"
+
+    _dep_col   = "bright_green" if _depth==0 else "yellow" if _depth<=2 else "bright_red"
+    _steps_done = int(s1_ok) + int(s2_ok) + int(s3_ok)
+    _rw = 14
+    _r_fill = int(_steps_done / 3 * _rw)
+    _r_col  = "bright_green" if _steps_done == 3 else "yellow" if _steps_done >= 1 else "dim"
+    _ready_bar = _bar(_r_fill, _rw, fill_color=_r_col, empty_color="grey27", fill_char="▰", empty_char="▱")
+
+    if not s1_ok:
+        next_txt = "Scan M30 SNR breakout..."
+        next_col = "dim"
+    elif _cs.get("m30_broken"):
+        next_txt = "Setup BATAL — cari M30 baru"
+        next_col = "bold bright_red"
+    elif cf_fired and cf_type == "MINOR_CF":
+        next_txt = "🎯 SAFEST ENTRY — FIRE!"
+        next_col = "blink bold bright_green"
+    elif cf_fired and cf_type == "CF_LOW":
+        next_txt = "🎯 CF LOW — FIRE!"
+        next_col = "blink bold bright_green"
+    elif cf_fired and cf_type == "CF_HIGH":
+        next_txt = "⚡ CF HIGH — FIRE!"
+        next_col = "blink bold yellow"
+    elif _cs["m15_solid"]:
+        next_txt = f"Tunggu M5 flip {_opp} → {_dir} (MINOR CF)"
+        next_col = "cyan"
+    elif _cs["m15_is_vr"]:
+        next_txt = f"Tunggu M5 CF {_dir} atau M15 balik {_dir}"
+        next_col = "cyan"
+    else:
+        next_txt = f"Tunggu M15 solid {_dir} atau VR {_opp} ke M30"
+        next_col = "cyan"
+
+    # ── HIERARCHY MATRIX TABLE ──────────────────────────────────────────────────
+    matrix_table = Table(
+        box=rich_box.SIMPLE_HEAD, expand=True,
+        header_style="bold white on grey19", show_edge=False,
+        padding=(0, 1),
+    )
+    matrix_table.add_column("TF",   justify="center", style="bold white",   width=6)
+    matrix_table.add_column("CMP",  justify="center",                       width=7)
+    matrix_table.add_column("ROLE", justify="center",                       width=14)
+    matrix_table.add_column("SUP",  justify="right",  style="dim green",    width=9)
+    matrix_table.add_column("RES",  justify="right",  style="dim red",      width=9)
+
+    tfs = ["MN1","W1","D1","H4","H1","M30","M15","M5"]
+    scan_idx = frame % len(tfs)
     for i, tf in enumerate(tfs):
-        st = analyst.states[tf]
-        is_scanning = (i == scanning_idx)
-        blink = "[blink]" if is_scanning and frame % 2 == 0 else ""
-        c = "green" if st.cmp == "BUY" else "red" if st.cmp == "SELL" else "white"
-        lbl, r_col = chain_role(tf, st)
-        # Row background based on chain role priority
-        if is_scanning:
-            row_style = "bold on grey19"
-        elif "CF READY" in lbl or "MINOR CF" in lbl:
-            row_style = "on dark_green"
-        elif "VR ACTIVE" in lbl or "VR→M15" in lbl:
-            row_style = "on navy_blue"
-        elif "SOLID" in lbl:
-            row_style = "on dark_slate_gray2" if frame % 2 == 0 else ""
-        elif "MASTER" in lbl:
-            row_style = "on grey15"
+        st      = analyst.states[tf]
+        scanning = (i == scan_idx)
+        cmp_col  = "bright_green" if st.cmp=="BUY" else "bright_red" if st.cmp=="SELL" else "dim"
+        role     = _roles.get(tf, "") if tf not in ("MN1","W1","D1","H4") else ""
+
+        if tf in ("MN1","W1","D1"):
+            r_lbl = "MACRO"; r_col = _h4_col if st.cmp==_h4_dir else "dim"
+        elif tf == "H4":
+            r_lbl = "MASTER"; r_col = "gold1"
+        elif tf == "H1":
+            r_lbl = "H1 VR" if (st.cmp!="WAIT" and st.cmp!=_h4_dir) else "H1 CMP"
+            r_col = "bright_cyan" if "VR" in r_lbl else "white"
+        elif tf == "M30":
+            r_lbl = "SETUP CMP" if st.cmp!="WAIT" else "M30 WAIT"
+            r_col = "bold cyan" if st.cmp!="WAIT" else "dim"
+        elif tf == "M15":
+            if _cs["m15_is_vr"]: r_lbl = "VR  ⚡"; r_col = "bright_cyan"
+            elif _cs["m15_solid"]: r_lbl = "SOLID  ✔"; r_col = "bright_green"
+            else: r_lbl = "STANDBY"; r_col = "dim"
+        elif tf == "M5":
+            if cf_fired and cf_type=="MINOR_CF": r_lbl="MINOR CF  ✔"; r_col="bright_green"
+            elif cf_fired: r_lbl=f"{cf_type}  ✔"; r_col="bright_green"
+            elif _cs["m15_solid"] and st.cmp!=_dir and st.cmp!="WAIT": r_lbl="VR→M15"; r_col="yellow"
+            elif _cs["m15_is_vr"] and st.cmp!=_dir: r_lbl="VR"; r_col="yellow"
+            elif _cs["m15_is_vr"] and st.cmp==_dir: r_lbl="CF ZONE"; r_col="cyan"
+            else: r_lbl="STANDBY"; r_col="dim"
         else:
-            row_style = ""
+            r_lbl = st.cmp; r_col = "white"
+
+        if scanning:           row_s = "on grey15"
+        elif "MASTER" in r_lbl:row_s = "on grey11"
+        elif "CF" in r_lbl and tf=="M5": row_s = "on dark_green"
+        elif "VR" in r_lbl:    row_s = "on navy_blue"
+        elif "SOLID" in r_lbl: row_s = "on dark_slate_gray3"
+        else:                  row_s = ""
+
+        prefix = "▶" if scanning else " "
         matrix_table.add_row(
-            f"{'📡' if is_scanning else '  '} {tf}",
-            f"[{c}]{st.cmp}[/]",
-            f"{blink}[{r_col}]{lbl}[/]{blink if blink else ''}",
-            f"{st.sup:.1f}/{st.res:.1f}",
-            style=row_style,
+            f"{prefix} {tf}",
+            f"[{cmp_col}]{st.cmp}[/]",
+            f"[{r_col}]{r_lbl}[/]",
+            f"{st.sup:.1f}",
+            f"{st.res:.1f}",
+            style=row_s,
         )
 
-    matrix_table.add_row("", "", "", "")
-    aligned_tfs = sum(1 for tf in tfs if analyst.states[tf].cmp == analyst.states["H4"].cmp)
-    wib_str = datetime.now(pytz.timezone("Asia/Jakarta")).strftime("%H:%M:%S")
-    matrix_table.add_row(
-        "[bold cyan]📡 TELEMETRY[/]",
-        f"[green]ALIGN: {aligned_tfs}/8[/]",
-        f"[yellow]WIB: {wib_str}[/]",
-        f"[green]LATENCY: {random.randint(11, 24)}ms[/]",
-    )
-    # Signal summary rows — fill empty space with live status
-    _cs_m = analyst.get_chain_status()
-    _steps_m = sum([_cs_m['step1_ok'], _cs_m['m15_is_vr'] or _cs_m['m15_solid'], _cs_m['cf_ready']])
-    _rw_m = 8
-    _rf_m = int(_steps_m / 3 * _rw_m)
-    _rc_m = "green" if _steps_m == 3 else "yellow" if _steps_m >= 1 else "dim"
-    _rbar_m = f"[{_rc_m}]{'▰' * _rf_m}{'▱' * (_rw_m - _rf_m)}[/]"
-    _depth_m = _cs_m.get('cascade_depth', 0)
-    _dc_m = "green" if _depth_m == 0 else "yellow" if _depth_m <= 2 else "red"
-    _dbar_m = f"[{_dc_m}]{'█' * min(_depth_m, 4)}{'░' * (4 - min(_depth_m, 4))}[/]"
-    _regime_m, _ = analyst.get_market_regime()
-    _rc2_m = "green" if _regime_m == "TRENDING" else "yellow" if _regime_m == "RANGING" else "red"
-    cf_type_m = _cs_m.get('cf_type', '')
-    cf_lbl_m = f"[blink green]{cf_type_m}[/]" if _cs_m['cf_ready'] else "[dim]WAIT[/]"
-    matrix_table.add_row(
-        "[bold cyan]⚡ SIGNAL[/]",
-        _rbar_m,
-        f"[{_rc_m}]{_steps_m}/3 READY[/]",
-        cf_lbl_m,
-    )
-    matrix_table.add_row(
-        "[dim]CASCADE[/]",
-        _dbar_m,
-        f"[{_dc_m}]DEPTH {_depth_m}[/]",
-        f"[{_rc2_m}]{_regime_m}[/]",
-    )
-    layout["matrix"].update(Panel(matrix_table, title=f"[{title_style}]HIERARCHY MATRIX[/{title_style}]", border_style="magenta"))
+    # Matrix footer rows
+    aligned_n  = sum(1 for tf in tfs if analyst.states[tf].cmp == _h4_dir and _h4_dir!="WAIT")
+    wib_now    = datetime.now(pytz.timezone("Asia/Jakarta")).strftime("%H:%M:%S")
+    depth_bar  = _bar(min(_depth,5), 5, fill_color=_dep_col, empty_color="grey27", fill_char="█", empty_char="░")
+    regime_str, _ = analyst.get_market_regime()
+    reg_c = "bright_green" if regime_str=="TRENDING" else "yellow" if regime_str=="RANGING" else "bright_red"
 
-    # ── CHAIN STORYLINE → bs_matrix (kanan, lebar, full height) ─────────────
-    # Commander Dadang identity banner — di bawah storyline
-    blink_dot = "[blink green]●[/blink green]" if frame % 2 == 0 else "[green] [/green]"
-    pulse_colors = ["bold bright_cyan", "bold yellow", "bold bright_green", "bold bright_magenta"]
-    col_name = pulse_colors[(frame // 2) % len(pulse_colors)]
-    commander_banner = Align.center(
+    matrix_table.add_row("─────","─────","──────────","─────────","─────────")
+    matrix_table.add_row(
+        "[dim cyan]SYNC[/]",
+        f"[bright_green]{aligned_n}/8[/]",
+        f"[dim]{wib_now}[/]",
+        "", f"[dim]{random.randint(11,24)}ms[/]"
+    )
+    matrix_table.add_row(
+        "[dim cyan]DEPTH[/]",
+        depth_bar,
+        f"[{_dep_col}]D{_depth}[/]  [{reg_c}]{regime_str[:5]}[/]",
+        "",
+        f"[{_r_col}]{_steps_done}/3[/]"
+    )
+    chain_border = ("bright_green" if BLINK else "green") if cf_fired else \
+                   ("bright_red" if _cs.get("m30_broken") else "cyan")
+    layout["matrix"].update(
+        Panel(matrix_table, title=f"[{TS}]▣  HIERARCHY MATRIX[/{TS}]",
+              border_style="magenta", padding=(0, 0))
+    )
+
+    # ── CHAIN REACTION STORYLINE PANEL (bs_matrix) ─────────────────────────────
+    # Direction banner
+    dir_arrow = "▲" if _dir=="BUY" else "▼" if _dir=="SELL" else "·"
+    dir_banner = Text.from_markup(
+        f"  [{_d_col}]{dir_arrow} {_dir}[/]"
+        f"  [dim]◆[/]  "
+        f"[{_dep_col}]CASCADE DEPTH {_depth}[/]"
+        f"  [dim]◆[/]  "
+        f"[{_r_col}]SIGNAL {_steps_done}/3[/]"
+        f"  {_ready_bar}"
+    )
+
+    # Cascade chain row
+    cascade_text = Text.from_markup(
+        f"  [{_h4_col}]H4{_d_arr}[/]  →  {cascade_chips}"
+    )
+
+    # Steps table
+    steps_t = Table(
+        box=rich_box.SIMPLE, expand=True, show_header=False,
+        padding=(0, 2), show_edge=False,
+    )
+    steps_t.add_column("", width=3,  justify="center")
+    steps_t.add_column("", width=7,  style="dim")
+    steps_t.add_column("", width=14, justify="right")
+    steps_t.add_column("", ratio=1,  style="dim italic")
+
+    s1_rs = "on dark_green" if s1_ok else ""
+    s2_rs = "on navy_blue" if _cs["m15_is_vr"] else "on dark_green" if _cs["m15_solid"] else ""
+    s3_rs = ("on dark_green" if cf_type in ("MINOR_CF","CF_LOW") else "on dark_orange3") if cf_fired else ""
+
+    steps_t.add_row(_sicon(s1_ok), "M30 CMP", s1_lbl, s1_sub, style=s1_rs)
+    steps_t.add_row(_sicon(s2_ok), "M15",     s2_lbl, s2_sub, style=s2_rs)
+    steps_t.add_row(_sicon(s3_ok), "CF ENTRY", s3_lbl, s3_sub, style=s3_rs)
+
+    # Context table (macro + regime)
+    ctx_t = Table(box=None, expand=True, show_header=False, padding=(0, 2))
+    ctx_t.add_column("", width=8, style="dim")
+    ctx_t.add_column("", ratio=1)
+    ctx_t.add_row("M30/H4", macro_lbl)
+    ctx_t.add_row("REGIME", f"[{reg_c}]{regime_str}[/]")
+
+    # Next action banner
+    next_panel = Panel(
+        Align.center(Text.from_markup(f"[{next_col}]{next_txt}[/{next_col}]")),
+        border_style=next_col.replace("blink ","").replace("bold ",""),
+        height=3, padding=(0, 1),
+    )
+
+    # Commander identity
+    pulse_c = ["bold bright_cyan","bold gold1","bold bright_green","bold magenta"][(frame//3)%4]
+    blink_d = "[blink bright_green]◆[/]" if BLINK else "[bright_green]◆[/]"
+    cmdr_banner = Align.center(
         Text.from_markup(
-            f"[bold red]⚔️[/bold red]  [{col_name}]D A D A N G   W A H Y U O N O[/{col_name}]  {blink_dot}",
-            style="bold"
+            f"[bold red]⚔[/]  [{pulse_c}]D A D A N G   W A H Y U O N O[/{pulse_c}]  {blink_d}",
         )
     )
-    chain_panel_content = RichGroup(storyline, Text(""), commander_banner)
-    layout["bs_matrix"].update(Panel(
-        chain_panel_content,
-        title=f"[{title_style}]🎯 CHAIN REACTION STORYLINE[/{title_style}]",
-        border_style=chain_border,
-    ))
 
-    # Liquidity Map
-    h4 = analyst.states["H4"]; d1 = analyst.states["D1"]; cp = tick.bid if tick else 0
-    def get_map_v2(st, tf_label, col):
+    story_group = RichGroup(
+        dir_banner,
+        Text(""),
+        cascade_text,
+        Text("  " + "─" * 50, style="dim"),
+        steps_t,
+        Text("  " + "─" * 50, style="dim"),
+        ctx_t,
+        Text(""),
+        next_panel,
+        Text(""),
+        cmdr_banner,
+    )
+    layout["bs_matrix"].update(
+        Panel(story_group,
+              title=f"[{TS}]⚡  CHAIN REACTION STORYLINE[/{TS}]",
+              border_style=chain_border, padding=(0, 1))
+    )
+
+    # ── LIQUIDITY MAP ───────────────────────────────────────────────────────────
+    h4s = analyst.states["H4"]
+    d1s = analyst.states["D1"]
+    cp  = tick.bid if tick else 0
+
+    def _liq_row(st, label, col):
         if st.sup == 0 or st.res == 0:
-            return f"[{col}]{tf_label}[/] [dim]SCANNING...[/]", ""
-        range_size = st.res - st.sup
-        if range_size <= 0:
-            return f"[{col}]{tf_label}[/] [dim]SCANNING...[/]", ""
-        pct = max(0.0, min(1.0, (cp - st.sup) / range_size))
-        pos = int(pct * 22)
-        bar = list("─" * 22)
-        if 0 <= pos < 22: bar[pos] = "[blink bold yellow]⚡[/blink bold yellow]"
-        # Color the zone: bottom 30% green (near sup), top 30% red (near res)
-        bar_str = ''.join(bar)
-        dist_res = st.res - cp
-        dist_sup = cp - st.sup
-        pct_to_res = (1 - pct) * 100
-        zone = "[green]SUP ZONE[/]" if pct < 0.3 else "[red]RES ZONE[/]" if pct > 0.7 else "[yellow]MID ZONE[/]"
-        line1 = f"[{col}]{tf_label}[/] [dim green]{st.sup:.1f}[/dim green] |{bar_str}| [dim red]{st.res:.1f}[/dim red]"
-        line2 = f"       [dim]↑RES {dist_res:.1f}$ ({pct_to_res:.0f}%)[/] | [dim]↓SUP {dist_sup:.1f}$[/] | {zone}"
-        return line1, line2
-    liq_table = Table(box=None, expand=True)
-    h4_l1, h4_l2 = get_map_v2(h4, "H4", "bold cyan")
-    d1_l1, d1_l2 = get_map_v2(d1, "D1", "bold gold1")
-    liq_table.add_row(h4_l1)
-    liq_table.add_row(h4_l2)
-    liq_table.add_row(d1_l1)
-    liq_table.add_row(d1_l2)
-    layout["liquidity"].update(Panel(liq_table, title=f"[{title_style}]⚡ INSTITUTIONAL LIQUIDITY MAP[/{title_style}]", border_style="cyan"))
+            return f"[{col}]{label}[/]  [dim]SCANNING...[/]", ""
+        rng  = st.res - st.sup
+        if rng <= 0:
+            return f"[{col}]{label}[/]  [dim]─[/]", ""
+        pct  = max(0.0, min(1.0, (cp - st.sup) / rng))
+        pos  = int(pct * 24)
+        bar  = ["─"] * 24
+        bar[pos] = "[blink bold yellow]◆[/]"
+        bar_s = "".join(bar)
+        zone = "[bright_green]SUP ZONE[/]" if pct < 0.3 else \
+               "[bright_red]RES ZONE[/]"   if pct > 0.7 else "[yellow]MID ZONE[/]"
+        pct_res = (1 - pct) * 100
+        l1 = f"[{col}]{label}[/]  [dim green]{st.sup:.1f}[/]  |{bar_s}|  [dim red]{st.res:.1f}[/]"
+        l2 = f"       [dim]↑RES {st.res-cp:.1f}$ ({pct_res:.0f}%)[/]  [dim]↓SUP {cp-st.sup:.1f}$[/]  {zone}"
+        return l1, l2
 
-    # 10. GLOBAL INTEL & NEWS (Live RSS + Forex Factory Red Radar)
+    liq_t = Table(box=None, expand=True, show_header=False, padding=(0, 0))
+    liq_t.add_column("", ratio=1)
+    h4l1, h4l2 = _liq_row(h4s, "H4", "bold cyan")
+    d1l1, d1l2 = _liq_row(d1s, "D1", "bold gold1")
+    liq_t.add_row(h4l1); liq_t.add_row(h4l2)
+    liq_t.add_row(d1l1); liq_t.add_row(d1l2)
+    layout["liquidity"].update(
+        Panel(liq_t, title=f"[{TS}]⚡  INSTITUTIONAL LIQUIDITY MAP[/{TS}]",
+              border_style="cyan", padding=(0, 1))
+    )
+
+    # ── NEWS + FEED ─────────────────────────────────────────────────────────────
     news_ttl = settings.get("news_refresh_seconds", 300)
-    now_ts = time.time()
+    now_ts   = time.time()
     if not hasattr(update_layout, "_cached_news") or \
        (now_ts - getattr(update_layout, "_news_last_fetch", 0)) >= news_ttl:
-        update_layout._cached_news = fetch_live_news()
+        update_layout._cached_news     = fetch_live_news()
         update_layout._news_last_fetch = now_ts
-    
     news_items = update_layout._cached_news
-    news_idx = (frame // 30) % len(news_items)
-    news_text = Text(news_items[news_idx], style="bold bright_white")
-    layout["news"].update(Panel(Align.center(news_text), title=f"[{title_style}]🌍 GLOBAL INTEL & RED RADAR[/{title_style}]", border_style="bright_blue"))
-
-    layout["feed"].update(Panel(feed.render(), title=f"[{title_style}]TACTICAL FEED[/{title_style}]", border_style="green"))
-    vol = get_market_volatility()
-    ticker_text = Text.from_markup(
-        f"🌐 [bold cyan]SESSIONS:[/bold cyan] {get_session_times()}   •   "
-        f"📊 [bold cyan]XAUUSD VOLATILITY:[/bold cyan] {vol}   •   "
-        f"📡 [bold green]CORE STATUS: ACTIVE[/bold green]   •   "
-        f"⚔️ [bold gold1]COMMANDER PROTOCOL: SECURED[/bold gold1]",
-        style="bold"
+    news_idx   = (frame // 30) % max(1, len(news_items))
+    layout["news"].update(
+        Panel(Align.center(Text(news_items[news_idx], style="bold bright_white")),
+              title=f"[{TS}]🌍  GLOBAL INTEL[/{TS}]", border_style="blue", padding=(0, 1))
     )
-    layout["ticker"].update(Panel(Align.center(ticker_text), border_style="grey37"))
+    layout["feed"].update(
+        Panel(Text.from_markup(feed.render()),
+              title=f"[{TS}]📡  TACTICAL FEED[/{TS}]", border_style="green", padding=(0, 1))
+    )
+
+    # ── TICKER ──────────────────────────────────────────────────────────────────
+    ticker_text = Text.from_markup(
+        f"🌐 [bold cyan]SESSIONS:[/bold cyan]  {get_session_times()}"
+        f"    ◆    "
+        f"📊 [bold cyan]VOLATILITY:[/bold cyan]  {get_market_volatility()}"
+        f"    ◆    "
+        f"📡 [bold bright_green]CORE: ACTIVE[/bold bright_green]"
+        f"    ◆    "
+        f"⚔️  [bold gold1]COMMANDER PROTOCOL: SECURED[/bold gold1]"
+    )
+    layout["ticker"].update(
+        Panel(Align.center(ticker_text), border_style="grey23", padding=(0, 0))
+    )
+
 
 def boot_sequence():
     console.clear()
