@@ -4,6 +4,8 @@ import json
 import os
 import random
 import math
+import requests
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import pytz
 from rich.console import Console
@@ -32,6 +34,29 @@ class ChainFeed:
 
 feed = ChainFeed()
 
+_RED_FOLDERS = [
+    "🔴 KAMIS 01:00 WIB: FOMC Meeting Minutes (High Impact)",
+    "🔴 KAMIS 20:45 WIB: Flash Manufacturing PMI (High Impact)",
+    "📡 INTEL: Kevin Warsh (New Fed Chair) stance is Hawkish.",
+    "🔥 GEOPOLITICS: Hormuz Strait tensions increase Gold demand.",
+    "📊 SENTIMENT: Markets pricing in 'No Rate Cut' for 2026."
+]
+
+def fetch_live_news():
+    """Fetch ForexLive gold RSS with one retry. Falls back to static red folders."""
+    for attempt in range(2):
+        try:
+            r = requests.get("https://www.forexlive.com/feed/gold", timeout=3)
+            if r.status_code == 200:
+                root = ET.fromstring(r.content)
+                headlines = [f"📡 LIVE: {item.find('title').text}"
+                             for item in root.findall(".//item")[:3]]
+                return _RED_FOLDERS + headlines
+        except Exception:
+            if attempt == 0:
+                time.sleep(1)
+    return _RED_FOLDERS
+
 def load_settings():
     path = "chain_settings.json"
     if os.path.exists(path):
@@ -44,7 +69,11 @@ def get_session_times():
     sessions = {"LONDON": (8, 16), "NEW YORK": (13, 21), "TOKYO": (0, 8), "SYDNEY": (22, 6)}
     results = []
     for name, (start, end) in sessions.items():
-        is_active = start <= now.hour < end
+        # Overnight sessions (e.g., Sydney 22:00–06:00) wrap past midnight
+        if start < end:
+            is_active = start <= now.hour < end
+        else:
+            is_active = now.hour >= start or now.hour < end
         results.append(f"[{'green' if is_active else 'dim'}]{name}[/]")
     return " | ".join(results)
 
@@ -89,7 +118,7 @@ def make_layout() -> Layout:
         Layout(name="account", ratio=2),
         Layout(name="stats", ratio=2),
         Layout(name="sentiment", size=5),
-        Layout(name="sniper_hud", size=9)
+        Layout(name="sniper_hud", size=17)
     )
     layout["body"].split_column(
         Layout(name="intel", size=3),
@@ -136,7 +165,19 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
     bid = f"{tick.bid:.2f}" if tick else "OFFLINE"; ask = f"{tick.ask:.2f}" if tick else "OFFLINE"
     pulse_char = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][frame % 10]
     
-    layout["header"].update(Panel(Align.center(Text.assemble((f" {pulse_char} CHAIN REACTION ", f"bold {theme_color}"), (f" [bold white][OVERLORD CLEARANCE][/bold white] ", "blink"), (f" | BY: COMMANDER DADANG ", "bold yellow"), (f" | {symbol}: ", "white"), (bid, "bold green"), (f"/", "white"), (ask, "bold red"), (f" | {datetime.now().strftime('%H:%M:%S')}", "dim white"))), style=f"bold {theme_color}"))
+    header_text = Text.assemble(
+        (f" {pulse_char} CHAIN REACTION ", f"bold {theme_color}"),
+        (" [ ", "blink white"),
+        ("OVERLORD CLEARANCE", "blink bold white"),
+        (" ] ", "blink white"),
+        (" | BY: COMMANDER DADANG ", "bold yellow"),
+        (f" | {symbol}: ", "white"),
+        (bid, "bold green"),
+        ("/", "white"),
+        (ask, "bold red"),
+        (f" | {datetime.now().strftime('%H:%M:%S')}", "dim white"),
+    )
+    layout["header"].update(Panel(Align.center(header_text), style=f"bold {theme_color}"))
     layout["greeting"].update(Panel(Align.center(Text(get_commander_greeting(), style="bold cyan")), border_style="dim cyan"))
 
     # Core Sync & Stats
@@ -157,36 +198,235 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
     sentiment_bar = f"[green]{'█' * int(buy_pct/10)}[/][red]{'█' * int(sell_pct/10)}[/]"
     layout["sentiment"].update(Panel(Align.center(Text(f"BUY {buy_pct:.0f}% | SELL {sell_pct:.0f}%\n{sentiment_bar}\nOVERLORD SENTIMENT", style="bold white")), title="[dim]RADAR[/]", border_style="bright_magenta"))
 
-    # Unified Sniper HUD with ASCII Art and Waveform
-    wave = ""
-    for i in range(12):
-        h = int(math.sin((frame + i) * 0.5) * 2 + 2)
-        wave += " " if h < 1 else "▂" if h == 1 else "▃" if h == 2 else "▅" if h == 3 else "▆"
-    
-    # Blinking target center
-    dot = "[blink red]●[/blink red]" if frame % 2 == 0 else " "
-    
-    hud_art = (
-        f"     _.-'''''-._     [bold cyan]UPLINK: ONLINE[/bold cyan]\n"
-        f"   .'   _ | _   '.   [bold green]TARGET: {symbol}[/bold green]\n"
-        f"  /   /   {dot}   \\   \\  [bold yellow]SOP: ACTIVE[/bold yellow]\n"
-        f" |   |----+----|   | ----------------\n"
-        f"  \\   \\   {dot}   /   /  [bold magenta]WAVE:[/bold magenta] {wave}\n"
-        f"   '.   '-...-'   .' [dim white]{sync_icon} SCANNING SYSTEMS...[/dim white]"
-    )
-    layout["sniper_hud"].update(Panel(Align.center(Text.from_markup(hud_art)), title=f"[{title_style}]🎯 COMMANDER HUD[/{title_style}]", border_style="green"))
+    # CHAIN STORYLINE STATUS PANEL — live CMP→VR→CF progress
+    _cs = analyst.get_chain_status()
+    _dir    = _cs["direction"]
+    _opp    = _cs["opposite"]
+    _d_col  = "green" if _dir == "BUY" else "red" if _dir == "SELL" else "white"
 
-    # Hierarchy Matrix
+    def _step_icon(ok, blink_ok=False):
+        if ok:
+            return "[blink bold green]🔥[/]" if blink_ok else "[green]✅[/]"
+        return "[dim]⬜[/]"
+
+    # Step 1 — M30 CMP
+    s1_icon = _step_icon(_cs["step1_ok"])
+    s1_lbl  = f"[{_d_col}]{_dir}[/]" if _cs["step1_ok"] else "[dim]WAIT[/]"
+    s1_note = "M30 arah terkunci" if _cs["step1_ok"] else "Tunggu breakout M30"
+
+    # Step 2 — M15 state (VR ke M30 atau SOLID)
+    if _cs["m15_is_vr"]:
+        s2_icon = _step_icon(True)
+        s2_lbl  = f"[deep_sky_blue1]VR {_opp}[/]"
+        s2_note = "M15 menguji M30 CMP ⚠"
+    elif _cs["m15_solid"]:
+        s2_icon = "[green]🔒[/]"
+        s2_lbl  = f"[green]SOLID {_dir}[/]"
+        s2_note = "M15 aligned — M30 aman"
+    else:
+        s2_icon = "[dim]⬜[/]"
+        s2_lbl  = f"[dim]WAIT[/]"
+        s2_note = ""
+
+    # Step 3 — CF type + label
+    cf_fired = _cs["cf_ready"]
+    s3_icon  = _step_icon(cf_fired, blink_ok=True)
+    cf_type  = _cs.get("cf_type", "")
+    if cf_fired:
+        if cf_type == "MINOR_CF":
+            cf_lbl  = "[blink bold green]MINOR CF ✅[/]"
+            cf_note = "M5 VR→CF | SL=M5 | TP=M15"
+        elif cf_type == "CF_LOW":
+            cf_lbl  = "[blink bold green]CF LOW 🔥[/]"
+            cf_note = "M15 CF | SL=M15 | TP=M30"
+        else:
+            cf_lbl  = "[blink bold yellow]CF HIGH ⚡[/]"
+            cf_note = "M5 CF | SL=M15 | TP=M30"
+    else:
+        cf_lbl  = "[dim]TUNGGU CF[/]"
+        cf_note = "M5 atau M15 balik ke arah M30"
+
+    # M30 Stability (hanya relevan saat M15 VR)
+    if _cs["m30_broken"]:
+        stab_txt = "[blink bold red]⚠ INVALID — VR break M30![/]"
+    elif _cs["m15_is_vr"]:
+        stab_txt = "[green]🔒 LOCKED — M30 stable[/]"
+    elif _cs["m15_solid"]:
+        stab_txt = "[green]✅ KUAT — M15 solid, M30 tidak diuji[/]"
+    else:
+        stab_txt = "[dim]—[/]"
+
+    # Next action
+    if not _cs["step1_ok"]:
+        next_txt = "[dim]Scan M30 SNR breakout...[/]"
+    elif _cs["m30_broken"]:
+        next_txt = "[bold red]Setup batal! Cari M30 setup baru.[/]"
+    elif cf_fired and cf_type == "MINOR_CF":
+        next_txt = f"[blink bold green]🎯 SAFEST FIRE! M5 CF | SL=M5 SNR | TP=M15 SNR[/]"
+    elif cf_fired and cf_type == "CF_LOW":
+        next_txt = f"[blink bold green]🎯 FIRE! CF Low Risk | SL=M15 SNR | TP=M30 SNR[/]"
+    elif cf_fired and cf_type == "CF_HIGH":
+        next_txt = f"[blink bold yellow]⚡ FIRE! CF High Risk | SL=M15 SNR | TP=M30 SNR[/]"
+    elif _cs["m15_solid"]:
+        next_txt = f"[cyan]Tunggu M5 flip [{_d_col}]{_opp}[/] (VR ke M15) → balik [{_d_col}]{_dir}[/] (MINOR CF)[/]"
+    elif _cs["m15_is_vr"]:
+        next_txt = f"[cyan]Tunggu M5 CF [{_d_col}]{_dir}[/] (High) atau M15 balik [{_d_col}]{_dir}[/] (Low)[/]"
+    else:
+        next_txt = f"[cyan]Tunggu M15 solid [{_d_col}]{_dir}[/] + M5 VR, atau M15 VR [{_d_col}]{_opp}[/] ke M30[/]"
+
+    # Macro role label for M30 vs H4
+    macro = _cs.get("macro_role", "SOLID_H4")
+    if macro == "VR_H4":
+        macro_lbl = "[blink bold red]🚫 M30 VR ke H4 — BLOCK[/]"
+    elif macro == "CF_HIGH_H4":
+        macro_lbl = f"[bold magenta]⚡ M30 CF High Risk ke H4 (via H1 VR) — POWER[/]"
+    elif macro == "CF_H4":
+        macro_lbl = f"[bold cyan]📈 H1 VR → M30 CF ke H4 — BUILDING[/]"
+    else:
+        macro_lbl = f"[white]M30 SOLID ke H4 — NORMAL[/]"
+
+    # ── Market Regime ─────────────────────────────────────────────────────────
+    _regime, _regime_msg = analyst.get_market_regime()
+    if _regime == "TRENDING":
+        regime_lbl = f"[bold green]📈 TRENDING[/] — {_regime_msg}"
+    elif _regime == "RANGING":
+        regime_lbl = f"[bold yellow]〰 RANGING[/] — {_regime_msg}"
+    else:
+        regime_lbl = f"[blink bold red]⚠ SIDEWAYS[/] — {_regime_msg}"
+
+    # ── CASCADE CHAIN visual: H4 → H1 → M30 → M15 → M5 ─────────────────────
+    # VR/CF = CMP di TF masing-masing, hanya konteks parent yang memberi label
+    _h4_dir  = analyst.states["H4"].cmp
+    _h4_col  = "green" if _h4_dir == "BUY" else "red" if _h4_dir == "SELL" else "white"
+    _d_arr   = "▲" if _h4_dir == "BUY" else "▼" if _h4_dir == "SELL" else "?"
+    _c_arr   = "▼" if _h4_dir == "BUY" else "▲"
+    _roles   = _cs.get("cascade_roles", {})
+    _depth   = _cs.get("cascade_depth", 0)
+
+    def _tf_chip(tf_name):
+        role = _roles.get(tf_name, "WAIT")
+        st   = analyst.states[tf_name]
+        if role == "WAIT":
+            return f"[dim]{tf_name}?[/]"
+        if role == "VR":
+            col  = "deep_sky_blue1"
+            arr  = _c_arr
+            tag  = "VR"
+        elif role == "CF":
+            col  = _h4_col
+            arr  = _d_arr
+            tag  = "CF"
+        else:  # CMP
+            col  = _h4_col
+            arr  = _d_arr
+            tag  = ""
+        label = f"{tf_name}{arr}" + (f"[{tag}]" if tag else "")
+        return f"[{col}]{label}[/]"
+
+    cascade_line = (
+        f"  [{_h4_col}]H4{_d_arr}[/] ──▶ "
+        + " ──▶ ".join(_tf_chip(tf) for tf in ["H1", "M30", "M15", "M5"])
+    )
+
+    # Cascade depth warning
+    if _depth == 0:
+        depth_txt = "[green]DEPTH 0 — semua aligned, momentum kuat[/]"
+    elif _depth == 1:
+        depth_txt = f"[cyan]DEPTH 1 — {_cs['cascade_tfs']} VR, minor retracement[/]"
+    elif _depth == 2:
+        depth_txt = f"[yellow]DEPTH 2 — {_cs['cascade_tfs']} VR, tunggu CF[/]"
+    elif _depth >= 3:
+        depth_txt = f"[blink bold red]DEPTH {_depth} — CASCADE DALAM, JANGAN ENTRY[/]"
+    else:
+        depth_txt = "[dim]—[/]"
+
+    storyline = Text.from_markup(
+        f"  [bold white]CASCADE CHAIN  (VR=CF=CMP di TF masing-masing)[/bold white]\n"
+        f"{cascade_line}\n"
+        f"  [dim]REGIME:[/dim] {regime_lbl}\n"
+        f"  [dim]DEPTH :[/dim] {depth_txt}\n"
+        f"\n"
+        f"  {s1_icon} [dim]M30 CMP:[/dim] {s1_lbl}  [dim italic]{s1_note}[/dim italic]\n"
+        f"  {s2_icon} [dim]M15    :[/dim] {s2_lbl}  [dim italic]{s2_note}[/dim italic]\n"
+        f"  {s3_icon} [dim]CF     :[/dim] {cf_lbl}  [dim italic]{cf_note}[/dim italic]\n"
+        f"  [dim]M30/H4 :[/dim] {macro_lbl}\n"
+        f"  [dim]▶ NEXT :[/dim] {next_txt}"
+    )
+    chain_border = "blink bold green" if cf_fired else ("red" if _cs["m30_broken"] else "cyan")
+    layout["sniper_hud"].update(Panel(
+        storyline,
+        title=f"[{title_style}]🎯 CHAIN STORYLINE[/{title_style}]",
+        border_style=chain_border,
+    ))
+
+    # Hierarchy Matrix — chain-aware STATUS column
+    cs = analyst.get_chain_status()
+    m30_state = analyst.states["M30"]
+    m15_state = analyst.states["M15"]
+    m5_state  = analyst.states["M5"]
+
+    def chain_role(tf, st):
+        """Return chain role label + color for each TF in context of current setup."""
+        if tf in ("MN1", "W1", "D1"):
+            lbl = "MACRO"
+            col = "gold1" if st.cmp == cs["direction"] else "dim"
+        elif tf == "H4":
+            lbl = "MASTER"
+            col = "gold1"
+        elif tf == "H1":
+            if st.cmp != "WAIT" and st.cmp != analyst.states["H4"].cmp:
+                lbl = "H1 VR"; col = "deep_sky_blue1"
+            else:
+                lbl = "H1 CMP"; col = "white"
+        elif tf == "M30":
+            lbl = "SETUP CMP" if st.cmp != "WAIT" else "M30 WAIT"
+            col = "bold cyan" if st.cmp != "WAIT" else "dim"
+        elif tf == "M15":
+            if cs["m15_is_vr"]:
+                lbl = "VR ACTIVE ⚡"; col = "deep_sky_blue1"
+            elif cs["m15_solid"]:
+                lbl = "SOLID 🔒"; col = "green"
+            else:
+                lbl = "STANDBY"; col = "dim"
+        elif tf == "M5":
+            if cs["cf_ready"] and cs["cf_type"] == "MINOR_CF":
+                lbl = "MINOR CF ✅"; col = "blink bold green"
+            elif cs["cf_ready"] and cs["cf_type"] in ("CF_HIGH", "CF_LOW"):
+                lbl = f"{cs['cf_type']} 🔥"; col = "blink bold green"
+            elif cs["m15_solid"] and st.cmp != cs["direction"] and st.cmp != "WAIT":
+                lbl = "VR→M15"; col = "yellow"
+            elif cs["m15_is_vr"] and st.cmp != cs["direction"]:
+                lbl = "VR"; col = "yellow"
+            elif cs["m15_is_vr"] and st.cmp == cs["direction"]:
+                lbl = "CF ZONE"; col = "green"
+            else:
+                lbl = "STANDBY"; col = "dim"
+        else:
+            lbl = st.status; col = "white"
+        return lbl, col
+
     matrix_table = Table(expand=True, border_style="grey37")
-    matrix_table.add_column("TF", justify="center", style="bold white"); matrix_table.add_column("CMP", justify="center"); matrix_table.add_column("STATUS", justify="center"); matrix_table.add_column("SNR", justify="center", style="dim")
-    tfs = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5"]; scanning_idx = (frame // 1) % len(tfs)
+    matrix_table.add_column("TF",    justify="center", style="bold white")
+    matrix_table.add_column("CMP",   justify="center")
+    matrix_table.add_column("ROLE",  justify="center")
+    matrix_table.add_column("SNR",   justify="center", style="dim")
+    tfs = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5"]
+    scanning_idx = frame % len(tfs)
     for i, tf in enumerate(tfs):
-        st = analyst.states[tf]; is_scanning = (i == scanning_idx); blink = "[blink]" if is_scanning and frame % 2 == 0 else ""
-        c = "green" if st.cmp == "BUY" else "red" if st.cmp == "SELL" else "white"; s_c = "yellow" if st.status == "CF" else "deep_sky_blue1" if st.status == "VR" else "white"
-        if st.status == "MASTER": s_c = "gold1"
-        row_style = "bold on grey19" if is_scanning else ""; matrix_table.add_row(f"{'📡' if is_scanning else '  '} {tf}", f"[{c}]{st.cmp}[/]", f"{blink}[{s_c}]{st.status}[/]{blink if blink else ''}", f"{st.sup:.1f}/{st.res:.1f}", style=row_style)
-    
-    # Telemetry spacer & status row to fill the empty space (hacker-vibe!)
+        st = analyst.states[tf]
+        is_scanning = (i == scanning_idx)
+        blink = "[blink]" if is_scanning and frame % 2 == 0 else ""
+        c = "green" if st.cmp == "BUY" else "red" if st.cmp == "SELL" else "white"
+        lbl, r_col = chain_role(tf, st)
+        row_style = "bold on grey19" if is_scanning else ""
+        matrix_table.add_row(
+            f"{'📡' if is_scanning else '  '} {tf}",
+            f"[{c}]{st.cmp}[/]",
+            f"{blink}[{r_col}]{lbl}[/]{blink if blink else ''}",
+            f"{st.sup:.1f}/{st.res:.1f}",
+            style=row_style,
+        )
+
     matrix_table.add_row("", "", "", "")
     aligned_tfs = sum(1 for tf in tfs if analyst.states[tf].cmp == analyst.states["H4"].cmp)
     wib_str = datetime.now(pytz.timezone("Asia/Jakarta")).strftime("%H:%M:%S")
@@ -194,7 +434,7 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
         "[bold cyan]📡 TELEMETRY[/]",
         f"[green]ALIGN: {aligned_tfs}/8[/]",
         f"[yellow]WIB: {wib_str}[/]",
-        f"[green]LATENCY: {random.randint(11, 24)}ms[/]"
+        f"[green]LATENCY: {random.randint(11, 24)}ms[/]",
     )
     layout["matrix"].update(Panel(matrix_table, title=f"[{title_style}]HIERARCHY MATRIX[/{title_style}]", border_style="magenta"))
 
@@ -271,8 +511,8 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
     )
     
     # Wrap both the table, a spacing blank row, and the centered banner in a Group for clean vertical spacing
-    from rich.console import Group
-    bs_panel_content = Group(
+    from rich.console import Group as RichGroup
+    bs_panel_content = RichGroup(
         bs_table,
         Text(""), # Pushes the banner down by exactly 1 line to prevent crowding!
         commander_banner
@@ -293,29 +533,12 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
     layout["liquidity"].update(Panel(liq_table, title=f"[{title_style}]INSTITUTIONAL LIQUIDITY MAP[/{title_style}]", border_style="cyan"))
 
     # 10. GLOBAL INTEL & NEWS (Live RSS + Forex Factory Red Radar)
-    import requests
-    import xml.etree.ElementTree as ET
-
-    def fetch_live_news_id():
-        # High Impact Red Folders in WIB (UTC+7) for May 2026
-        red_folders = [
-            "🔴 KAMIS 01:00 WIB: FOMC Meeting Minutes (High Impact)",
-            "🔴 KAMIS 20:45 WIB: Flash Manufacturing PMI (High Impact)",
-            "📡 INTEL: Kevin Warsh (New Fed Chair) stance is Hawkish.",
-            "🔥 GEOPOLITICS: Hormuz Strait tensions increase Gold demand.",
-            "📊 SENTIMENT: Markets pricing in 'No Rate Cut' for 2026."
-        ]
-        try:
-            r = requests.get("https://www.forexlive.com/feed/gold", timeout=3)
-            if r.status_code == 200:
-                root = ET.fromstring(r.content)
-                live_headlines = [f"📡 LIVE: {item.find('title').text}" for item in root.findall(".//item")[:3]]
-                return red_folders + live_headlines
-        except: pass
-        return red_folders
-
-    if not hasattr(update_layout, "_cached_news") or frame % 300 == 0:
-        update_layout._cached_news = fetch_live_news_id()
+    news_ttl = settings.get("news_refresh_seconds", 300)
+    now_ts = time.time()
+    if not hasattr(update_layout, "_cached_news") or \
+       (now_ts - getattr(update_layout, "_news_last_fetch", 0)) >= news_ttl:
+        update_layout._cached_news = fetch_live_news()
+        update_layout._news_last_fetch = now_ts
     
     news_items = update_layout._cached_news
     news_idx = (frame // 30) % len(news_items)
@@ -358,55 +581,89 @@ def main():
     symbol = "XAUUSD"
     if not connect_mt5(): return
     boot_sequence()
-    settings = load_settings(); analyst = SacredDoctrineAnalyst(symbol, master_tf=settings.get("master_tf", "H4"))
+    settings   = load_settings()
+    analyst    = SacredDoctrineAnalyst(symbol, master_tf=settings.get("master_tf", "H4"))
     bs_analyst = BSTradingAnalyst(symbol)
-    executor = ChainReactionExecutor(symbol, magic_number=settings.get("magic_number", 2026))
-    layout = make_layout(); frame = 0; last_strike_time_chain = 0; last_strike_time_bs = 0
+    executor   = ChainReactionExecutor(symbol, magic_number=settings.get("magic_number", 2026))
+    layout = make_layout()
+    frame = 0
+    last_strike_time_chain = 0
+    last_strike_time_bs    = 0
     feed.add(f"🔗 OVERLORD ONLINE: Standing by for Market Ignition")
     feed.add(f"⚖️ DOCTRINE ARMED: Time Law v4.0 Enforced")
     feed.add(f"🛰️ RADAR ACTIVE: Scanning for {symbol} Liquidity")
     with Live(layout, refresh_per_second=8, screen=True) as live:
         while True:
             try:
-                analyst.update(); bs_analyst.update(analyst); settings = load_settings()
+                settings = load_settings()
+                executor.update_settings(settings)  # sync all magic numbers from config
+
+                analyst.update()
+                bs_analyst.update(analyst)
+
                 events = executor.monitor_positions(analyst)
-                for e in events: feed.add(e)
-                
-                # 1. Sultan Sniper Chain Reaction - Independent Execution
+                for e in events:
+                    feed.add(e)
+
+                magic = settings.get("magic_number", 2026)
+                max_layers = settings.get("max_layers", 3)
+                lot_size = settings.get("lot_size", 0.01)
+
+                # Single positions fetch shared by both engines — prevents double-open on same tick
+                all_positions = mt5.positions_get(symbol=symbol, magic=magic) or []
+                total_open = len(all_positions)
+
+                # 1. Chain Reaction Sniper — Independent Execution
                 signal = analyst.get_strike_signal()
                 if signal and settings.get("auto_trade"):
                     if time.time() - last_strike_time_chain > 300:
-                        positions = mt5.positions_get(symbol=symbol, magic=settings.get("magic_number", 2026))
-                        chain_pos = [p for p in positions if p.comment.startswith("Chain_")] if positions else []
-                        if len(chain_pos) < settings.get("max_layers", 3):
-                            success, msg = executor.execute_strike(signal['action'], analyst, lot=settings.get("lot_size", 0.01), comment=f"Chain_{signal['tf']}")
+                        chain_pos = [p for p in all_positions if p.comment.startswith("Chain_")]
+                        if len(chain_pos) < max_layers and total_open < max_layers:
+                            success, msg = executor.execute_strike(
+                                signal['action'], analyst,
+                                comment=f"Chain_{signal['type']}_{signal['tf']}",
+                                tp_tf=signal.get('tp_tf'),
+                                sl_tf=signal.get('sl_tf'),
+                                settings=settings
+                            )
                             feed.add(msg)
-                            if success: last_strike_time_chain = time.time()
-                
-                # 2. BS Trading SOP - Independent Execution
+                            if success:
+                                last_strike_time_chain = time.time()
+                                # Refresh positions count so BS engine sees the new order
+                                all_positions = mt5.positions_get(symbol=symbol, magic=magic) or []
+                                total_open = len(all_positions)
+
+                # 2. BS Trading SOP — Independent Execution
                 if settings.get("enable_bs_trading"):
                     bs_signal = bs_analyst.get_bs_signal()
                     if bs_signal:
                         if time.time() - last_strike_time_bs > 300:
-                            positions = mt5.positions_get(symbol=symbol, magic=settings.get("magic_number", 2026))
-                            bs_pos = [p for p in positions if p.comment.startswith("BS_")] if positions else []
-                            if len(bs_pos) < settings.get("max_layers", 3):
-                                lot_multiplier = 0.5 if bs_signal['level'] == 1 else 1.0
+                            bs_pos = [p for p in all_positions if p.comment.startswith("BS_")]
+                            if len(bs_pos) < max_layers and total_open < max_layers:
+                                # Level 1 (skip step = high risk) → half risk weight
+                                bs_settings = dict(settings)
+                                if bs_signal['level'] == 1:
+                                    bs_settings['risk_per_trade_percent'] = settings.get('risk_per_trade_percent', 1.0) * 0.5
                                 success, msg = executor.execute_strike(
                                     direction=bs_signal['action'],
                                     analyst=analyst,
-                                    lot=settings.get("lot_size", 0.01) * lot_multiplier,
                                     comment=f"BS_L{bs_signal['level']}",
                                     tp_price=bs_signal['tp'],
-                                    sl_price=bs_signal['sl']
+                                    sl_price=bs_signal['sl'],
+                                    settings=bs_settings
                                 )
                                 feed.add(msg)
-                                if success: last_strike_time_bs = time.time()
-                                
+                                if success:
+                                    last_strike_time_bs = time.time()
+
                 update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame)
-                frame += 1; time.sleep(0.1)
-            except KeyboardInterrupt: break
-            except Exception as e: feed.add(f"ERR: {str(e)}"); time.sleep(2)
+                frame += 1
+                time.sleep(0.1)
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                feed.add(f"ERR: {str(e)}")
+                time.sleep(2)
 
 if __name__ == "__main__":
     main()
