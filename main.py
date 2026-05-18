@@ -16,6 +16,7 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.align import Align
 from rich.progress import Progress, BarColumn, TextColumn, SpinnerColumn
+from rich.console import Group as RichGroup
 from engine.connection import connect_mt5
 from engine.core import SacredDoctrineAnalyst
 from engine.executor import ChainReactionExecutor
