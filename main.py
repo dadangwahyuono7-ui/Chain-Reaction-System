@@ -118,7 +118,7 @@ def make_layout() -> Layout:
         Layout(name="account", ratio=2),
         Layout(name="stats", ratio=2),
         Layout(name="sentiment", size=5),
-        Layout(name="sniper_hud", size=17)
+        Layout(name="sniper_hud", size=13)
     )
     layout["body"].split_column(
         Layout(name="intel", size=3),
@@ -391,10 +391,47 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
         f"  [dim]▶ NEXT :[/dim] {next_txt}"
     )
     chain_border = "blink bold green" if cf_fired else ("red" if _cs["m30_broken"] else "cyan")
+
+    # ── BS Trading kompak → sniper_hud (kiri, lebih kecil) ───────────────────
+    bs_compact = Table(box=None, expand=True)
+    bs_compact.add_column("", style="dim cyan", no_wrap=True)
+    bs_compact.add_column("", justify="right", no_wrap=True)
+    _dir_s = "bold green" if bs_analyst.locked_direction == "BUY" else "bold red" if bs_analyst.locked_direction == "SELL" else "white"
+    _dot_s = "🟢" if bs_analyst.locked_direction == "BUY" else "🔴" if bs_analyst.locked_direction == "SELL" else "⚪"
+    bs_compact.add_row("DIR LOCK", f"[{_dir_s}]{bs_analyst.locked_direction} {_dot_s}[/]")
+    _mz_s = "blink bold green" if bs_analyst.standby_state == "READY" else "bold yellow"
+    bs_compact.add_row("STANDBY", f"[{_mz_s}]{bs_analyst.standby_state}[/]")
+    if bs_analyst.active_mz:
+        _mz = bs_analyst.active_mz
+        bs_compact.add_row("MZ", f"[magenta]{_mz['tf']} {_mz['type']}[/] ({_mz['low']:.0f}─{_mz['high']:.0f})")
+    else:
+        bs_compact.add_row("MZ", "[dim]SCANNING...[/]")
+    if bs_analyst.pmb_trigger:
+        _trig = bs_analyst.pmb_trigger
+        bs_compact.add_row("PMB", f"[blink bold red]🔥 {_trig['type']} ({_trig['risk']})[/]")
+        bs_compact.add_row("SL/TP", f"[green]{_trig['sl']:.1f}[/] | [yellow]{_trig['tp']:.1f}[/]")
+    else:
+        bs_compact.add_row("PMB", "[dim]NO TRIGGER 📡[/]")
+    _safety_s = "[bold green]🛡 SECURE[/]" if not bs_analyst.safety_veto else f"[bold red]🚨 VETO[/]"
+    bs_compact.add_row("SAFETY", _safety_s)
+    _trend_s = []
+    for _tf_s in ["H4", "H1", "M30", "M15", "M5"]:
+        _tr_s = bs_analyst.tf_trends[_tf_s]
+        _tc_s = "green" if _tr_s == "BUY" else "red" if _tr_s == "SELL" else "white"
+        _ta_s = "▲" if _tr_s == "BUY" else "▼" if _tr_s == "SELL" else "?"
+        _trend_s.append(f"[{_tc_s}]{_tf_s}{_ta_s}[/]")
+    bs_compact.add_row("TREND", " ".join(_trend_s))
+    _blink_dot_s = "[blink green]●[/]" if frame % 2 == 0 else "  "
+    _pc_s = ["bold bright_cyan", "bold yellow", "bold bright_green", "bold bright_magenta"]
+    _cn_s = _pc_s[(frame // 2) % len(_pc_s)]
+    from rich.console import Group as RichGroup
+    _cmd_banner_s = Align.center(Text.from_markup(
+        f"[bold red]⚔[/] [{_cn_s}]DADANG WAHYUONO[/{_cn_s}] {_blink_dot_s}"
+    ))
     layout["sniper_hud"].update(Panel(
-        storyline,
-        title=f"[{title_style}]🎯 CHAIN STORYLINE[/{title_style}]",
-        border_style=chain_border,
+        RichGroup(bs_compact, Text(""), _cmd_banner_s),
+        title=f"[{title_style}]BS SOP ENGINE[/{title_style}]",
+        border_style="green" if not bs_analyst.safety_veto else "red",
     ))
 
     # Hierarchy Matrix — chain-aware STATUS column
@@ -514,87 +551,23 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
     )
     layout["matrix"].update(Panel(matrix_table, title=f"[{title_style}]HIERARCHY MATRIX[/{title_style}]", border_style="magenta"))
 
-    # BS Trading SOP Engine Panel
-    bs_table = Table(box=None, expand=True)
-    bs_table.add_column("Property", style="cyan")
-    bs_table.add_column("Value", justify="right")
-    
-    dir_style = "bold green" if bs_analyst.locked_direction == "BUY" else "bold red" if bs_analyst.locked_direction == "SELL" else "white"
-    bs_table.add_row("1. DIRECTION LOCK", f"[{dir_style}]{bs_analyst.locked_direction} LOCK {'🟢' if bs_analyst.locked_direction == 'BUY' else '🔴'}[/]")
-    
-    mz_style = "blink bold green" if bs_analyst.standby_state == "READY" else "bold yellow"
-    mz_icon = "🟢" if bs_analyst.standby_state == "READY" else "🟡"
-    bs_table.add_row("2. STANDBY STATE", f"[{mz_style}]{bs_analyst.standby_state} {mz_icon}[/]")
-    
-    active_mz_str = "None"
-    if bs_analyst.active_mz:
-        mz = bs_analyst.active_mz
-        active_mz_str = f"[bold magenta]{mz['tf']} {mz['type']}[/] ({mz['low']:.1f}-{mz['high']:.1f})"
-    bs_table.add_row("   ACTIVE MZ", active_mz_str)
-    
-    trigger_str = "[dim]NO TRIGGER 📡[/]"
-    if bs_analyst.pmb_trigger:
-        trig = bs_analyst.pmb_trigger
-        trigger_str = f"[blink bold red]🔥 {trig['type']} Sweep ({trig['risk']})[/]"
-    bs_table.add_row("3. PMB TRIGGER", trigger_str)
-    
-    if bs_analyst.pmb_trigger:
-        trig = bs_analyst.pmb_trigger
-        bs_table.add_row("   ENTRY DETAILS", f"[green]SL: {trig['sl']:.1f}[/] | [yellow]TP: {trig['tp']:.1f}[/]")
-        
-    safety_str = f"[bold green]🛡️ SECURE[/]" if not bs_analyst.safety_veto else f"[bold red]🚨 VETO: {bs_analyst.safety_msg}[/]"
-    bs_table.add_row("4. SAFETY FILTER", safety_str)
-    
-    trend_labels = []
-    for tf in ["D1", "H4", "H1", "M30", "M15", "M5", "M1"]:
-        tr = bs_analyst.tf_trends[tf]
-        col = "green" if tr == "BUY" else "red" if tr == "SELL" else "white"
-        trend_labels.append(f"[{col}]{tf}:{tr[:3]}[/]")
-    bs_table.add_row("5. TF TRENDS", " ".join(trend_labels))
-    
-    # Interactive MZ boundary visual slider & hacker telemetry to fill the empty space!
-    bs_table.add_row("", "")
-    if bs_analyst.active_mz:
-        mz = bs_analyst.active_mz
-        low = float(mz['low'])
-        high = float(mz['high'])
-        current = float(bs_analyst.current_price)
-        pct = (current - low) / (high - low) if high > low else 0.5
-        pct = max(0.0, min(1.0, pct))
-        width = 24
-        filled = int(pct * width)
-        slider = "─" * filled + "[blink bold green]●[/blink bold green]" + "─" * (width - filled)
-        
-        bs_table.add_row("[bold cyan]🎯 MZ BOUNDARY[/]", f"[dim]{low:.1f}[/] {slider} [dim]{high:.1f}[/]")
-        dist_to_low = current - low
-        dist_to_high = high - current
-        bs_table.add_row("   ZONE METRICS", f"[green]DL: {dist_to_low:.2f}[/] | [yellow]DH: {dist_to_high:.2f}[/]")
-    else:
-        scanners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        scanner = scanners[frame % len(scanners)]
-        scan_wave = "".join(random.choice(["░", "▒", "▓", "█", " "]) for _ in range(12))
-        bs_table.add_row("[bold dim yellow]🛰️ MZ RADAR[/]", f"[dim yellow]{scanner} SCANNING FOR SB/SS ZONE[/]")
-        bs_table.add_row("   SYSTEM FREQ", f"[cyan]FREQ: 433.9MHz[/] | [magenta]{scan_wave}[/]")
-        
-    # Dynamic pulse identity banner for Commander Dadang (Centered, Large and Bold with Wide Letter Spacing)
+    # ── CHAIN STORYLINE → bs_matrix (kanan, lebar, full height) ─────────────
+    # Commander Dadang identity banner — di bawah storyline
     blink_dot = "[blink green]●[/blink green]" if frame % 2 == 0 else "[green] [/green]"
     pulse_colors = ["bold bright_cyan", "bold yellow", "bold bright_green", "bold bright_magenta"]
     col_name = pulse_colors[(frame // 2) % len(pulse_colors)]
-    
-    # Render a beautiful, large and wide centered commander badge
     commander_banner = Align.center(
-        Text.from_markup(f"[bold red]⚔️[/bold red]  [{col_name}]D A D A N G   W A H Y U O N O[/{col_name}]  {blink_dot}", style="bold")
+        Text.from_markup(
+            f"[bold red]⚔️[/bold red]  [{col_name}]D A D A N G   W A H Y U O N O[/{col_name}]  {blink_dot}",
+            style="bold"
+        )
     )
-    
-    # Wrap both the table, a spacing blank row, and the centered banner in a Group for clean vertical spacing
-    from rich.console import Group as RichGroup
-    bs_panel_content = RichGroup(
-        bs_table,
-        Text(""), # Pushes the banner down by exactly 1 line to prevent crowding!
-        commander_banner
-    )
-        
-    layout["bs_matrix"].update(Panel(bs_panel_content, title=f"[{title_style}]BS TRADING SOP ENGINE[/{title_style}]", border_style="green" if not bs_analyst.safety_veto else "red"))
+    chain_panel_content = RichGroup(storyline, Text(""), commander_banner)
+    layout["bs_matrix"].update(Panel(
+        chain_panel_content,
+        title=f"[{title_style}]🎯 CHAIN REACTION STORYLINE[/{title_style}]",
+        border_style=chain_border,
+    ))
 
     # Liquidity Map
     h4 = analyst.states["H4"]; d1 = analyst.states["D1"]; cp = tick.bid if tick else 0
