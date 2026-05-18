@@ -181,10 +181,23 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
     layout["greeting"].update(Panel(Align.center(Text(get_commander_greeting(), style="bold cyan")), border_style="dim cyan"))
 
     # Core Sync & Stats
-    acc = mt5.account_info(); acc_table = Table(box=None, expand=True)
-    acc_table.add_column("Key", style="cyan"); acc_table.add_column("Val", style="bold magenta", justify="right")
-    if acc: acc_table.add_row("ACC", f"{acc.login}"); acc_table.add_row("BAL", f"{acc.balance:,.0f}"); acc_table.add_row("EQTY", f"{acc.equity:,.0f}")
-    acc_table.add_row("", ""); acc_table.add_row("[cyan]UPLINK[/]", f"[bold cyan]{'█' * int(math.sin(frame * 0.8) * 4 + 5)}[/]")
+    acc = mt5.account_info()
+    acc_table = Table(box=None, expand=True)
+    acc_table.add_column("Key", style="cyan")
+    acc_table.add_column("Val", style="bold magenta", justify="right")
+    if acc:
+        dd_pct = ((acc.balance - acc.equity) / acc.balance * 100) if acc.balance > 0 else 0
+        eq_pct = (acc.equity / acc.balance * 100) if acc.balance > 0 else 100
+        eq_bar_w = 10
+        eq_filled = int(eq_pct / 100 * eq_bar_w)
+        eq_col = "green" if eq_pct >= 99 else "yellow" if eq_pct >= 97 else "red"
+        eq_bar = f"[{eq_col}]{'█' * eq_filled}[/][dim]{'░' * (eq_bar_w - eq_filled)}[/]"
+        acc_table.add_row("ACC", f"{acc.login}")
+        acc_table.add_row("BAL", f"[white]{acc.balance:,.0f}[/]")
+        acc_table.add_row("EQTY", f"[{eq_col}]{acc.equity:,.0f}[/]")
+        acc_table.add_row("DD%", f"[{'red' if dd_pct > 1 else 'green'}]{dd_pct:.2f}%[/]")
+        acc_table.add_row("", eq_bar)
+    acc_table.add_row("[cyan]UPLINK[/]", f"[bold cyan]{'█' * int(math.sin(frame * 0.8) * 4 + 5)}[/]")
     layout["account"].update(Panel(acc_table, title=f"[{title_style}]{sync_icon} CORE SYNC[/{title_style}]", border_style="cyan" if frame % 4 != 0 else "bright_cyan"))
 
     stats = get_real_stats(settings.get("magic_number", 2026)); stats_table = Table(box=None, expand=True)
@@ -193,10 +206,25 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
     stats_table.add_row("", ""); stats_table.add_row("[yellow]PROC[/]", f"[bold yellow]{'█' * int(math.cos(frame * 0.6) * 4 + 5)}[/]")
     layout["stats"].update(Panel(stats_table, title=f"[{title_style}]📊 LIVE STATS[/{title_style}]", border_style="yellow" if frame % 4 != 2 else "bright_yellow"))
 
-    # Sentiment Radar
+    # Sentiment Radar — proper block bars
     buy_pct, sell_pct = analyst.get_total_sentiment()
-    sentiment_bar = f"[green]{'█' * int(buy_pct/10)}[/][red]{'█' * int(sell_pct/10)}[/]"
-    layout["sentiment"].update(Panel(Align.center(Text(f"BUY {buy_pct:.0f}% | SELL {sell_pct:.0f}%\n{sentiment_bar}\nOVERLORD SENTIMENT", style="bold white")), title="[dim]RADAR[/]", border_style="bright_magenta"))
+    bw = 14
+    b_filled = int(buy_pct / 100 * bw)
+    s_filled = int(sell_pct / 100 * bw)
+    b_bar = f"[green]{'█' * b_filled}[/][dim]{'░' * (bw - b_filled)}[/]"
+    s_bar = f"[red]{'█' * s_filled}[/][dim]{'░' * (bw - s_filled)}[/]"
+    dominant = "BUY" if buy_pct > sell_pct else "SELL"
+    dom_col = "green" if dominant == "BUY" else "red"
+    _regime_s, _ = analyst.get_market_regime()
+    reg_col_s = "green" if _regime_s == "TRENDING" else "yellow" if _regime_s == "RANGING" else "red"
+    reg_icon_s = "📈" if _regime_s == "TRENDING" else "〰" if _regime_s == "RANGING" else "⚠"
+    pulse_dot = "[blink bold green]◆[/]" if dominant == "BUY" else "[blink bold red]◆[/]"
+    sent_text = Text.from_markup(
+        f" BUY  {b_bar} [green]{buy_pct:.0f}%[/]\n"
+        f" SELL {s_bar} [red]{sell_pct:.0f}%[/]\n"
+        f" [{reg_col_s}]{reg_icon_s} {_regime_s}[/]  {pulse_dot} [{dom_col}]{dominant}[/]"
+    )
+    layout["sentiment"].update(Panel(sent_text, title=f"[{title_style}]⚡ RADAR[/{title_style}]", border_style="bright_magenta"))
 
     # CHAIN STORYLINE STATUS PANEL — live CMP→VR→CF progress
     _cs = analyst.get_chain_status()
@@ -340,12 +368,22 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
     else:
         depth_txt = "[dim]—[/]"
 
+    # Signal readiness progress bar
+    _steps_done = sum([_cs['step1_ok'], _cs['m15_is_vr'] or _cs['m15_solid'], _cs['cf_ready']])
+    _ready_pct  = int(_steps_done / 3 * 100)
+    _rw = 16
+    _r_filled = int(_steps_done / 3 * _rw)
+    _r_col = "blink bold green" if _steps_done == 3 else "yellow" if _steps_done >= 1 else "dim"
+    _ready_bar = f"[{_r_col}]{'▰' * _r_filled}[/][dim]{'▱' * (_rw - _r_filled)}[/]"
+    _ready_lbl = f"[{_r_col}]{_steps_done}/3  {_ready_pct}%[/]"
+
     storyline = Text.from_markup(
         f"  [bold white]CASCADE CHAIN  (VR=CF=CMP di TF masing-masing)[/bold white]\n"
         f"{cascade_line}\n"
         f"  [dim]REGIME:[/dim] {regime_lbl}\n"
         f"  [dim]DEPTH :[/dim] {depth_txt}\n"
         f"\n"
+        f"  [dim]SIGNAL READY:[/dim] {_ready_bar} {_ready_lbl}\n"
         f"  {s1_icon} [dim]M30 CMP:[/dim] {s1_lbl}  [dim italic]{s1_note}[/dim italic]\n"
         f"  {s2_icon} [dim]M15    :[/dim] {s2_lbl}  [dim italic]{s2_note}[/dim italic]\n"
         f"  {s3_icon} [dim]CF     :[/dim] {cf_lbl}  [dim italic]{cf_note}[/dim italic]\n"
@@ -418,7 +456,19 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
         blink = "[blink]" if is_scanning and frame % 2 == 0 else ""
         c = "green" if st.cmp == "BUY" else "red" if st.cmp == "SELL" else "white"
         lbl, r_col = chain_role(tf, st)
-        row_style = "bold on grey19" if is_scanning else ""
+        # Row background based on chain role priority
+        if is_scanning:
+            row_style = "bold on grey19"
+        elif "CF READY" in lbl or "MINOR CF" in lbl:
+            row_style = "on dark_green"
+        elif "VR ACTIVE" in lbl or "VR→M15" in lbl:
+            row_style = "on navy_blue"
+        elif "SOLID" in lbl:
+            row_style = "on dark_slate_gray2" if frame % 2 == 0 else ""
+        elif "MASTER" in lbl:
+            row_style = "on grey15"
+        else:
+            row_style = ""
         matrix_table.add_row(
             f"{'📡' if is_scanning else '  '} {tf}",
             f"[{c}]{st.cmp}[/]",
@@ -435,6 +485,32 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
         f"[green]ALIGN: {aligned_tfs}/8[/]",
         f"[yellow]WIB: {wib_str}[/]",
         f"[green]LATENCY: {random.randint(11, 24)}ms[/]",
+    )
+    # Signal summary rows — fill empty space with live status
+    _cs_m = analyst.get_chain_status()
+    _steps_m = sum([_cs_m['step1_ok'], _cs_m['m15_is_vr'] or _cs_m['m15_solid'], _cs_m['cf_ready']])
+    _rw_m = 8
+    _rf_m = int(_steps_m / 3 * _rw_m)
+    _rc_m = "green" if _steps_m == 3 else "yellow" if _steps_m >= 1 else "dim"
+    _rbar_m = f"[{_rc_m}]{'▰' * _rf_m}{'▱' * (_rw_m - _rf_m)}[/]"
+    _depth_m = _cs_m.get('cascade_depth', 0)
+    _dc_m = "green" if _depth_m == 0 else "yellow" if _depth_m <= 2 else "red"
+    _dbar_m = f"[{_dc_m}]{'█' * min(_depth_m, 4)}{'░' * (4 - min(_depth_m, 4))}[/]"
+    _regime_m, _ = analyst.get_market_regime()
+    _rc2_m = "green" if _regime_m == "TRENDING" else "yellow" if _regime_m == "RANGING" else "red"
+    cf_type_m = _cs_m.get('cf_type', '')
+    cf_lbl_m = f"[blink green]{cf_type_m}[/]" if _cs_m['cf_ready'] else "[dim]WAIT[/]"
+    matrix_table.add_row(
+        "[bold cyan]⚡ SIGNAL[/]",
+        _rbar_m,
+        f"[{_rc_m}]{_steps_m}/3 READY[/]",
+        cf_lbl_m,
+    )
+    matrix_table.add_row(
+        "[dim]CASCADE[/]",
+        _dbar_m,
+        f"[{_dc_m}]DEPTH {_depth_m}[/]",
+        f"[{_rc2_m}]{_regime_m}[/]",
     )
     layout["matrix"].update(Panel(matrix_table, title=f"[{title_style}]HIERARCHY MATRIX[/{title_style}]", border_style="magenta"))
 
@@ -522,15 +598,33 @@ def update_layout(layout, analyst, bs_analyst, executor, symbol, settings, frame
 
     # Liquidity Map
     h4 = analyst.states["H4"]; d1 = analyst.states["D1"]; cp = tick.bid if tick else 0
-    def get_map(st):
-        if st.sup == 0 or st.res == 0: return "[dim]SCANNING...[/]"
-        range_size = st.res - st.sup; 
-        if range_size <= 0: return "[dim]SCANNING...[/]"
-        pos = int(((cp - st.sup) / range_size) * 20); pos = max(0, min(20, pos)); bar = list("--------------------")
-        if 0 <= pos < 20: bar[pos] = "⚡"
-        return f"[blue]SUP: {st.sup:.1f}[/] |{''.join(bar)}| [red]RES: {st.res:.1f}[/]"
-    liq_table = Table(box=None, expand=True); liq_table.add_row(f"[bold cyan]H4 LIQ:[/bold cyan] {get_map(h4)}"); liq_table.add_row(f"[bold gold1]D1 LIQ:[/bold gold1] {get_map(d1)}")
-    layout["liquidity"].update(Panel(liq_table, title=f"[{title_style}]INSTITUTIONAL LIQUIDITY MAP[/{title_style}]", border_style="cyan"))
+    def get_map_v2(st, tf_label, col):
+        if st.sup == 0 or st.res == 0:
+            return f"[{col}]{tf_label}[/] [dim]SCANNING...[/]", ""
+        range_size = st.res - st.sup
+        if range_size <= 0:
+            return f"[{col}]{tf_label}[/] [dim]SCANNING...[/]", ""
+        pct = max(0.0, min(1.0, (cp - st.sup) / range_size))
+        pos = int(pct * 22)
+        bar = list("─" * 22)
+        if 0 <= pos < 22: bar[pos] = "[blink bold yellow]⚡[/blink bold yellow]"
+        # Color the zone: bottom 30% green (near sup), top 30% red (near res)
+        bar_str = ''.join(bar)
+        dist_res = st.res - cp
+        dist_sup = cp - st.sup
+        pct_to_res = (1 - pct) * 100
+        zone = "[green]SUP ZONE[/]" if pct < 0.3 else "[red]RES ZONE[/]" if pct > 0.7 else "[yellow]MID ZONE[/]"
+        line1 = f"[{col}]{tf_label}[/] [dim green]{st.sup:.1f}[/dim green] |{bar_str}| [dim red]{st.res:.1f}[/dim red]"
+        line2 = f"       [dim]↑RES {dist_res:.1f}$ ({pct_to_res:.0f}%)[/] | [dim]↓SUP {dist_sup:.1f}$[/] | {zone}"
+        return line1, line2
+    liq_table = Table(box=None, expand=True)
+    h4_l1, h4_l2 = get_map_v2(h4, "H4", "bold cyan")
+    d1_l1, d1_l2 = get_map_v2(d1, "D1", "bold gold1")
+    liq_table.add_row(h4_l1)
+    liq_table.add_row(h4_l2)
+    liq_table.add_row(d1_l1)
+    liq_table.add_row(d1_l2)
+    layout["liquidity"].update(Panel(liq_table, title=f"[{title_style}]⚡ INSTITUTIONAL LIQUIDITY MAP[/{title_style}]", border_style="cyan"))
 
     # 10. GLOBAL INTEL & NEWS (Live RSS + Forex Factory Red Radar)
     news_ttl = settings.get("news_refresh_seconds", 300)
