@@ -36,28 +36,64 @@ class ChainFeed:
 
 feed = ChainFeed()
 
-_RED_FOLDERS = [
-    "🔴 KAMIS 01:00 WIB: FOMC Meeting Minutes (High Impact)",
-    "🔴 KAMIS 20:45 WIB: Flash Manufacturing PMI (High Impact)",
-    "📡 INTEL: Kevin Warsh (New Fed Chair) stance is Hawkish.",
-    "🔥 GEOPOLITICS: Hormuz Strait tensions increase Gold demand.",
-    "📊 SENTIMENT: Markets pricing in 'No Rate Cut' for 2026."
+_STATIC_INTEL = [
+    "🔴 KAMIS 01:00 WIB — FOMC Meeting Minutes (High Impact)",
+    "🔴 KAMIS 20:45 WIB — Flash Manufacturing PMI (High Impact)",
+    "📡 INTEL: Kevin Warsh (New Fed Chair) stance is Hawkish",
+    "🔥 GEOPOLITICS: Hormuz Strait tensions increase Gold demand",
+    "📊 SENTIMENT: Markets pricing in 'No Rate Cut' for 2026",
 ]
 
+_NEWS_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/rss+xml, application/xml, text/xml, */*",
+}
+
+_RSS_SOURCES = [
+    ("ForexLive",   "https://www.forexlive.com/feed/"),
+    ("Investing",   "https://www.investing.com/rss/news_14.rss"),
+    ("MarketWatch", "https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines"),
+]
+
+fetch_live_news._last_source = "STATIC"
+fetch_live_news._last_fetch_wib = "──:──"
+
 def fetch_live_news():
-    """Fetch ForexLive gold RSS with one retry. Falls back to static red folders."""
-    for attempt in range(2):
-        try:
-            r = requests.get("https://www.forexlive.com/feed/gold", timeout=3)
-            if r.status_code == 200:
-                root = ET.fromstring(r.content)
-                headlines = [f"📡 LIVE: {item.find('title').text}"
-                             for item in root.findall(".//item")[:3]]
-                return _RED_FOLDERS + headlines
-        except Exception:
-            if attempt == 0:
-                time.sleep(1)
-    return _RED_FOLDERS
+    """Try multiple RSS sources with proper headers. Falls back to static intel."""
+    gold_kw = {"gold","xauusd","commodit","metal","fed","fomc","rate","dollar","usd"}
+    wib = pytz.timezone("Asia/Jakarta")
+
+    for source_name, url in _RSS_SOURCES:
+        for attempt in range(2):
+            try:
+                r = requests.get(url, headers=_NEWS_HEADERS, timeout=4)
+                if r.status_code != 200:
+                    break
+                root  = ET.fromstring(r.content)
+                items = root.findall(".//item")
+                headlines = []
+                for item in items:
+                    t = item.find("title")
+                    if t is None or not t.text:
+                        continue
+                    txt = t.text.strip()
+                    if any(k in txt.lower() for k in gold_kw):
+                        headlines.append(f"📡 {source_name.upper()}: {txt}")
+                    if len(headlines) >= 4:
+                        break
+                if headlines:
+                    fetch_live_news._last_source   = source_name
+                    fetch_live_news._last_fetch_wib = datetime.now(wib).strftime("%H:%M")
+                    return _STATIC_INTEL + headlines
+            except Exception:
+                if attempt == 0:
+                    time.sleep(0.5)
+
+    fetch_live_news._last_source    = "STATIC"
+    fetch_live_news._last_fetch_wib = datetime.now(wib).strftime("%H:%M")
+    return _STATIC_INTEL
 
 def load_settings():
     path = "chain_settings.json"
@@ -570,10 +606,14 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         update_layout._cached_news     = fetch_live_news()
         update_layout._news_last_fetch = now_ts
     news_items = update_layout._cached_news
-    news_idx   = (frame // 30) % max(1, len(news_items))
+    news_idx    = (frame // 30) % max(1, len(news_items))
+    _src        = fetch_live_news._last_source
+    _fetch_wib  = fetch_live_news._last_fetch_wib
+    _live_tag   = f"[bright_green]◉ LIVE: {_src}[/]" if _src != "STATIC" else "[dim]◌ STATIC[/]"
+    _news_title = f"[{TS}]🌍  GLOBAL INTEL[/{TS}]  {_live_tag}  [dim]{_fetch_wib}[/]"
     layout["news"].update(
         Panel(Align.center(Text(news_items[news_idx], style="bold bright_white")),
-              title=f"[{TS}]🌍  GLOBAL INTEL[/{TS}]", border_style="blue", padding=(0, 1))
+              title=_news_title, border_style="blue", padding=(0, 1))
     )
     layout["feed"].update(
         Panel(Text.from_markup(feed.render()),
