@@ -35,6 +35,7 @@ class ChainFeed:
         return "\n".join(self.logs)
 
 feed = ChainFeed()
+_EQ_HISTORY = []   # equity curve history
 
 _STATIC_INTEL = [
     "🔴 KAMIS 01:00 WIB — Notulen Rapat FOMC (Dampak Tinggi)",
@@ -264,14 +265,23 @@ def make_layout() -> Layout:
         Layout(name="sentiment", size=5)
     )
     layout["body"].split_column(
-        Layout(name="intel",      size=3),
-        Layout(name="matrix_row", ratio=2),
-        Layout(name="liquidity",  size=7),  # +1 untuk ADR row
-        Layout(name="news_feed",  ratio=1)
+        Layout(name="intel",        size=3),
+        Layout(name="heatmap_row",  size=13),
+        Layout(name="matrix_row",   ratio=2),
+        Layout(name="anim_row",     size=16),
+        Layout(name="news_feed",    size=8),
+    )
+    layout["heatmap_row"].split_row(
+        Layout(name="heatmap", ratio=5),
+        Layout(name="neural",  ratio=5),
     )
     layout["matrix_row"].split_row(
         Layout(name="matrix",    ratio=5),
         Layout(name="bs_matrix", ratio=6)
+    )
+    layout["anim_row"].split_row(
+        Layout(name="equity",  ratio=5),
+        Layout(name="oscillo", ratio=5),
     )
     layout["news_feed"].split_row(
         Layout(name="news", ratio=1),
@@ -297,6 +307,7 @@ def _bar(filled, total, fill_char="█", empty_char="░", fill_color="green", e
     return f"[{fill_color}]{fill_char * f}[/][{empty_color}]{empty_char * e}[/]"
 
 _MCHARS = "01アイウエカキクサシスセ▓▒░█◆◈※#@$%ABCDEFabcdef01010110"
+_BLOCKS = "▁▂▃▄▅▆▇█"
 
 def _htag(n=6):
     return "0x" + "".join(random.choices("0123456789ABCDEF", k=n))
@@ -312,6 +323,327 @@ def _rain(width, frame):
         else:          out += f"[dim green]{c}[/]"
     random.seed()
     return out
+
+# ── PANEL BUILDERS ────────────────────────────────────────────────────────────
+
+def build_heatmap_panel(frame, analyst, _cs, h4_dir):
+    """SIGNAL.HEATMAP — 8 TFs × 3 signals grid."""
+    BLINK = frame % 2 == 0
+    MG = "bright_green"; CC = "bright_cyan"; RD = "bright_red"; GD = "gold1"
+    DG = "grey62"; BC = "bold bright_cyan"; BY = "bold gold1"
+
+    def _T_local(label):
+        return f"[{BC}][ {label} ][/{BC}]  [{DG}]{_htag(6)}[/{DG}]"
+
+    roles = _cs.get("cascade_roles", {})
+    cf_ready = _cs.get("cf_ready", False)
+
+    t = Table(
+        box=rich_box.SIMPLE_HEAD, expand=True, show_edge=False,
+        padding=(0, 1), header_style=f"bold {CC} on grey11",
+    )
+    t.add_column("TF",  justify="center", width=6)
+    t.add_column("CMP", justify="center", width=12)
+    t.add_column("VR",  justify="center", width=12)
+    t.add_column("CF",  justify="center", width=12)
+    t.add_column("⊕",   justify="center", width=4)
+
+    tfs = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5"]
+    aligned_count = 0
+
+    for tf in tfs:
+        st = analyst.states[tf]
+        is_master = (tf == "H4")
+        cmp_val = st.cmp
+
+        # CMP cell
+        if cmp_val == h4_dir and h4_dir != "WAIT":
+            cmp_cell = f"[bold white on dark_green] ▣ {cmp_val}  [/]"
+        elif cmp_val == "WAIT":
+            cmp_cell = f"[{DG}]  ──────  [/]"
+        else:
+            cmp_cell = f"[bold white on dark_red] ✗ {cmp_val}  [/]"
+
+        # VR cell
+        role = roles.get(tf, "")
+        if role == "VR":
+            sym = "⚡ VR ⚡" if BLINK else "·  VR  ·"
+            vr_cell = f"[bold white on dark_blue] {sym} [/]"
+        else:
+            vr_cell = f"[{DG}]  ──────  [/]"
+
+        # CF cell
+        is_cf = (role == "CF") or (cf_ready and tf == "M5")
+        if is_cf:
+            sym = "◉ CF ◉" if BLINK else "● CF ●"
+            cf_cell = f"[bold white on dark_green] {sym} [/]"
+        else:
+            cf_cell = f"[{DG}]  ──────  [/]"
+
+        # Align indicator
+        aligned = (cmp_val == h4_dir and h4_dir != "WAIT")
+        if aligned:
+            aligned_count += 1
+        alg = (f"[{MG}]▼[/]" if h4_dir == "SELL" else f"[{MG}]▲[/]") if aligned else f"[{RD}]✗[/]"
+
+        row_style = "on grey15" if is_master else ""
+        tf_lbl = f"[{BY}]{tf}★[/]" if is_master else f"[{CC}]{tf}[/]"
+
+        t.add_row(tf_lbl, cmp_cell, vr_cell, cf_cell, alg, style=row_style)
+
+    # Summary row
+    sync_col = MG if aligned_count >= 6 else GD if aligned_count >= 4 else RD
+    t.add_row(
+        f"[{DG}]SYNC[/]",
+        f"[{DG}]──────────[/]",
+        f"[{DG}]──────────[/]",
+        f"[{DG}]──────────[/]",
+        f"[{sync_col}]{aligned_count}/8[/]",
+    )
+
+    return Panel(t, title=_T_local("SIGNAL.HEATMAP"), border_style="magenta", padding=(0, 0))
+
+
+def build_neural_flow_panel(frame, analyst, _cs, h4_dir):
+    """NEURAL.FLOW — chain node visualization."""
+    BLINK = frame % 2 == 0
+    MG = "bright_green"; CC = "bright_cyan"; RD = "bright_red"; GD = "gold1"
+    DG = "grey62"; BC = "bold bright_cyan"
+
+    def _T_local(label):
+        return f"[{BC}][ {label} ][/{BC}]  [{DG}]{_htag(6)}[/{DG}]"
+
+    def node(label, active, bg, fire=False):
+        if fire:
+            sym = "⚡" if BLINK else "◉"
+            return f"[bold white on {bg}] {sym} {label} {sym} [/]"
+        if active:
+            sym = "◉" if BLINK else "●"
+            return f"[bold white on {bg}] {sym} {label} [/]"
+        return f"[{DG}][ ○ {label} ][/]"
+
+    def pipe(active, color=None):
+        c = color or MG
+        return f"[{c}] ══► [/]" if active else f"[{DG}] ──► [/]"
+
+    def tag(ok, yes_txt, no_txt):
+        return f"[{MG}]{yes_txt}[/]" if ok else f"[{DG}]{no_txt}[/]"
+
+    roles = _cs.get("cascade_roles", {})
+    cf_ready = _cs.get("cf_ready", False)
+    cf_type  = _cs.get("cf_type", "")
+
+    macro_ok = all(analyst.states[t].cmp == h4_dir for t in ["MN1", "W1", "D1"]) and h4_dir != "WAIT"
+    h4_ok    = analyst.states["H4"].cmp == h4_dir and h4_dir != "WAIT"
+    h1_ok    = (analyst.states["H1"].cmp == h4_dir or roles.get("H1") == "VR") and h4_dir != "WAIT"
+    m30_ok   = analyst.states["M30"].cmp == h4_dir and h4_dir != "WAIT"
+    m15_vr   = _cs.get("m15_is_vr", False)
+    m5_cf    = cf_ready
+
+    strength = sum([macro_ok, h4_ok, m30_ok, m15_vr, m5_cf])
+    str_col  = MG if strength >= 4 else GD if strength >= 2 else RD
+    str_bar  = _bar(strength * 2, 10, fill_color=str_col, empty_color="grey19", fill_char="▰", empty_char="▱")
+
+    cf_label = (
+        f"[blink bold bright_green] ⚡ CF::FIRE ⚡ [/]" if BLINK and m5_cf
+        else f"[bold bright_green] ◉ CF READY  [/]" if m5_cf
+        else f"[{DG}]standby...[/]"
+    )
+
+    aligned_n = sum(1 for tf in ["MN1","W1","D1","H4","H1","M30","M15","M5"]
+                    if analyst.states[tf].cmp == h4_dir and h4_dir != "WAIT")
+
+    lines = [
+        Text.from_markup(f"  [{DG}]{'─'*46}[/]"),
+        Text.from_markup(
+            f"  {node('MACRO', macro_ok, 'dark_green')}"
+            f"{pipe(macro_ok, GD)}"
+            f"{node('H4 ★ MASTER', h4_ok, 'dark_goldenrod')}"
+            f"  {tag(h4_ok, f'DIR::{h4_dir} ▼', 'WAIT...')}"
+        ),
+        Text.from_markup(f"  [{DG}]{'─'*46}[/]"),
+        Text(""),
+        Text.from_markup(
+            f"  [{DG}]           ↓[/]\n"
+            f"  {node('H1', h1_ok, 'dark_blue')}"
+            f"{pipe(h1_ok)}"
+            f"{node('M30', m30_ok, 'dark_green')}"
+            f"  {tag(m30_ok, 'CMP locked ✅', 'waiting M30...')}"
+        ),
+        Text(""),
+        Text.from_markup(
+            f"  [{DG}]                    ↓[/]\n"
+            f"  {node('M15', m15_vr, 'dark_blue')}"
+            f"{pipe(m15_vr, CC)}"
+            f"{node('M5', m5_cf, 'dark_green', fire=m5_cf)}"
+            f"  {cf_label}"
+        ),
+        Text(""),
+        Text.from_markup(f"  [{DG}]{'─'*46}[/]"),
+        Text.from_markup(
+            f"  [{DG}]CHAIN STRENGTH[/]  {str_bar}  [{str_col}]{strength}/5[/]"
+            f"   [{DG}]ALIGN[/] [{MG}]{aligned_n}/8[/]"
+        ),
+    ]
+
+    border = (MG if BLINK else "green") if m5_cf else (CC if m15_vr else DG)
+    return Panel(RichGroup(*lines), title=_T_local("NEURAL.FLOW"), border_style=border, padding=(0, 1))
+
+
+def build_equity_curve_panel(frame, acc):
+    """EQUITY.CURVE — animated ASCII chart of equity history."""
+    global _EQ_HISTORY
+    MG = "bright_green"; RD = "bright_red"; DG = "grey62"; BC = "bold bright_cyan"
+
+    def _T_local(label):
+        return f"[{BC}][ {label} ][/{BC}]  [{DG}]{_htag(6)}[/{DG}]"
+
+    # Append current equity
+    if acc is not None:
+        _EQ_HISTORY.append(float(acc.equity))
+        if len(_EQ_HISTORY) > 200:
+            _EQ_HISTORY.pop(0)
+
+    if len(_EQ_HISTORY) < 2:
+        placeholder = Text.from_markup(f"  [{DG}]COLLECTING DATA...[/]")
+        return Panel(placeholder, title=_T_local("EQUITY.CURVE"), border_style=MG, padding=(0, 0))
+
+    hist = _EQ_HISTORY[-51:]
+    base = _EQ_HISTORY[0]
+    mn   = min(hist)
+    mx_h = max(hist)
+    rng  = mx_h - mn if mx_h != mn else 1.0
+    ROWS = 6
+
+    chart = []
+    for row in range(ROWS - 1, -1, -1):
+        lo  = mn + rng * row / ROWS
+        hi  = mn + rng * (row + 1) / ROWS
+        line = ""
+        for i, val in enumerate(hist):
+            is_last = (i == len(hist) - 1)
+            if val >= hi:
+                ch = f"[bold {MG}]█[/]" if is_last else f"[{MG}]█[/]"
+            elif val >= lo:
+                frac = (val - lo) / (rng / ROWS)
+                blk  = _BLOCKS[min(int(frac * 8), 7)]
+                ch   = f"[bold {MG}]{blk}[/]" if is_last else f"[green]{blk}[/]"
+            else:
+                ch = f"[grey19]░[/]"
+            line += ch
+        if row == ROWS - 1: y_lbl = f" [{DG}]{mx_h:>7.2f}[/]"
+        elif row == ROWS // 2: y_lbl = f" [{DG}]{(mn + rng * 0.5):>7.2f}[/]"
+        elif row == 0: y_lbl = f" [{DG}]{mn:>7.2f}[/]"
+        else: y_lbl = ""
+        chart.append(Text.from_markup(line + y_lbl))
+
+    chart.append(Text.from_markup(
+        f"[{DG}]{'─' * len(hist)}[/]"
+        f"  [{DG}]← {len(hist)} frames[/]"
+    ))
+
+    live_eq = float(acc.equity) if acc else (hist[-1] if hist else base)
+    pnl     = live_eq - base
+    pnl_col = MG if pnl >= 0 else RD
+    eq_col  = MG if live_eq >= base else RD
+    peak_dd = mx_h - live_eq
+
+    stats_t = Table(box=None, expand=True, show_header=False, padding=(0, 2))
+    stats_t.add_column("", justify="left", ratio=1)
+    stats_t.add_column("", justify="left", ratio=1)
+    stats_t.add_column("", justify="left", ratio=1)
+    stats_t.add_column("", justify="left", ratio=1)
+    stats_t.add_row(
+        Text.from_markup(f"[{DG}]EQ[/]  [{eq_col}]{live_eq:.2f}[/]"),
+        Text.from_markup(f"[{DG}]PnL[/] [{pnl_col}]{'+' if pnl >= 0 else ''}{pnl:.2f}[/]"),
+        Text.from_markup(f"[{DG}]PEAK[/] [{MG}]{mx_h:.2f}[/]"),
+        Text.from_markup(f"[{DG}]DD[/]  [{RD}]{peak_dd:.2f}[/]"),
+    )
+
+    pnl_fill = min(int(abs(pnl) / max(abs(pnl) + 1, 30) * 44), 44)
+    pnl_bar  = _bar(pnl_fill, 44, fill_color=pnl_col, empty_color="grey19", fill_char="▓", empty_char="░")
+
+    content = RichGroup(*chart, Text(""), stats_t, Text.from_markup(f"  {pnl_bar}"))
+    border  = (MG if frame % 2 == 0 else "green") if pnl >= 0 else RD
+    return Panel(content, title=_T_local("EQUITY.CURVE"), border_style=border, padding=(0, 0))
+
+
+def build_oscilloscope_panel(frame, pos_rows):
+    """PnL.OSCILLOSCOPE — animated waveform + live positions table."""
+    MG = "bright_green"; RD = "bright_red"; DG = "grey62"; BC = "bold bright_cyan"
+
+    def _T_local(label):
+        return f"[{BC}][ {label} ][/{BC}]  [{DG}]{_htag(6)}[/{DG}]"
+
+    WIDTH = 48
+    ROWS  = 6
+    total = sum(p["pnl"] for p in pos_rows) if pos_rows else 0.0
+    tot_col = MG if total >= 0 else RD
+
+    # Waveform — composite sine
+    wave = []
+    for x in range(WIDTH):
+        t   = x / WIDTH * 6 * math.pi + frame * 0.28
+        val = (math.sin(t) * 0.45
+               + math.sin(t * 1.9 + 0.8) * 0.30
+               + math.cos(t * 0.6 + 1.2) * 0.25)
+        lvl = int((val + 1) / 2 * (ROWS * 8 - 1))
+        wave.append(max(0, min(ROWS * 8 - 1, lvl)))
+
+    osc_lines = []
+    mid_row = ROWS // 2
+    for row in range(ROWS - 1, -1, -1):
+        line = ""
+        for lvl in wave:
+            row_lvl = lvl // 8
+            sub_lvl = lvl % 8
+            if row_lvl > row:
+                line += f"[{tot_col}]█[/]"
+            elif row_lvl == row:
+                line += f"[green]{_BLOCKS[sub_lvl]}[/]"
+            else:
+                line += f"[grey35]─[/]" if row == mid_row else f"[grey19] [/]"
+        suffix = f"  [{DG}]── 0 ──[/]" if row == mid_row else ""
+        osc_lines.append(Text.from_markup(f" {line}{suffix}"))
+
+    # Position table
+    pos_t = Table(box=None, expand=True, show_header=False, padding=(0, 1), show_edge=False)
+    pos_t.add_column("", width=5,  justify="center")
+    pos_t.add_column("", width=5,  justify="center")
+    pos_t.add_column("", width=7,  justify="right")
+    pos_t.add_column("", width=8,  justify="right")
+    pos_t.add_column("", ratio=1)
+
+    max_pnl = max((abs(p["pnl"]) for p in pos_rows), default=1.0) or 1.0
+    if pos_rows:
+        for p in pos_rows[:4]:
+            d_col  = MG if p["dir"] == "BUY" else RD
+            pnl_c  = MG if p["pnl"] >= 0 else RD
+            fill   = int(abs(p["pnl"]) / max_pnl * 10)
+            mini_b = _bar(fill, 10, fill_color=pnl_c, empty_color="grey19", fill_char="▪", empty_char="·")
+            pos_t.add_row(
+                f"[bold white on {'dark_green' if p['dir']=='BUY' else 'dark_red'}] {p['dir'][:1]} [/]",
+                f"[white]{p['lot']}L[/]",
+                f"[{p['pip_col']}]{p['pips']:+.1f}p[/]",
+                f"[{pnl_c}]{p['pnl']:+.2f}$[/]",
+                mini_b,
+            )
+    else:
+        pos_t.add_row(f"[{DG}]──[/]", f"[{DG}]NO POSITIONS[/]", "", "", "")
+
+    sep = Text.from_markup(f" [{DG}]{'─'*42}[/]")
+    n_pos = max(len(pos_rows), 1)
+    tot_fill = int(abs(total) / (max_pnl * n_pos) * 44) if max_pnl else 0
+    tot_bar  = _bar(min(tot_fill, 44), 44, fill_color=tot_col, empty_color="grey19", fill_char="█", empty_char="░")
+    total_txt = Text.from_markup(
+        f"  [{DG}]TOTAL P&L[/]  [{tot_col}]{'+' if total >= 0 else ''}{total:.2f}$[/]"
+        f"  [{tot_col}]{'▲' if total >= 0 else '▼'}[/]"
+    )
+
+    border  = (MG if frame % 2 == 0 else "green") if total >= 0 else RD
+    content = RichGroup(*osc_lines, Text(""), pos_t, sep, total_txt, Text.from_markup(f"  {tot_bar}"))
+    return Panel(content, title=_T_local("PnL.OSCILLOSCOPE"), border_style=border, padding=(0, 0))
+
 
 def update_layout(layout, analyst, executor, symbol, settings, frame):
     BLINK = frame % 2 == 0
@@ -793,6 +1125,12 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         Panel(Text.from_markup(feed.render()),
               title=_T("SYS.LOG"), border_style=MG, padding=(0, 1))
     )
+
+    # ── NEW ANIMATED PANELS ────────────────────────────────────────────────────
+    layout["heatmap"].update(build_heatmap_panel(frame, analyst, _cs, _h4_dir))
+    layout["neural"].update(build_neural_flow_panel(frame, analyst, _cs, _h4_dir))
+    layout["equity"].update(build_equity_curve_panel(frame, acc))
+    layout["oscillo"].update(build_oscilloscope_panel(frame, pos_rows))
 
     # ── TICKER ──────────────────────────────────────────────────────────────────
     pkt   = f"{random.randint(100000,999999)}"
