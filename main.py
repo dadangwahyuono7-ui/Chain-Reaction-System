@@ -1232,20 +1232,42 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     def _sicon(ok):
         return (f"[{MG}]▣[/]" if BLINK else f"[green]▣[/]") if ok else f"[{DG}]□[/]"
 
-    s1_ok = _cs["step1_ok"]
-    s2_ok = _cs["m15_is_vr"] or _cs["m15_solid"]
-    s3_ok = cf_fired
+    s1_ok  = _cs["step1_ok"]
+    s1b_ok = _cs.get("h1_is_vr", False) or _cs.get("h1_is_cf", False)  # H1 VR gate
+    s2_ok  = _cs["m15_is_vr"] or _cs["m15_solid"]
+    s3_ok  = cf_fired
 
-    s1_lbl = f"[{_d_col}]{_dir}[/]"  if s1_ok else f"[{DG}]──[/]"
-    s1_sub = "M30 CMP locked"          if s1_ok else "Tunggu breakout M30"
-    if _cs["m15_is_vr"]:
-        s2_lbl = f"[{CC}]VR ACTIVE[/]";  s2_sub = "M15 menguji M30"
-    elif _cs["m15_solid"]:
-        s2_lbl = f"[{MG}]SOLID[/]";      s2_sub = "M15 aligned"
+    # Step 1: H4 CMP
+    s1_lbl = f"[{_d_col}]{_dir}[/]" if s1_ok else f"[{DG}]──[/]"
+    s1_sub = "H4 direction locked"    if s1_ok else "Tunggu breakout H4"
+
+    # Step 1b: H1 VR gate (new — doctrine)
+    _h1_is_vr = _cs.get("h1_is_vr", False)
+    _h1_is_cf = _cs.get("h1_is_cf", False)
+    if _h1_is_vr:
+        s1b_lbl = f"[blink {CC}]H1 VR[/]" if BLINK else f"[{CC}]H1 VR[/]"
+        s1b_sub = f"H1 counter {_dir} — menunggu CF"
+    elif _h1_is_cf:
+        s1b_lbl = f"[{MG}]H1 CF[/]"
+        s1b_sub = "H1 sudah VR → CF ke H4"
     else:
-        s2_lbl = f"[{DG}]──[/]";         s2_sub = ""
+        s1b_lbl = f"[{DG}]H1 ──[/]"
+        s1b_sub = "Tunggu H1 VR ke H4"
+
+    # Step 2: M15 state
+    if _cs["m15_is_vr"]:
+        s2_lbl = f"[{CC}]VR ACTIVE[/]"; s2_sub = "M15 menguji M30"
+    elif _cs["m15_solid"]:
+        s2_lbl = f"[{MG}]SOLID[/]";     s2_sub = "M15 aligned"
+    else:
+        s2_lbl = f"[{DG}]──[/]";        s2_sub = ""
+
+    # Step 3: CF signal
     if cf_fired:
-        if cf_type == "MINOR_CF":
+        if cf_type == "H4_CF_HIGH":
+            s3_lbl = f"[blink magenta]H4_CF_HIGH[/]" if BLINK else "[magenta]H4_CF_HIGH[/]"
+            s3_sub = "SL=H1  TP=H4 ⚡"
+        elif cf_type == "MINOR_CF":
             s3_lbl = f"[blink {MG}]MINOR_CF[/]" if BLINK else f"[{MG}]MINOR_CF[/]"
             s3_sub = "SL=M5  TP=M15"
         elif cf_type == "CF_LOW":
@@ -1255,31 +1277,37 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
             s3_lbl = f"[blink yellow]CF_HIGH[/]" if BLINK else "[yellow]CF_HIGH[/]"
             s3_sub = "SL=M15 TP=M30"
     else:
-        s3_lbl = f"[{DG}]──[/]"; s3_sub = "Tunggu M5/M15 CF"
+        s3_lbl = f"[{DG}]──[/]"; s3_sub = "Tunggu CF"
 
     macro_m = _cs.get("macro_role", "SOLID_H4")
-    macro_lbl = (f"[{RD}]M30⟵H4  !! BLOCK[/]"       if macro_m == "VR_H4" else
-                 f"[magenta]M30⟵H4  CF_HIGH ⚡[/]"    if macro_m == "CF_HIGH_H4" else
-                 f"[{CC}]H1⟶M30⟵H4  BUILDING[/]"    if macro_m == "CF_H4" else
-                 f"[{MG}]M30⟵H4  SOLID[/]")
+    macro_lbl = (f"[{RD}]M30 VR ke H4 !! BLOCK[/]"       if macro_m == "VR_H4" else
+                 f"[magenta]H1 VR | M30 CF HIGH ⚡[/]"    if macro_m == "CF_HIGH_H4" else
+                 f"[{CC}]H1 VR — menunggu M30 CF[/]"      if macro_m == "CF_H4" else
+                 f"[{MG}]H1+M30 solid ke H4[/]")
 
     _dep_col    = MG if _depth == 0 else "yellow" if _depth <= 2 else RD
-    _steps_done = int(s1_ok) + int(s2_ok) + int(s3_ok)
+    _steps_done = int(s1_ok) + int(s1b_ok) + int(s2_ok) + int(s3_ok)
     _rw         = 12
-    _r_fill     = int(_steps_done / 3 * _rw)
-    _r_col      = MG if _steps_done == 3 else "yellow" if _steps_done >= 1 else "dim"
+    _r_fill     = int(_steps_done / 4 * _rw)
+    _r_col      = MG if _steps_done == 4 else "yellow" if _steps_done >= 2 else "dim"
     _ready_bar  = _bar(_r_fill, _rw, fill_color=_r_col, empty_color="grey19", fill_char="█", empty_char="░")
 
     if not s1_ok:
-        next_txt = ">> SCAN M30 SNR..."; next_bc = DG
+        next_txt = ">> SCAN H4 SNR...";           next_bc = DG
+    elif not s1b_ok:
+        next_txt = f">> WAIT H1.vr({_opp})";      next_bc = CC
     elif _cs.get("m30_broken"):
-        next_txt = "!! SETUP BATAL — CARI M30 BARU"; next_bc = RD
+        next_txt = "!! SETUP BATAL — M30 BREAK";  next_bc = RD
+    elif cf_fired and cf_type == "H4_CF_HIGH":
+        next_txt = ">> H4_CF_HIGH::FIRE() ⚡";    next_bc = "magenta"
     elif cf_fired and cf_type == "MINOR_CF":
-        next_txt = ">> SAFEST_ENTRY::FIRE()"; next_bc = MG
+        next_txt = ">> SAFEST_ENTRY::FIRE()";      next_bc = MG
     elif cf_fired and cf_type == "CF_LOW":
-        next_txt = ">> CF_LOW::FIRE()";         next_bc = MG
+        next_txt = ">> CF_LOW::FIRE()";            next_bc = MG
     elif cf_fired and cf_type == "CF_HIGH":
-        next_txt = ">> CF_HIGH::FIRE()";         next_bc = "yellow"
+        next_txt = ">> CF_HIGH::FIRE()";           next_bc = "yellow"
+    elif _h1_is_vr:
+        next_txt = f">> WAIT M30.cf({_dir}) [H4_CF_HIGH]"; next_bc = "magenta"
     elif _cs["m15_solid"]:
         next_txt = f">> WAIT M5.flip({_opp}) → M5.cf({_dir})"; next_bc = CC
     elif _cs["m15_is_vr"]:
@@ -1313,15 +1341,26 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         elif tf == "H4":
             r_lbl = "MASTER";     r_col = GD
         elif tf == "H1":
-            r_lbl = "H1_VR" if (st.cmp!="WAIT" and st.cmp!=_h4_dir) else "H1_CMP"
-            r_col = CC if "VR" in r_lbl else "white"
+            # Doctrine: H1 harus VR dulu ke H4 sebelum entry boleh
+            if st.cmp == "WAIT":
+                r_lbl = "WAIT";      r_col = "dim"
+            elif _h1_is_vr:
+                lbl = "VR→H4 ⚡" if BLINK else "VR→H4 ·"
+                r_lbl = lbl;         r_col = CC
+            elif _h1_is_cf:
+                r_lbl = "H1_CF ✓";  r_col = MG
+            else:
+                r_lbl = "WAITING";   r_col = "dim"   # H1 belum VR ke H4
         elif tf == "M30":
             if st.cmp == "WAIT":
-                r_lbl = "WAIT";     r_col = "dim"
+                r_lbl = "WAIT";      r_col = "dim"
+            elif _h1_is_vr and st.cmp == _h4_dir:
+                lbl = "CF_HIGH ⚡" if BLINK else "CF_HIGH ·"
+                r_lbl = lbl;         r_col = "magenta"  # M30 CF saat H1 VR = H4_CF_HIGH
             elif st.cmp == _h4_dir:
-                r_lbl = "SETUP_CMP"; r_col = BC
+                r_lbl = "SETUP_CMP"; r_col = BC          # M30 solid aligned H4
             else:
-                r_lbl = "VR→H4";    r_col = CC   # M30 counter H4 = VR ke H1
+                r_lbl = "VR→H4";     r_col = CC          # M30 counter H4
         elif tf == "M15":
             if _cs["m15_is_vr"]:    r_lbl = "VR ⚡";    r_col = CC
             elif _cs["m15_solid"]:  r_lbl = "SOLID ▣";  r_col = MG
@@ -1383,7 +1422,7 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     mx.add_row(f"[{DG}]──────[/]","─────","──────────","────────","────────")
     mx.add_row(f"[{CC}]SYNC[/]",  f"[{MG}]{aligned_n}/8[/]",  f"[{DG}]{wib_now}[/]", "", f"[{DG}]{lat}ms[/]")
     mx.add_row(f"[{CC}]DEPTH[/]", depth_bar, f"[{_dep_col}]D{_depth}[/]  [{reg_c}]{regime_str[:5]}[/]",
-               "", f"[{_r_col}]{_steps_done}/3[/]")
+               "", f"[{_r_col}]{_steps_done}/4[/]")
 
     chain_border = (MG if BLINK else "green") if cf_fired else \
                    (RD if _cs.get("m30_broken") else CC)
@@ -1394,7 +1433,7 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
 
     # ── CHAIN REACTION STORYLINE  (TARGET ACQUISITION) ────────────────────────
     dir_arrow  = "▲" if _dir == "BUY" else "▼" if _dir == "SELL" else "·"
-    dir_pct    = f"[{_r_col}]{_steps_done}/3[/]  {_ready_bar}"
+    dir_pct    = f"[{_r_col}]{_steps_done}/4[/]  {_ready_bar}"
     dir_banner = Text.from_markup(
         f"  [{_d_col}]{dir_arrow} {_dir}[/]"
         f"  [{DG}]|[/]  "
@@ -1415,13 +1454,15 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     steps_t.add_column("", width=12, justify="right")
     steps_t.add_column("", ratio=1,  style="grey74")
 
-    s1_rs = "bold on dark_green"     if s1_ok else ""
-    s2_rs = "bold on dark_blue"      if _cs["m15_is_vr"] else "bold on dark_cyan" if _cs["m15_solid"] else ""
-    s3_rs = ("bold on dark_green" if cf_type in ("MINOR_CF","CF_LOW") else "bold on dark_red") if cf_fired else ""
+    s1_rs  = "bold on dark_green"     if s1_ok else ""
+    s1b_rs = ("bold on dark_blue" if _h1_is_vr else "bold on dark_cyan") if s1b_ok else ""
+    s2_rs  = "bold on dark_blue"      if _cs["m15_is_vr"] else "bold on dark_cyan" if _cs["m15_solid"] else ""
+    s3_rs  = ("bold on dark_green" if cf_type in ("MINOR_CF","CF_LOW","H4_CF_HIGH") else "bold on dark_red") if cf_fired else ""
 
-    steps_t.add_row(_sicon(s1_ok), "M30_CMP",   s1_lbl, s1_sub, style=s1_rs)
-    steps_t.add_row(_sicon(s2_ok), "M15_STATE", s2_lbl, s2_sub, style=s2_rs)
-    steps_t.add_row(_sicon(s3_ok), "CF_ENTRY",  s3_lbl, s3_sub, style=s3_rs)
+    steps_t.add_row(_sicon(s1_ok),  "H4_CMP",   s1_lbl,  s1_sub,  style=s1_rs)
+    steps_t.add_row(_sicon(s1b_ok), "H1_GATE",  s1b_lbl, s1b_sub, style=s1b_rs)
+    steps_t.add_row(_sicon(s2_ok),  "M15_STATE",s2_lbl,  s2_sub,  style=s2_rs)
+    steps_t.add_row(_sicon(s3_ok),  "CF_ENTRY", s3_lbl,  s3_sub,  style=s3_rs)
 
     ctx_t = Table(box=None, expand=True, show_header=False, padding=(0, 1))
     ctx_t.add_column("", width=9, style="white")

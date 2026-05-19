@@ -146,24 +146,58 @@ class BacktestAnalyst:
 
     def get_signal(self) -> dict | None:
         """
-        Deteksi signal entry — logic identik dengan get_strike_signal() di engine,
-        termasuk CF_HIGH fix (m5.vr_occurred) yang sudah kita terapkan.
+        Deteksi signal entry — identik dengan get_strike_signal() di engine.
+        Pasangan TF per doctrine: H4(dir)→H1(VR)→M30/M15/M5(CF).
+        VR hanya sekali, CF bisa berkali-kali selama H4 CMP valid.
         """
         h4  = self.states["H4"]
+        h1  = self.states["H1"]
         m30 = self.states["M30"]
         m15 = self.states["M15"]
         m5  = self.states["M5"]
 
-        if m30.cmp == "WAIT":
+        # H4 = direction master
+        direction = h4.cmp
+        if direction == "WAIT":
             return None
 
-        direction = m30.cmp
+        # ── PREREQUISITE: H1 harus sudah VR ke H4 ────────────────────────────────
+        h1_is_vr = (
+            h1.cmp != direction and
+            h1.cmp != "WAIT" and
+            h1.cmp_change_time > h4.cmp_change_time
+        )
+        h1_is_cf = (
+            h1.vr_occurred and
+            h1.cmp == direction and
+            h1.cmp_change_time > getattr(h1, "vr_change_time", 0)
+        )
 
-        # Guard: M30 VR ke H4 = block entry
-        if h4.cmp != "WAIT" and m30.cmp != h4.cmp:
+        if not h1_is_vr and not h1_is_cf:
             return None
 
-        # Evaluasi M15 relative to M30
+        # ── H4_CF_HIGH: H1 masih VR + M30 BO direction ───────────────────────────
+        if h1_is_vr:
+            if (m30.cmp == direction and
+                m30.cmp != "WAIT" and
+                m30.cmp_change_time > h1.cmp_change_time):
+                return {
+                    "action":   direction,
+                    "type":     "H4_CF_HIGH",
+                    "sl_price": h1.sup if direction == "BUY" else h1.res,
+                    "tp_price": h4.res if direction == "BUY" else h4.sup,
+                }
+            return None
+
+        # ── H1 sudah CF: sub-chain M30 → M15 → M5 ───────────────────────────────
+        m30_is_vr = (
+            m30.cmp != direction and
+            m30.cmp != "WAIT" and
+            m30.cmp_change_time > h1.cmp_change_time
+        )
+        if m30_is_vr:
+            return None
+
         m15_is_vr = (
             m15.cmp != direction and
             m15.cmp != "WAIT" and
@@ -171,7 +205,6 @@ class BacktestAnalyst:
         )
         m15_solid = (m15.cmp == direction and not m15_is_vr)
 
-        # M30 masih alive? (jika M30 flip setelah M15 VR = setup batal)
         if m15_is_vr and m30.cmp_change_time > m15.cmp_change_time:
             return None
 
@@ -192,9 +225,10 @@ class BacktestAnalyst:
         if not m15_is_vr:
             return None
 
-        # ③ CF_LOW: M15 VR → M15 sendiri CF
-        if (m15.cmp == direction and m15.vr_occurred and
-                m15.cmp_change_time > getattr(m15, "vr_change_time", 0)):
+        # ② CF_LOW: M15 VR → M15 CF
+        if (m15.vr_occurred and
+            m15.cmp == direction and
+            m15.cmp_change_time > getattr(m15, "vr_change_time", 0)):
             return {
                 "action":   direction,
                 "type":     "CF_LOW",
@@ -202,12 +236,11 @@ class BacktestAnalyst:
                 "tp_price": m30.res if direction == "BUY" else m30.sup,
             }
 
-        # ② CF_HIGH: M15 VR, M5 CF (m5.vr_occurred enforced — Iron Law fix)
-        if (m15.cmp != direction and
-                m5.vr_occurred and
-                m5.cmp == direction and
-                m5.cmp_change_time > m15.cmp_change_time and
-                m5.cmp_change_time > getattr(m5, "vr_change_time", 0)):
+        # ③ CF_HIGH: M15 masih VR, M5 CF
+        if (m5.vr_occurred and
+            m5.cmp == direction and
+            m5.cmp_change_time > m15.cmp_change_time and
+            m5.cmp_change_time > getattr(m5, "vr_change_time", 0)):
             return {
                 "action":   direction,
                 "type":     "CF_HIGH",
