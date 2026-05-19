@@ -608,64 +608,123 @@ def build_neural_flow_panel(frame, analyst, _cs, h4_dir):
     def tag(ok, yes_txt, no_txt):
         return f"[{MG}]{yes_txt}[/]" if ok else f"[{DG}]{no_txt}[/]"
 
-    roles = _cs.get("cascade_roles", {})
-    cf_ready = _cs.get("cf_ready", False)
-    cf_type  = _cs.get("cf_type", "")
+    cf_ready  = _cs.get("cf_ready", False)
+    cf_type   = _cs.get("cf_type", "")
+    m15_is_vr = _cs.get("m15_is_vr", False)
+    m15_solid = _cs.get("m15_solid", False)
+    direction = _cs.get("direction", h4_dir)
 
-    macro_ok = all(analyst.states[t].cmp == h4_dir for t in ["MN1", "W1", "D1"]) and h4_dir != "WAIT"
+    # ── Node states sesuai daily deploy chain: H4 → M30 → M15 → M5
+    macro_ok = all(analyst.states[t].cmp == h4_dir for t in ["MN1","W1","D1"]) and h4_dir != "WAIT"
     h4_ok    = analyst.states["H4"].cmp == h4_dir and h4_dir != "WAIT"
-    h1_ok    = (analyst.states["H1"].cmp == h4_dir or roles.get("H1") == "VR") and h4_dir != "WAIT"
-    m30_ok   = analyst.states["M30"].cmp == h4_dir and h4_dir != "WAIT"
-    m15_vr   = _cs.get("m15_is_vr", False)
-    m5_cf    = cf_ready
+    m30_cmp  = analyst.states["M30"].cmp
+    m15_cmp  = analyst.states["M15"].cmp
+    m5_cmp   = analyst.states["M5"].cmp
 
-    strength = sum([macro_ok, h4_ok, m30_ok, m15_vr, m5_cf])
+    # Step 1: M30 CMP locked (aligned H4)
+    m30_locked = m30_cmp == h4_dir and h4_dir != "WAIT"
+    # Step 2: M15 VR aktif (counter H4 = VR) atau SOLID
+    m15_active = m15_is_vr or m15_solid
+    m15_vr_dir = m15_cmp != h4_dir and m15_cmp != "WAIT"   # M15 counter H4
+    # Step 3: M5 CF fired
+    m5_cf = cf_ready
+
+    # M5 state label
+    m5_state = ""
+    if cf_ready:
+        m5_state = f"[blink bold {MG}] ⚡ CF::FIRE ⚡ [/]" if BLINK else f"[bold {MG}] ◉ CF READY [/]"
+    elif m15_is_vr and m5_cmp == h4_dir:
+        m5_state = f"[{CC}] CF_ZONE [/]"
+    elif m15_solid and m5_cmp != m15_cmp and m5_cmp != "WAIT":
+        m5_state = f"[yellow] VR→M15 [/]"
+    elif m15_active:
+        m5_state = f"[{DG}]standby...[/]"
+    else:
+        m5_state = f"[{DG}]standby...[/]"
+
+    # M15 state label
+    if m15_is_vr:
+        m15_lbl = "VR ⚡" if BLINK else "VR ·"
+        m15_bg  = "dark_blue"
+    elif m15_solid:
+        m15_lbl = "SOLID ▣"
+        m15_bg  = "grey23"
+    else:
+        m15_lbl = "M15"
+        m15_bg  = "grey19"
+
+    # M30 state label
+    if m30_locked:
+        m30_lbl = "M30 CMP"
+        m30_bg  = "dark_green"
+    elif m30_cmp != "WAIT":
+        m30_lbl = "VR→H1 ⚡" if BLINK else "VR→H1"
+        m30_bg  = "dark_blue"
+    else:
+        m30_lbl = "M30"
+        m30_bg  = "grey19"
+
+    # Chain strength: 4 steps
+    strength = sum([macro_ok, h4_ok, m30_locked, m15_active, m5_cf])
     str_col  = MG if strength >= 4 else GD if strength >= 2 else RD
     str_bar  = _bar(strength * 2, 10, fill_color=str_col, empty_color="grey19", fill_char="▰", empty_char="▱")
-
-    cf_label = (
-        f"[blink bold bright_green] ⚡ CF::FIRE ⚡ [/]" if BLINK and m5_cf
-        else f"[bold bright_green] ◉ CF READY  [/]" if m5_cf
-        else f"[{DG}]standby...[/]"
-    )
-
     aligned_n = sum(1 for tf in ["MN1","W1","D1","H4","H1","M30","M15","M5"]
                     if analyst.states[tf].cmp == h4_dir and h4_dir != "WAIT")
 
+    # ── Layout: MACRO → H4 → M30 → M15 → M5 (chain utama daily deploy)
     lines = [
-        Text.from_markup(f"  [{DG}]{'─'*46}[/]"),
+        Text.from_markup(f"  [{DG}]{'─'*48}[/]"),
+
+        # Baris 1: MACRO → H4 MASTER
         Text.from_markup(
             f"  {node('MACRO', macro_ok, 'dark_green')}"
             f"{pipe(macro_ok, GD)}"
             f"{node('H4 ★ MASTER', h4_ok, 'dark_goldenrod')}"
-            f"  {tag(h4_ok, f'DIR::{h4_dir} ▼', 'WAIT...')}"
+            f"  [{BY}]DIR::{h4_dir}[/] "
+            f"[{'bright_green' if h4_dir=='BUY' else 'bright_red'}]{'▲' if h4_dir=='BUY' else '▼'}[/]"
         ),
-        Text.from_markup(f"  [{DG}]{'─'*46}[/]"),
+
+        Text.from_markup(f"  [{DG}]{'─'*48}[/]"),
         Text(""),
+
+        # Baris 2: H4 → M30 CMP (step 1)
         Text.from_markup(
-            f"  [{DG}]           ↓[/]\n"
-            f"  {node('H1', h1_ok, 'dark_blue')}"
-            f"{pipe(h1_ok)}"
-            f"{node('M30', m30_ok, 'dark_green')}"
-            f"  {tag(m30_ok, 'CMP locked ✅', 'waiting M30...')}"
+            f"  [{DG}]        ↓  Step 1[/]\n"
+            f"  {node(m30_lbl, m30_locked or (m30_cmp!='WAIT'), m30_bg)}"
+            f"  "
+            f"{'[bold bright_cyan]CMP locked ✅[/]' if m30_locked else '[yellow]VR ke H1 (pullback)[/]' if m30_cmp!='WAIT' else f'[{DG}]waiting M30...[/]'}"
         ),
+
         Text(""),
+
+        # Baris 3: M30 → M15 VR (step 2)
         Text.from_markup(
-            f"  [{DG}]                    ↓[/]\n"
-            f"  {node('M15', m15_vr, 'dark_blue')}"
-            f"{pipe(m15_vr, CC)}"
+            f"  [{DG}]        ↓  Step 2[/]\n"
+            f"  {pipe(m15_active, CC)}"
+            f"{node(m15_lbl, m15_active, m15_bg)}"
+            f"  "
+            f"{'[bold bright_cyan]VR aktif ✅[/]' if m15_is_vr else '[white]SOLID (counter M30)[/]' if m15_solid else f'[{DG}]waiting M15 VR...[/]'}"
+        ),
+
+        Text(""),
+
+        # Baris 4: M15 → M5 CF (step 3)
+        Text.from_markup(
+            f"  [{DG}]        ↓  Step 3[/]\n"
+            f"  {pipe(m5_cf, MG)}"
             f"{node('M5', m5_cf, 'dark_green', fire=m5_cf)}"
-            f"  {cf_label}"
+            f"  {m5_state}"
         ),
+
         Text(""),
-        Text.from_markup(f"  [{DG}]{'─'*46}[/]"),
+        Text.from_markup(f"  [{DG}]{'─'*48}[/]"),
         Text.from_markup(
-            f"  [{DG}]CHAIN STRENGTH[/]  {str_bar}  [{str_col}]{strength}/5[/]"
-            f"   [{DG}]ALIGN[/] [{MG}]{aligned_n}/8[/]"
+            f"  [{DG}]CHAIN[/] {str_bar} [{str_col}]{strength}/5[/]"
+            f"   [{DG}]ALIGN[/] [{MG}]{aligned_n}/8 TF[/]"
         ),
     ]
 
-    border = (MG if BLINK else "green") if m5_cf else (CC if m15_vr else DG)
+    border = (MG if BLINK else "green") if m5_cf else (CC if m15_active else DG)
     return Panel(RichGroup(*lines), title=_T_local("NEURAL.FLOW"), border_style=border, padding=(0, 1))
 
 
