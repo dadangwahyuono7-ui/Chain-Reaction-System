@@ -1233,7 +1233,6 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         return (f"[{MG}]▣[/]" if BLINK else f"[green]▣[/]") if ok else f"[{DG}]□[/]"
 
     s1_ok  = _cs["step1_ok"]
-    s1b_ok = _cs.get("h1_is_vr", False) or _cs.get("h1_is_cf", False)  # H1 VR gate
     s2_ok  = _cs["m15_is_vr"] or _cs["m15_solid"]
     s3_ok  = cf_fired
 
@@ -1241,18 +1240,21 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     s1_lbl = f"[{_d_col}]{_dir}[/]" if s1_ok else f"[{DG}]──[/]"
     s1_sub = "H4 direction locked"    if s1_ok else "Tunggu breakout H4"
 
-    # Step 1b: H1 VR gate (new — doctrine)
+    # H1 info (bukan gate — H1 belum VR = arah kuat, tetap bisa CONTI)
     _h1_is_vr = _cs.get("h1_is_vr", False)
     _h1_is_cf = _cs.get("h1_is_cf", False)
     if _h1_is_vr:
+        s1b_ok  = True
         s1b_lbl = f"[blink {CC}]H1 VR[/]" if BLINK else f"[{CC}]H1 VR[/]"
-        s1b_sub = f"H1 counter {_dir} — menunggu CF"
+        s1b_sub = f"H1 VR ke H4 — tunggu M30 CF (H4_CF_HIGH)"
     elif _h1_is_cf:
-        s1b_lbl = f"[{MG}]H1 CF[/]"
-        s1b_sub = "H1 sudah VR → CF ke H4"
+        s1b_ok  = True
+        s1b_lbl = f"[{MG}]H1 CF ✓[/]"
+        s1b_sub = "H1 sudah VR → CF, sub-chain aktif"
     else:
-        s1b_lbl = f"[{DG}]H1 ──[/]"
-        s1b_sub = "Tunggu H1 VR ke H4"
+        s1b_ok  = True  # bukan blocking — H1 belum VR = CONTI territory
+        s1b_lbl = f"[{MG}]CONTI[/]"
+        s1b_sub = "H4 kuat, H1 belum VR — CONTI entry"
 
     # Step 2: M15 state
     if _cs["m15_is_vr"]:
@@ -1293,25 +1295,23 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     _ready_bar  = _bar(_r_fill, _rw, fill_color=_r_col, empty_color="grey19", fill_char="█", empty_char="░")
 
     if not s1_ok:
-        next_txt = ">> SCAN H4 SNR...";           next_bc = DG
-    elif not s1b_ok:
-        next_txt = f">> WAIT H1.vr({_opp})";      next_bc = CC
+        next_txt = ">> SCAN H4 SNR...";                           next_bc = DG
     elif _cs.get("m30_broken"):
-        next_txt = "!! SETUP BATAL — M30 BREAK";  next_bc = RD
+        next_txt = "!! SETUP BATAL — M30 BREAK";                  next_bc = RD
     elif cf_fired and cf_type == "H4_CF_HIGH":
-        next_txt = ">> H4_CF_HIGH::FIRE() ⚡";    next_bc = "magenta"
+        next_txt = ">> H4_CF_HIGH::FIRE() ⚡";                    next_bc = "magenta"
     elif cf_fired and cf_type == "MINOR_CF":
-        next_txt = ">> SAFEST_ENTRY::FIRE()";      next_bc = MG
+        next_txt = ">> SAFEST_ENTRY::FIRE()";                     next_bc = MG
     elif cf_fired and cf_type == "CF_LOW":
-        next_txt = ">> CF_LOW::FIRE()";            next_bc = MG
+        next_txt = ">> CF_LOW::FIRE()";                           next_bc = MG
     elif cf_fired and cf_type == "CF_HIGH":
-        next_txt = ">> CF_HIGH::FIRE()";           next_bc = "yellow"
-    elif _h1_is_vr:
-        next_txt = f">> WAIT M30.cf({_dir}) [H4_CF_HIGH]"; next_bc = "magenta"
+        next_txt = ">> CF_HIGH::FIRE()";                          next_bc = "yellow"
+    elif _h1_is_vr and not cf_fired:
+        next_txt = f">> WAIT M30.cf({_dir}) → H4_CF_HIGH";       next_bc = "magenta"
     elif _cs["m15_solid"]:
-        next_txt = f">> WAIT M5.flip({_opp}) → M5.cf({_dir})"; next_bc = CC
+        next_txt = f">> WAIT M5.flip({_opp}) → M5.cf({_dir})";   next_bc = CC
     elif _cs["m15_is_vr"]:
-        next_txt = f">> WAIT M5.cf({_dir}) || M15.cf({_dir})"; next_bc = CC
+        next_txt = f">> WAIT M5.cf({_dir}) || M15.cf({_dir})";   next_bc = CC
     else:
         next_txt = f">> WAIT M15.solid({_dir}) || M15.vr({_opp})"; next_bc = CC
 

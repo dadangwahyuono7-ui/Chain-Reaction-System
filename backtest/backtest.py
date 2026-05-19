@@ -161,22 +161,16 @@ class BacktestAnalyst:
         if direction == "WAIT":
             return None
 
-        # ── PREREQUISITE: H1 harus sudah VR ke H4 ────────────────────────────────
+        # ── Deteksi fase H1 ──────────────────────────────────────────────────────
+        # H1 belum VR = arah H4 kuat, CONTI territory, sub-chain tetap boleh entry
+        # H1 VR       = H4 sedang ditest → cek H4_CF_HIGH (M30 CF)
         h1_is_vr = (
             h1.cmp != direction and
             h1.cmp != "WAIT" and
             h1.cmp_change_time > h4.cmp_change_time
         )
-        h1_is_cf = (
-            h1.vr_occurred and
-            h1.cmp == direction and
-            h1.cmp_change_time > getattr(h1, "vr_change_time", 0)
-        )
 
-        if not h1_is_vr and not h1_is_cf:
-            return None
-
-        # ── H4_CF_HIGH: H1 masih VR + M30 BO direction ───────────────────────────
+        # ── H4_CF_HIGH: H1 VR + M30 BO direction ────────────────────────────────
         if h1_is_vr:
             if (m30.cmp == direction and
                 m30.cmp != "WAIT" and
@@ -187,15 +181,12 @@ class BacktestAnalyst:
                     "sl_price": h1.sup if direction == "BUY" else h1.res,
                     "tp_price": h4.res if direction == "BUY" else h4.sup,
                 }
-            return None
+            # H1 VR + M30 juga counter → keduanya counter H4 → block
+            if m30.cmp != direction and m30.cmp != "WAIT":
+                return None
 
-        # ── H1 sudah CF: sub-chain M30 → M15 → M5 ───────────────────────────────
-        m30_is_vr = (
-            m30.cmp != direction and
-            m30.cmp != "WAIT" and
-            m30.cmp_change_time > h1.cmp_change_time
-        )
-        if m30_is_vr:
+        # ── GUARD: M30 counter H4 → block ────────────────────────────────────────
+        if m30.cmp != direction and m30.cmp != "WAIT":
             return None
 
         m15_is_vr = (

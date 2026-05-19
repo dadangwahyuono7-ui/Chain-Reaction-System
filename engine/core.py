@@ -215,28 +215,18 @@ class SacredDoctrineAnalyst:
         if direction == "WAIT":
             return None
 
-        # ── PREREQUISITE: H1 harus sudah VR ke H4 ────────────────────────────────
-        # Doctrine: VR terjadi 1 TF di bawah SETUP. Setup = H4 → VR = H1.
-        # Saat H4 BO BUY, semua TF bawah BUY di detik yang sama.
-        # H1 yang PERTAMA kali BO berlawanan = VR ke H4.
+        # ── Deteksi fase H1 (untuk H4_CF_HIGH dan info cascade) ──────────────────
+        # H1 belum VR  = arah H4 masih KUAT, semua TF aligned → CONTI territory
+        # H1 VR        = H4 sedang di-test → tunggu M30 CF (H4_CF_HIGH)
+        # H1 CF        = VR selesai → full sub-chain tersedia
         h1_is_vr = (
             h1.cmp != direction and
             h1.cmp != "WAIT" and
             h1.cmp_change_time > h4.cmp_change_time
         )
-        h1_is_cf = (
-            h1.vr_occurred and
-            h1.cmp == direction and
-            h1.cmp_change_time > getattr(h1, "vr_change_time", 0)
-        )
 
-        # Belum ada H1 VR → belum boleh entry sama sekali
-        if not h1_is_vr and not h1_is_cf:
-            return None
-
-        # ── ④ H4_CF_HIGH: H1 masih VR + M30 BO direction ────────────────────────
+        # ── ④ H4_CF_HIGH: H1 VR + M30 BO direction ──────────────────────────────
         # 3 TF: H4 (direction) → H1 (VR) → M30 (CF HIGH)
-        # Ini adalah entry berisiko tinggi saat H1 belum CF
         if h1_is_vr:
             if (m30.cmp == direction and
                 m30.cmp != "WAIT" and
@@ -249,17 +239,16 @@ class SacredDoctrineAnalyst:
                     "sl_tf":  "H1",
                     "reason": f"H4 {direction} | H1 VR | M30 CF HIGH ⚡"
                 }
-            return None  # H1 VR tapi M30 belum CF → tunggu
+            # H1 VR tapi M30 belum CF → block sub-chain (M30 mungkin counter juga)
+            # Kecuali M30 aligned (M30 belum VR) → tetap boleh CONTI di sub-chain
+            # Jika M30 counter H4 saat H1 VR → kedua TF counter = block
+            if m30.cmp != direction and m30.cmp != "WAIT":
+                return None  # Bahaya: H1 + M30 keduanya counter H4
 
-        # ── H1 sudah CF: sub-chain M30 → M15 → M5 ───────────────────────────────
-        # M30 harus ALIGNED dengan H4 (tidak boleh counter/VR ke H4 setelah H1 CF)
-        m30_is_vr = (
-            m30.cmp != direction and
-            m30.cmp != "WAIT" and
-            m30.cmp_change_time > h1.cmp_change_time
-        )
-        if m30_is_vr:
-            return None  # M30 VR ke H4 setelah H1 CF → block, tunggu M30 CF
+        # ── GUARD: M30 counter H4 = block ────────────────────────────────────────
+        # M30 VR ke H4 (tanpa H1 VR) = M30 melawan direction master → bahaya
+        if m30.cmp != direction and m30.cmp != "WAIT":
+            return None
 
         # M15 state relative to M30 direction
         m15_is_vr = (
@@ -351,35 +340,31 @@ class SacredDoctrineAnalyst:
             h1.cmp_change_time > getattr(h1, "vr_change_time", 0)
         )
 
-        # ── M30 state (setelah H1 CF) ─────────────────────────────────────────────
-        m30_vr_to_h4 = (
-            step1_ok and h1_is_cf and
-            m30.cmp != direction and m30.cmp != "WAIT" and
-            m30.cmp_change_time > h1.cmp_change_time
-        )
-        # H4_CF_HIGH: H1 masih VR + M30 BO direction
+        # ── H4_CF_HIGH: H1 VR + M30 CF ───────────────────────────────────────────
         h4_cf_high_ready = (
             h1_is_vr and
             m30.cmp == direction and m30.cmp != "WAIT" and
             m30.cmp_change_time > h1.cmp_change_time
         )
 
-        # Macro role (untuk backward compat display)
+        # ── M30 state relative to H4 ─────────────────────────────────────────────
+        m30_vr_to_h4_flag = (
+            step1_ok and m30.cmp != direction and m30.cmp != "WAIT"
+        )
+
+        # Macro role
         h1_vr_to_h4 = h1_is_vr
-        if m30_vr_to_h4:
-            macro_role = "VR_H4"
+        if m30_vr_to_h4_flag and not h1_is_vr:
+            macro_role = "VR_H4"        # M30 counter H4 (no H1 VR) — block
         elif h4_cf_high_ready:
-            macro_role = "CF_HIGH_H4"
+            macro_role = "CF_HIGH_H4"   # H1 VR + M30 CF = power signal
         elif h1_is_vr:
             macro_role = "CF_H4"        # H1 VR, M30 belum CF
         else:
-            macro_role = "SOLID_H4"
+            macro_role = "SOLID_H4"     # Semua aligned, CONTI territory
 
-        # M30 VR to H4 (backward compat — sekarang hanya set jika H1 CF + M30 counter)
-        m30_vr_to_h4_flag = m30_vr_to_h4
-
-        # ── M15 state relative to M30 ─────────────────────────────────────────────
-        m30_aligned = (step1_ok and h1_is_cf and not m30_vr_to_h4)
+        # ── M15 state (available when M30 aligned) ───────────────────────────────
+        m30_aligned = (step1_ok and m30.cmp == direction)
         m15_is_vr = (
             m30_aligned and
             m15.cmp != direction and m15.cmp != "WAIT" and
@@ -401,7 +386,7 @@ class SacredDoctrineAnalyst:
             cf_ready = True
             cf_type  = "H4_CF_HIGH"
 
-        elif h1_is_cf:
+        elif m30_aligned:
             if m15_solid:
                 if (m5.vr_occurred and m5.cmp == direction and
                     m5.cmp_change_time > getattr(m5, "vr_change_time", 0) and
@@ -434,13 +419,19 @@ class SacredDoctrineAnalyst:
 
         cascade_depth = len(cascade_tfs)
 
+        h1_is_cf = (
+            step1_ok and
+            h1.vr_occurred and h1.cmp == direction and
+            h1.cmp_change_time > getattr(h1, "vr_change_time", 0)
+        )
+
         return {
             "direction":     direction,
             "opposite":      opp,
             "step1_ok":      step1_ok,
-            # H1 gate (new — doctrine: H1 VR dulu sebelum entry)
-            "h1_is_vr":      h1_is_vr,
-            "h1_is_cf":      h1_is_cf,
+            # H1 phase info (informational, bukan gate)
+            "h1_is_vr":      h1_is_vr,   # H1 sedang VR ke H4 (retracement)
+            "h1_is_cf":      h1_is_cf,   # H1 sudah CF balik ke direction
             # M30/M15 sub-chain
             "m30_aligned":   m30_aligned,
             "m15_is_vr":     m15_is_vr,
