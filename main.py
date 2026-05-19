@@ -361,15 +361,16 @@ def make_layout() -> Layout:
     layout["side"].split_column(
         Layout(name="greeting",  size=3),
         Layout(name="account",   ratio=2),
-        Layout(name="positions", size=6),  # panel posisi terbuka
+        Layout(name="positions", size=6),
         Layout(name="stats",     ratio=2),
-        Layout(name="sentiment", size=5)
+        Layout(name="delta",     size=8),   # NEW: DELTA.FLOW panel
+        Layout(name="sentiment", size=5),
     )
     layout["body"].split_column(
         Layout(name="intel",        size=3),
         Layout(name="heatmap_row",  size=12),
         Layout(name="matrix_row",   ratio=2),
-        Layout(name="liquidity",    size=9),
+        Layout(name="liquidity",    size=6),   # restored
         Layout(name="anim_row",     size=15),
         Layout(name="news_feed",    size=7),
     )
@@ -959,6 +960,64 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         Panel(st_t, title=_T("SYS.METRICS"), border_style=GD, padding=(0, 0))
     )
 
+    # ── DELTA.FLOW  (footprint volume) ────────────────────────────────────────
+    dlt      = get_delta_info(symbol)
+    live_d   = dlt["live_delta"]
+    cum_d    = dlt["cum_delta"]
+    deltas   = dlt["candle_deltas"]
+    method   = dlt["method"]
+    div_warn = dlt["divergence"]
+
+    dlt_t = Table(box=None, expand=True, show_header=False, padding=(0, 1))
+    dlt_t.add_column("", style=DG, width=7)
+    dlt_t.add_column("", ratio=1)
+
+    if deltas:
+        max_abs  = max(abs(d) for d in deltas + [live_d]) or 1.0
+        live_col = MG if live_d >= 0 else RD
+        live_f   = int(abs(live_d) / max_abs * 14)
+        live_bar = _bar(live_f, 14, fill_color=live_col, empty_color="grey19", fill_char="▓", empty_char="░")
+        live_arr = f"[{MG}]▲ BUY[/]"  if live_d >= 0 else f"[{RD}]▼ SELL[/]"
+        dlt_t.add_row("LIVE Δ", Text.from_markup(f"{live_bar} [{live_col}]{live_d:+.2f}[/]  {live_arr}"))
+
+        cum_col = MG if cum_d >= 0 else RD
+        dlt_t.add_row("CUM Δ",  Text.from_markup(f"[{cum_col}]{'▲' if cum_d>=0 else '▼'} {cum_d:+.2f}[/]  [{DG}]{method}[/]"))
+
+        # histogram 8 candle terakhir
+        hist = ""
+        for d in deltas[-8:]:
+            if   d >  max_abs * 0.5: hist += f"[{MG}]█[/]"
+            elif d >  0:             hist += f"[green]▄[/]"
+            elif d < -max_abs * 0.5: hist += f"[{RD}]█[/]"
+            elif d <  0:             hist += f"[red]▄[/]"
+            else:                    hist += f"[{DG}]─[/]"
+        dlt_t.add_row("M5 HIST", Text.from_markup(hist))
+
+        # buy vs sell pressure bar
+        total_abs = abs(live_d) + 0.001
+        buy_pct_d  = max(live_d, 0) / total_abs * 100 if live_d > 0 else 0
+        sell_pct_d = max(-live_d, 0) / total_abs * 100 if live_d < 0 else 0
+        bw_d = 7
+        b_bar_d = _bar(int(buy_pct_d/100*bw_d),  bw_d, fill_color=MG, empty_color="grey19")
+        s_bar_d = _bar(int(sell_pct_d/100*bw_d), bw_d, fill_color=RD, empty_color="grey19")
+        dlt_t.add_row("", Text.from_markup(
+            f"[{MG}]B[/]{b_bar_d}  [{RD}]S[/]{s_bar_d}"
+        ))
+
+        if div_warn:
+            dlt_t.add_row("",
+                Text.from_markup(
+                    f"[blink yellow]⚠ DIVERGENCE[/]" if BLINK else f"[yellow]⚠ DIVERGENCE[/]"
+                )
+            )
+    else:
+        dlt_t.add_row("STATUS", Text.from_markup(f"[{DG}]COLLECTING...[/]"))
+
+    dlt_border = (MG if BLINK else "green") if live_d > 0 else (RD if live_d < 0 else DG)
+    layout["delta"].update(
+        Panel(dlt_t, title=_T("DELTA.FLOW"), border_style=dlt_border, padding=(0, 0))
+    )
+
     # ── SENTIMENT  (SIGNAL SCAN) ───────────────────────────────────────────────
     buy_pct, sell_pct = analyst.get_total_sentiment()
     regime, _         = analyst.get_market_regime()
@@ -1258,46 +1317,6 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
             f"  {adr_bar} [{adr_col}]{adr_pct:.0f}%[/]"
         )
         liq_t.add_row(Text.from_markup(adr_txt))
-
-    # ── DELTA FLOW (footprint) ──────────────────────────────────────────────
-    dlt = get_delta_info(symbol)
-    if dlt["candle_deltas"]:
-        live_d   = dlt["live_delta"]
-        cum_d    = dlt["cum_delta"]
-        deltas   = dlt["candle_deltas"]
-        method   = dlt["method"]
-        div_warn = dlt["divergence"]
-
-        # live delta bar
-        live_col = MG if live_d >= 0 else RD
-        max_abs  = max(abs(d) for d in deltas + [live_d]) or 1.0
-        live_f   = int(abs(live_d) / max_abs * 18)
-        live_bar = _bar(live_f, 18, fill_color=live_col, empty_color="grey19", fill_char="▓", empty_char="░")
-        live_arr = f"[{MG}]▲ BUY[/]" if live_d >= 0 else f"[{RD}]▼ SELL[/]"
-        liq_t.add_row(Text.from_markup(
-            f"  [{DG}]LIVE Δ[/]  {live_bar}  [{live_col}]{live_d:+.2f}[/]  {live_arr}"
-            f"  [{DG}][{method}][/]"
-        ))
-
-        # cumulative delta + mini histogram
-        cum_col  = MG if cum_d >= 0 else RD
-        cum_arr  = "▲" if cum_d >= 0 else "▼"
-        hist_str = ""
-        for d in deltas[-8:]:
-            if d > max_abs * 0.4:   hist_str += f"[{MG}]█[/]"
-            elif d > 0:             hist_str += f"[green]▄[/]"
-            elif d < -max_abs * 0.4: hist_str += f"[{RD}]█[/]"
-            elif d < 0:             hist_str += f"[red]▄[/]"
-            else:                   hist_str += f"[{DG}]─[/]"
-        liq_t.add_row(Text.from_markup(
-            f"  [{DG}]CUM  Δ[/]  {hist_str}  [{cum_col}]{cum_arr}{cum_d:+.2f}[/]"
-        ))
-
-        # divergence warning
-        if div_warn:
-            div_txt = f"[blink bold yellow]⚠ DIVERGENCE: harga vs delta berlawanan → waspadai reversal[/]" if BLINK \
-                      else f"[bold yellow]⚠ DIVERGENCE: harga vs delta berlawanan → waspadai reversal[/]"
-            liq_t.add_row(Text.from_markup(div_txt))
 
     layout["liquidity"].update(
         Panel(liq_t, title=_T("ZONE.RADAR"), border_style=CC, padding=(0, 1))
