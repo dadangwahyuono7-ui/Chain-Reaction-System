@@ -680,8 +680,8 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     steps_t.add_column("", width=12, justify="right")
     steps_t.add_column("", ratio=1,  style="grey74")
 
-    s1_rs = "bold on grey19"         if s1_ok else ""
-    s2_rs = "bold on dark_blue"      if _cs["m15_is_vr"] else "bold on grey19" if _cs["m15_solid"] else ""
+    s1_rs = "bold on dark_green"     if s1_ok else ""
+    s2_rs = "bold on dark_blue"      if _cs["m15_is_vr"] else "bold on dark_cyan" if _cs["m15_solid"] else ""
     s3_rs = ("bold on dark_green" if cf_type in ("MINOR_CF","CF_LOW") else "bold on dark_red") if cf_fired else ""
 
     steps_t.add_row(_sicon(s1_ok), "M30_CMP",   s1_lbl, s1_sub, style=s1_rs)
