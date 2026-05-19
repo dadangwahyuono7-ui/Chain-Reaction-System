@@ -53,19 +53,36 @@ PIP = 0.1   # 1 pip Gold = 0.1 USD
 def load_historical_data(symbol: str, start: datetime, end: datetime) -> dict:
     """
     Ambil data historical dari MT5 untuk semua TF.
-    Tambah buffer 1 tahun ke belakang supaya higher TF punya context cukup
-    untuk initialize_cmp() di startup.
+    Buffer berbeda per TF — TF kecil pakai buffer pendek supaya MT5
+    tidak timeout, TF besar butuh context lebih panjang untuk initialize_cmp().
     """
-    all_data = {}
-    start_buffer = start - timedelta(days=365)
+    # Buffer per TF (hari) — makin kecil TF makin pendek buffernya
+    TF_BUFFER = {
+        "MN1": 730, "W1": 730, "D1": 365,
+        "H4":  180, "H1":  90,
+        "M30":  60, "M15": 30, "M5": 14,
+    }
 
+    all_data = {}
     console.print(f"\n[bold cyan]Loading historical data: {symbol}[/]")
+
     for tf_name, mt5_tf in MT5_TFS.items():
-        rates = mt5.copy_rates_range(symbol, mt5_tf, start_buffer, end)
+        buf_days    = TF_BUFFER.get(tf_name, 60)
+        start_fetch = start - timedelta(days=buf_days)
+
+        rates = mt5.copy_rates_range(symbol, mt5_tf, start_fetch, end)
+
+        # Fallback: jika gagal, coba tanpa buffer (hanya periode backtest)
         if rates is None or len(rates) == 0:
-            console.print(f"  [yellow]WARN:[/] {tf_name} — no data")
+            console.print(f"  [yellow]RETRY[/] {tf_name} — coba tanpa buffer...")
+            rates = mt5.copy_rates_range(symbol, mt5_tf, start, end)
+
+        if rates is None or len(rates) == 0:
+            console.print(f"  [red]WARN:[/] {tf_name} — no data "
+                          f"[grey62](load history di MT5: Tools → History Center)[/]")
             all_data[tf_name] = pd.DataFrame()
             continue
+
         df = pd.DataFrame(rates)
         df["time"] = pd.to_datetime(df["time"], unit="s")
         all_data[tf_name] = df
@@ -537,3 +554,39 @@ def print_report(trades, equity_curve, initial_balance, final_balance,
                       f"End: {equity_curve[-1]:,.2f}  "
                       f"({'[bright_green]+' if final_balance>=initial_balance else '[bright_red]'}"
                       f"{final_balance-initial_balance:+,.2f}[/])[/]")
+
+
+# ── Entry point (bisa run langsung: python backtest.py) ───────────────────────
+
+if __name__ == "__main__":
+    from engine.connection import connect_mt5
+
+    # ═══════════════════════════ CONFIG ═══════════════════════════
+    SYMBOL          = "XAUUSD"
+    START_DATE      = "2025-01-01"
+    END_DATE        = "2025-12-31"
+    INITIAL_BALANCE = 10_000.0
+    SL_BUFFER_PIPS  = 5.0      # buffer pips di luar SNR
+    RR_RATIO        = 0.0      # 0=SNR natural, 2.0=fixed 1:2 RR
+    COOLDOWN_BARS   = 12       # cooldown M5 bars setelah trade (12=1 jam)
+    # ══════════════════════════════════════════════════════════════
+
+    console.print("[bold cyan]CHAIN REACTION v4.0 — BACKTEST MODE[/]")
+    console.print("[grey62]Sacred Doctrine Engine — Historical Performance Audit[/]\n")
+
+    if not connect_mt5():
+        console.print("[red]ERROR: MT5 connection failed[/]")
+    else:
+        try:
+            run_backtest(
+                symbol          = SYMBOL,
+                start           = START_DATE,
+                end             = END_DATE,
+                initial_balance = INITIAL_BALANCE,
+                sl_buffer_pips  = SL_BUFFER_PIPS,
+                rr_ratio        = RR_RATIO,
+                cooldown_bars   = COOLDOWN_BARS,
+            )
+        finally:
+            mt5.shutdown()
+            console.print("\n[grey62]MT5 disconnected.[/]")
