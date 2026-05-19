@@ -491,11 +491,11 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
             row_s_role = ""
         elif tf == "H1":
             cr = cascade_roles.get("H1", "")
-            if cr == "VR" or (cmp_val != direction and cmp_val != "WAIT"):
-                # H1 counter H4 = H1 adalah VR
+            # H1 VR = H1 counter H4 master (bukan counter M30/direction!)
+            if cr == "VR" or (cmp_val != h4_dir and cmp_val != "WAIT"):
                 lbl = "H1_VR ⚡" if BLINK else "H1_VR ·"
                 role_cell = f"[bold white on dark_blue] {lbl} [/]"
-            elif cmp_val == direction:
+            elif cmp_val == h4_dir:
                 role_cell = f"[bold bright_cyan]H1_CMP[/]"
             else:
                 role_cell = f"[{DG}]H1_WAIT[/]"
