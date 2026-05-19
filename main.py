@@ -486,16 +486,26 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
             row_s_role = ""
         elif tf == "H1":
             cr = cascade_roles.get("H1", "")
-            if cr == "VR":
-                role_cell = f"[bold white on dark_blue] H1_VR [/]"
+            if cr == "VR" or (cmp_val != direction and cmp_val != "WAIT"):
+                # H1 counter H4 = H1 adalah VR
+                lbl = "H1_VR ⚡" if BLINK else "H1_VR ·"
+                role_cell = f"[bold white on dark_blue] {lbl} [/]"
+            elif cmp_val == direction:
+                role_cell = f"[bold bright_cyan]H1_CMP[/]"
             else:
-                role_cell = f"[white]H1_CMP[/]" if aligned_cmp else f"[{DG}]H1_CMP[/]"
+                role_cell = f"[{DG}]H1_WAIT[/]"
             row_s_role = ""
         elif tf == "M30":
-            if cmp_val != "WAIT":
+            h1_cmp = analyst.states["H1"].cmp
+            if cmp_val == "WAIT":
+                role_cell = f"[{DG}]WAIT[/]"
+            elif cmp_val == direction:
+                # M30 aligned H4 = CMP setup confirmed
                 role_cell = f"[bold bright_cyan]SETUP_CMP[/]"
             else:
-                role_cell = f"[{DG}]WAIT[/]"
+                # M30 counter H4/H1 = VR ke H1
+                lbl = "VR→H1 ⚡" if BLINK else "VR→H1 ·"
+                role_cell = f"[bold white on dark_blue] {lbl} [/]"
             row_s_role = ""
         elif tf == "M15":
             if m15_is_vr:
@@ -1186,8 +1196,12 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
             r_lbl = "H1_VR" if (st.cmp!="WAIT" and st.cmp!=_h4_dir) else "H1_CMP"
             r_col = CC if "VR" in r_lbl else "white"
         elif tf == "M30":
-            r_lbl = "SETUP_CMP" if st.cmp!="WAIT" else "WAIT"
-            r_col = BC if st.cmp!="WAIT" else "dim"
+            if st.cmp == "WAIT":
+                r_lbl = "WAIT";     r_col = "dim"
+            elif st.cmp == _h4_dir:
+                r_lbl = "SETUP_CMP"; r_col = BC
+            else:
+                r_lbl = "VR→H1";    r_col = CC   # M30 counter H4 = VR ke H1
         elif tf == "M15":
             if _cs["m15_is_vr"]:    r_lbl = "VR ⚡";    r_col = CC
             elif _cs["m15_solid"]:  r_lbl = "SOLID ▣";  r_col = MG
