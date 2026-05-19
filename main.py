@@ -249,6 +249,107 @@ def get_open_positions_summary(symbol, magic):
         })
     return rows
 
+_DELTA_CACHE     = {"live_delta":0.0,"live_buy":0.0,"live_sell":0.0,
+                    "cum_delta":0.0,"candle_deltas":[],"divergence":False,"method":"──"}
+_DELTA_LAST_FETCH = 0.0
+
+def get_delta_info(symbol, n_candles=8):
+    """Delta volume: buy pressure vs sell pressure per candle M5.
+    Method 1 (TICK): pakai tick flags BUY/SELL dari broker.
+    Method 2 (APPROX): fallback — estimasi dari body candle.
+    Cache 10 detik agar tidak berat.
+    """
+    global _DELTA_CACHE, _DELTA_LAST_FETCH
+    if time.time() - _DELTA_LAST_FETCH < 10:
+        return _DELTA_CACHE
+    try:
+        # ── ambil M5 candles untuk batas waktu tiap candle
+        rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M5, 0, n_candles + 2)
+        if rates is None or len(rates) < 2:
+            return _DELTA_CACHE
+
+        # ── coba ambil tick data (TRADE ticks)
+        from_time = datetime.fromtimestamp(int(rates[0]['time'])) - timedelta(minutes=2)
+        ticks = mt5.copy_ticks_from(symbol, from_time, 15000, mt5.COPY_TICKS_TRADE)
+
+        candle_deltas = []
+
+        if ticks is not None and len(ticks) > 10:
+            # ── METHOD: TICK FLAGS
+            method = "TICK"
+            for i in range(len(rates) - 1):
+                t_open  = int(rates[i]['time'])
+                t_close = int(rates[i + 1]['time'])
+                c_buy = c_sell = 0.0
+                for t in ticks:
+                    if not (t_open <= int(t['time']) < t_close):
+                        continue
+                    vol   = float(t['volume']) or 1.0
+                    flags = int(t['flags'])
+                    if flags & 32:          # TICK_FLAG_BUY
+                        c_buy  += vol
+                    elif flags & 64:        # TICK_FLAG_SELL
+                        c_sell += vol
+                    else:                   # fallback: posisi harga vs midpoint
+                        mid = (float(t['bid']) + float(t['ask'])) / 2.0
+                        if float(t['ask']) >= mid:
+                            c_buy  += vol
+                        else:
+                            c_sell += vol
+                candle_deltas.append(c_buy - c_sell)
+
+            # live candle (candle yang masih berjalan)
+            t_live = int(rates[-1]['time'])
+            live_buy = live_sell = 0.0
+            for t in ticks:
+                if int(t['time']) >= t_live:
+                    vol   = float(t['volume']) or 1.0
+                    flags = int(t['flags'])
+                    if flags & 32:
+                        live_buy  += vol
+                    elif flags & 64:
+                        live_sell += vol
+            live_delta = live_buy - live_sell
+        else:
+            # ── METHOD: APPROX (body candle)
+            method = "APPROX"
+            for r in rates[:-1]:
+                rng = float(r['high']) - float(r['low'])
+                if rng == 0:
+                    candle_deltas.append(0.0)
+                    continue
+                direction  = 1.0 if float(r['close']) >= float(r['open']) else -1.0
+                body_ratio = abs(float(r['close']) - float(r['open'])) / rng
+                candle_deltas.append(direction * body_ratio * 100)
+            live_delta = candle_deltas[-1] if candle_deltas else 0.0
+            live_buy   = max(live_delta, 0)
+            live_sell  = max(-live_delta, 0)
+
+        cum_delta = sum(candle_deltas)
+
+        # ── deteksi divergence: harga naik tapi delta turun (atau sebaliknya)
+        divergence = False
+        if len(rates) >= 4 and len(candle_deltas) >= 3:
+            price_dir = float(rates[-2]['close']) - float(rates[-4]['close'])
+            delta_dir = sum(candle_deltas[-3:])
+            if (price_dir > 0.1 and delta_dir < -0.3) or (price_dir < -0.1 and delta_dir > 0.3):
+                divergence = True
+
+        _DELTA_CACHE = {
+            "live_delta":    live_delta,
+            "live_buy":      live_buy,
+            "live_sell":     live_sell,
+            "cum_delta":     cum_delta,
+            "candle_deltas": candle_deltas[-n_candles:],
+            "divergence":    divergence,
+            "method":        method,
+        }
+        _DELTA_LAST_FETCH = time.time()
+    except Exception:
+        pass
+    return _DELTA_CACHE
+
+
 def make_layout() -> Layout:
     layout = Layout(name="root")
     layout.split_column(
@@ -268,7 +369,7 @@ def make_layout() -> Layout:
         Layout(name="intel",        size=3),
         Layout(name="heatmap_row",  size=12),
         Layout(name="matrix_row",   ratio=2),
-        Layout(name="liquidity",    size=6),
+        Layout(name="liquidity",    size=9),
         Layout(name="anim_row",     size=15),
         Layout(name="news_feed",    size=7),
     )
@@ -1157,6 +1258,46 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
             f"  {adr_bar} [{adr_col}]{adr_pct:.0f}%[/]"
         )
         liq_t.add_row(Text.from_markup(adr_txt))
+
+    # ── DELTA FLOW (footprint) ──────────────────────────────────────────────
+    dlt = get_delta_info(symbol)
+    if dlt["candle_deltas"]:
+        live_d   = dlt["live_delta"]
+        cum_d    = dlt["cum_delta"]
+        deltas   = dlt["candle_deltas"]
+        method   = dlt["method"]
+        div_warn = dlt["divergence"]
+
+        # live delta bar
+        live_col = MG if live_d >= 0 else RD
+        max_abs  = max(abs(d) for d in deltas + [live_d]) or 1.0
+        live_f   = int(abs(live_d) / max_abs * 18)
+        live_bar = _bar(live_f, 18, fill_color=live_col, empty_color="grey19", fill_char="▓", empty_char="░")
+        live_arr = f"[{MG}]▲ BUY[/]" if live_d >= 0 else f"[{RD}]▼ SELL[/]"
+        liq_t.add_row(Text.from_markup(
+            f"  [{DG}]LIVE Δ[/]  {live_bar}  [{live_col}]{live_d:+.2f}[/]  {live_arr}"
+            f"  [{DG}][{method}][/]"
+        ))
+
+        # cumulative delta + mini histogram
+        cum_col  = MG if cum_d >= 0 else RD
+        cum_arr  = "▲" if cum_d >= 0 else "▼"
+        hist_str = ""
+        for d in deltas[-8:]:
+            if d > max_abs * 0.4:   hist_str += f"[{MG}]█[/]"
+            elif d > 0:             hist_str += f"[green]▄[/]"
+            elif d < -max_abs * 0.4: hist_str += f"[{RD}]█[/]"
+            elif d < 0:             hist_str += f"[red]▄[/]"
+            else:                   hist_str += f"[{DG}]─[/]"
+        liq_t.add_row(Text.from_markup(
+            f"  [{DG}]CUM  Δ[/]  {hist_str}  [{cum_col}]{cum_arr}{cum_d:+.2f}[/]"
+        ))
+
+        # divergence warning
+        if div_warn:
+            div_txt = f"[blink bold yellow]⚠ DIVERGENCE: harga vs delta berlawanan → waspadai reversal[/]" if BLINK \
+                      else f"[bold yellow]⚠ DIVERGENCE: harga vs delta berlawanan → waspadai reversal[/]"
+            liq_t.add_row(Text.from_markup(div_txt))
 
     layout["liquidity"].update(
         Panel(liq_t, title=_T("ZONE.RADAR"), border_style=CC, padding=(0, 1))
