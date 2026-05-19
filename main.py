@@ -260,7 +260,7 @@ def get_delta_info(symbol, n_candles=8):
     Cache 10 detik agar tidak berat.
     """
     global _DELTA_CACHE, _DELTA_LAST_FETCH
-    if time.time() - _DELTA_LAST_FETCH < 10:
+    if time.time() - _DELTA_LAST_FETCH < 2:
         return _DELTA_CACHE
     try:
         # ── ambil M5 candles untuk batas waktu tiap candle
@@ -968,6 +968,11 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     method   = dlt["method"]
     div_warn = dlt["divergence"]
 
+    # animasi per-frame: last_update countdown + pulsing bar tip
+    secs_ago = int(time.time() - _DELTA_LAST_FETCH)
+    upd_col  = MG if secs_ago < 3 else "yellow" if secs_ago < 6 else RD
+    upd_txt  = f"[{upd_col}]{secs_ago}s ago[/]"
+
     dlt_t = Table(box=None, expand=True, show_header=False, padding=(0, 1))
     dlt_t.add_column("", style=DG, width=7)
     dlt_t.add_column("", ratio=1)
@@ -975,45 +980,73 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     if deltas:
         max_abs  = max(abs(d) for d in deltas + [live_d]) or 1.0
         live_col = MG if live_d >= 0 else RD
-        live_f   = int(abs(live_d) / max_abs * 14)
-        live_bar = _bar(live_f, 14, fill_color=live_col, empty_color="grey19", fill_char="▓", empty_char="░")
-        live_arr = f"[{MG}]▲ BUY[/]"  if live_d >= 0 else f"[{RD}]▼ SELL[/]"
-        dlt_t.add_row("LIVE Δ", Text.from_markup(f"{live_bar} [{live_col}]{live_d:+.2f}[/]  {live_arr}"))
 
-        cum_col = MG if cum_d >= 0 else RD
-        dlt_t.add_row("CUM Δ",  Text.from_markup(f"[{cum_col}]{'▲' if cum_d>=0 else '▼'} {cum_d:+.2f}[/]  [{DG}]{method}[/]"))
-
-        # histogram 8 candle terakhir
-        hist = ""
-        for d in deltas[-8:]:
-            if   d >  max_abs * 0.5: hist += f"[{MG}]█[/]"
-            elif d >  0:             hist += f"[green]▄[/]"
-            elif d < -max_abs * 0.5: hist += f"[{RD}]█[/]"
-            elif d <  0:             hist += f"[red]▄[/]"
-            else:                    hist += f"[{DG}]─[/]"
-        dlt_t.add_row("M5 HIST", Text.from_markup(hist))
-
-        # buy vs sell pressure bar
-        total_abs = abs(live_d) + 0.001
-        buy_pct_d  = max(live_d, 0) / total_abs * 100 if live_d > 0 else 0
-        sell_pct_d = max(-live_d, 0) / total_abs * 100 if live_d < 0 else 0
-        bw_d = 7
-        b_bar_d = _bar(int(buy_pct_d/100*bw_d),  bw_d, fill_color=MG, empty_color="grey19")
-        s_bar_d = _bar(int(sell_pct_d/100*bw_d), bw_d, fill_color=RD, empty_color="grey19")
-        dlt_t.add_row("", Text.from_markup(
-            f"[{MG}]B[/]{b_bar_d}  [{RD}]S[/]{s_bar_d}"
+        # Live bar — tip karakter berputar tiap frame (animasi)
+        live_f    = int(abs(live_d) / max_abs * 12)
+        tip_chars = "▏▎▍▌▋▊▉█" if live_d >= 0 else "▉▊▋▌▍▎▏█"
+        tip       = tip_chars[frame % len(tip_chars)]
+        live_bar  = _bar(live_f, 12, fill_color=live_col, empty_color="grey19", fill_char="█", empty_char="░")
+        live_bar += f"[{live_col}]{tip}[/]"
+        live_arr  = f"[bold {MG}]▲ BUY[/]"  if live_d >= 0 else f"[bold {RD}]▼ SELL[/]"
+        dlt_t.add_row("LIVE Δ", Text.from_markup(
+            f"{live_bar}  [{live_col}]{live_d:+.2f}[/]  {live_arr}"
         ))
 
+        # Cumulative delta — nilai berkedip kalau baru update
+        cum_col = MG if cum_d >= 0 else RD
+        cum_pulse = f"[blink {cum_col}]{cum_d:+.2f}[/]" if secs_ago < 2 else f"[{cum_col}]{cum_d:+.2f}[/]"
+        dlt_t.add_row("CUM Δ", Text.from_markup(
+            f"[{cum_col}]{'▲' if cum_d>=0 else '▼'}[/] {cum_pulse}  [{DG}]{method}[/]  {upd_txt}"
+        ))
+
+        # Histogram 8 candle — scroll satu posisi tiap 4 frame (animasi scroll)
+        scroll_offset = (frame // 4) % max(len(deltas), 1)
+        hist_deltas   = (deltas + deltas)[scroll_offset: scroll_offset + 8]
+        hist = ""
+        for d in hist_deltas:
+            if   d >  max_abs * 0.6: hist += f"[bold {MG}]█[/]"
+            elif d >  max_abs * 0.2: hist += f"[{MG}]▄[/]"
+            elif d >  0:             hist += f"[green]▂[/]"
+            elif d < -max_abs * 0.6: hist += f"[bold {RD}]█[/]"
+            elif d < -max_abs * 0.2: hist += f"[{RD}]▄[/]"
+            elif d <  0:             hist += f"[red]▂[/]"
+            else:                    hist += f"[{DG}]─[/]"
+        # scan cursor
+        scan_pos = frame % 8
+        hist_chars = list(hist.split("]["))
+        dlt_t.add_row("M5 HIST", Text.from_markup(hist + f"  [{DG}]◄[/]"))
+
+        # Buy vs Sell tug-of-war bar — full width, animated fill
+        total_vol  = dlt["live_buy"] + dlt["live_sell"] + 0.001
+        buy_ratio  = dlt["live_buy"]  / total_vol
+        sell_ratio = dlt["live_sell"] / total_vol
+        tow_width  = 20
+        buy_fill   = int(buy_ratio  * tow_width)
+        sell_fill  = int(sell_ratio * tow_width)
+        # animasi: bar tumbuh sedikit-sedikit tiap frame
+        anim_buy  = min(buy_fill,  (frame % (tow_width + 1)))  if buy_fill  > 0 else 0
+        anim_sell = min(sell_fill, (frame % (tow_width + 1)))  if sell_fill > 0 else 0
+        b_tow = _bar(buy_fill,  tow_width, fill_color=MG, empty_color="grey19", fill_char="▮", empty_char="·")
+        s_tow = _bar(sell_fill, tow_width, fill_color=RD, empty_color="grey19", fill_char="▮", empty_char="·")
+        dlt_t.add_row("", Text.from_markup(
+            f"[{MG}]B[/] {b_tow}  [{RD}]S[/] {s_tow}"
+        ))
+
+        # Divergence warning
         if div_warn:
             dlt_t.add_row("",
                 Text.from_markup(
-                    f"[blink yellow]⚠ DIVERGENCE[/]" if BLINK else f"[yellow]⚠ DIVERGENCE[/]"
+                    f"[blink bold yellow]⚠ DIVERGENCE: harga ≠ delta[/]" if BLINK
+                    else f"[bold yellow]⚠ DIVERGENCE: harga ≠ delta[/]"
                 )
             )
     else:
-        dlt_t.add_row("STATUS", Text.from_markup(f"[{DG}]COLLECTING...[/]"))
+        spin_d = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"][frame % 10]
+        dlt_t.add_row("STATUS", Text.from_markup(f"[{MG}]{spin_d}[/] [{DG}]Mengambil tick data...[/]"))
 
-    dlt_border = (MG if BLINK else "green") if live_d > 0 else (RD if live_d < 0 else DG)
+    # Border blink berdasarkan arah delta — selalu bergerak
+    dlt_border = (MG if BLINK else "green") if live_d > 0 else \
+                 (RD if BLINK else "dark_red") if live_d < 0 else DG
     layout["delta"].update(
         Panel(dlt_t, title=_T("DELTA.FLOW"), border_style=dlt_border, padding=(0, 0))
     )
