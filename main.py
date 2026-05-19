@@ -640,7 +640,7 @@ def build_neural_flow_panel(frame, analyst, _cs, h4_dir):
     """NEURAL.FLOW — chain node visualization."""
     BLINK = frame % 2 == 0
     MG = "bright_green"; CC = "bright_cyan"; RD = "bright_red"; GD = "gold1"
-    DG = "grey62"; BC = "bold bright_cyan"
+    DG = "grey62"; BC = "bold bright_cyan"; BY = "bold gold1"
 
     def _T_local(label):
         return f"[{BC}][ {label} ][/{BC}]  [{DG}]{_htag(6)}[/{DG}]"
