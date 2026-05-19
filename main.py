@@ -445,6 +445,11 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
     m15_solid = _cs.get("m15_solid", False)
     direction = _cs.get("direction", h4_dir)
 
+    # Pre-compute per-chain CMP values for per-parent VR/CF logic
+    _m30_cmp = analyst.states["M30"].cmp
+    _m15_cmp = analyst.states["M15"].cmp
+    _m5_cmp  = analyst.states["M5"].cmp
+
     t = Table(
         box=rich_box.SIMPLE_HEAD, expand=True, show_edge=False,
         padding=(0, 1), header_style=f"bold {CC} on grey11",
@@ -452,8 +457,8 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
     t.add_column("TF",   justify="center", width=6)
     t.add_column("CMP",  justify="center", width=10)
     t.add_column("ROLE", justify="center", width=13)
-    t.add_column("VR",   justify="center", width=10)
-    t.add_column("CF",   justify="center", width=10)
+    t.add_column("VR→PARENT", justify="center", width=14)
+    t.add_column("CF",   justify="center", width=12)
     t.add_column("⊕",    justify="center", width=3)
 
     tfs = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5"]
@@ -503,13 +508,13 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
                 # M30 aligned H4 = CMP setup confirmed
                 role_cell = f"[bold bright_cyan]SETUP_CMP[/]"
             else:
-                # M30 counter H4/H1 = VR ke H1
-                lbl = "VR→H1 ⚡" if BLINK else "VR→H1 ·"
+                # M30 counter H4 = VR ke H4 (pullback/testing master)
+                lbl = "VR→H4 ⚡" if BLINK else "VR→H4 ·"
                 role_cell = f"[bold white on dark_blue] {lbl} [/]"
             row_s_role = ""
         elif tf == "M15":
             if m15_is_vr:
-                lbl = "VR ⚡" if BLINK else "VR ·"
+                lbl = "VR→M30 ⚡" if BLINK else "VR→M30 ·"
                 role_cell = f"[bold white on dark_blue] {lbl} [/]"
             elif m15_solid:
                 role_cell = f"[bold white on grey23] SOLID ▣ [/]"
@@ -539,18 +544,45 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
             role_cell = f"[{DG}]──[/]"
             row_s_role = ""
 
-        # ── VR cell
+        # ── VR cell — per-parent chain: each TF vs its DIRECT parent
+        # H1→H4, M30→H4, M15→M30, M5→M15  (VR=counter parent, CF=returned to parent)
         cr = cascade_roles.get(tf, "")
-        if cr == "VR":
-            sym = "⚡VR⚡" if BLINK else "· VR ·"
+        if tf == "M15":
+            _is_vr = m15_is_vr                                        # M15 vs M30
+            _vr_lbl = "VR→M30"
+        elif tf == "M5":
+            _is_vr = (_m5_cmp != _m15_cmp and _m5_cmp != "WAIT" and _m15_cmp != "WAIT")
+            _vr_lbl = "VR→M15"
+        elif tf in ("H1", "M30"):
+            _is_vr = (cr == "VR")                                      # H1/M30 vs H4
+            _vr_lbl = "VR→H4"
+        else:
+            _is_vr = False
+            _vr_lbl = "VR"
+
+        if _is_vr:
+            sym = f"⚡{_vr_lbl}⚡" if BLINK else f"· {_vr_lbl} ·"
             vr_cell = f"[bold white on dark_blue] {sym} [/]"
         else:
             vr_cell = f"[{DG}] ───── [/]"
 
-        # ── CF cell
-        is_cf = (cr == "CF") or (cf_ready and tf == "M5")
-        if is_cf:
-            sym = "◉CF◉" if BLINK else "●CF●"
+        # ── CF cell — per-parent: which TF FIRED CF back to parent direction
+        # M5 CF = cf_ready (any type); M15 CF = CF_LOW; M30/H1 CF = cascade_roles "CF"
+        if tf == "M5":
+            _is_cf = cf_ready and cf_type in ("MINOR_CF", "CF_HIGH")
+            _cf_lbl = cf_type if cf_ready else "CF"
+        elif tf == "M15":
+            _is_cf = cf_ready and cf_type == "CF_LOW"                  # M15 returned to M30
+            _cf_lbl = "CF_LOW"
+        elif tf in ("H1", "M30"):
+            _is_cf = (cr == "CF")                                       # M30/H1 back to H4
+            _cf_lbl = "CF"
+        else:
+            _is_cf = False
+            _cf_lbl = "CF"
+
+        if _is_cf:
+            sym = f"◉{_cf_lbl}◉" if BLINK else f"●{_cf_lbl}●"
             cf_cell = f"[bold white on dark_green] {sym} [/]"
         else:
             cf_cell = f"[{DG}] ───── [/]"
@@ -575,8 +607,8 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
         f"[{DG}]SYNC[/]",
         f"[{DG}]────────[/]",
         f"[{DG}]───────────[/]",
-        f"[{DG}]────────[/]",
-        f"[{DG}]────────[/]",
+        f"[{DG}]────────────[/]",
+        f"[{DG}]──────────[/]",
         f"[{sync_col}]{aligned_count}/8[/]",
     )
 
@@ -658,7 +690,7 @@ def build_neural_flow_panel(frame, analyst, _cs, h4_dir):
         m30_lbl = "M30 CMP"
         m30_bg  = "dark_green"
     elif m30_cmp != "WAIT":
-        m30_lbl = "VR→H1 ⚡" if BLINK else "VR→H1"
+        m30_lbl = "VR→H4 ⚡" if BLINK else "VR→H4"
         m30_bg  = "dark_blue"
     else:
         m30_lbl = "M30"
@@ -692,7 +724,7 @@ def build_neural_flow_panel(frame, analyst, _cs, h4_dir):
             f"  [{DG}]        ↓  Step 1[/]\n"
             f"  {node(m30_lbl, m30_locked or (m30_cmp!='WAIT'), m30_bg)}"
             f"  "
-            f"{'[bold bright_cyan]CMP locked ✅[/]' if m30_locked else '[yellow]VR ke H1 (pullback)[/]' if m30_cmp!='WAIT' else f'[{DG}]waiting M30...[/]'}"
+            f"{'[bold bright_cyan]CMP locked ✅[/]' if m30_locked else '[yellow]VR ke H4 (pullback)[/]' if m30_cmp!='WAIT' else f'[{DG}]waiting M30...[/]'}"
         ),
 
         Text(""),
@@ -1260,7 +1292,7 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
             elif st.cmp == _h4_dir:
                 r_lbl = "SETUP_CMP"; r_col = BC
             else:
-                r_lbl = "VR→H1";    r_col = CC   # M30 counter H4 = VR ke H1
+                r_lbl = "VR→H4";    r_col = CC   # M30 counter H4 = VR ke H1
         elif tf == "M15":
             if _cs["m15_is_vr"]:    r_lbl = "VR ⚡";    r_col = CC
             elif _cs["m15_solid"]:  r_lbl = "SOLID ▣";  r_col = MG
