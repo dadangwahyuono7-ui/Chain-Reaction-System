@@ -507,15 +507,20 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
                 role_cell = f"[{DG}]STANDBY[/]"
             row_s_role = ""
         elif tf == "M5":
+            m15_cmp = analyst.states["M15"].cmp
             if cf_ready and cf_type == "MINOR_CF":
                 lbl = "MINOR_CF ◉" if BLINK else "MINOR_CF ▣"
                 role_cell = f"[bold white on dark_green] {lbl} [/]"
             elif cf_ready:
                 lbl = f"{cf_type} ◉" if BLINK else f"{cf_type} ▣"
                 role_cell = f"[bold white on dark_green] {lbl} [/]"
+            elif m15_solid and cmp_val != m15_cmp and cmp_val != "WAIT":
+                # M15 SOLID BUY, M5 SELL counter → M5 adalah VR ke M15
+                lbl = "VR→M15 ⚡" if BLINK else "VR→M15 ·"
+                role_cell = f"[bold white on dark_blue] {lbl} [/]"
             elif m15_is_vr and cmp_val == direction:
                 role_cell = f"[{CC}]CF_ZONE[/]"
-            elif m15_is_vr:
+            elif m15_is_vr and cmp_val != direction:
                 role_cell = f"[yellow]VR[/]"
             else:
                 role_cell = f"[{DG}]STANDBY[/]"
