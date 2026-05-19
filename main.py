@@ -328,7 +328,7 @@ def _rain(width, frame):
 # ── PANEL BUILDERS ────────────────────────────────────────────────────────────
 
 def build_heatmap_panel(frame, analyst, _cs, h4_dir):
-    """SIGNAL.HEATMAP — 8 TFs × 3 signals grid."""
+    """SIGNAL.HEATMAP — 8 TFs × CMP + ROLE + VR + CF grid."""
     BLINK = frame % 2 == 0
     MG = "bright_green"; CC = "bright_cyan"; RD = "bright_red"; GD = "gold1"
     DG = "grey62"; BC = "bold bright_cyan"; BY = "bold gold1"
@@ -336,18 +336,23 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
     def _T_local(label):
         return f"[{BC}][ {label} ][/{BC}]  [{DG}]{_htag(6)}[/{DG}]"
 
-    roles = _cs.get("cascade_roles", {})
-    cf_ready = _cs.get("cf_ready", False)
+    cascade_roles = _cs.get("cascade_roles", {})
+    cf_ready  = _cs.get("cf_ready", False)
+    cf_type   = _cs.get("cf_type", "")
+    m15_is_vr = _cs.get("m15_is_vr", False)
+    m15_solid = _cs.get("m15_solid", False)
+    direction = _cs.get("direction", h4_dir)
 
     t = Table(
         box=rich_box.SIMPLE_HEAD, expand=True, show_edge=False,
         padding=(0, 1), header_style=f"bold {CC} on grey11",
     )
-    t.add_column("TF",  justify="center", width=6)
-    t.add_column("CMP", justify="center", width=12)
-    t.add_column("VR",  justify="center", width=12)
-    t.add_column("CF",  justify="center", width=12)
-    t.add_column("⊕",   justify="center", width=4)
+    t.add_column("TF",   justify="center", width=6)
+    t.add_column("CMP",  justify="center", width=10)
+    t.add_column("ROLE", justify="center", width=13)
+    t.add_column("VR",   justify="center", width=10)
+    t.add_column("CF",   justify="center", width=10)
+    t.add_column("⊕",    justify="center", width=3)
 
     tfs = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5"]
     aligned_count = 0
@@ -355,40 +360,87 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
     for tf in tfs:
         st = analyst.states[tf]
         is_master = (tf == "H4")
-        cmp_val = st.cmp
+        cmp_val   = st.cmp
 
-        # CMP cell — hijau=BUY, merah=SELL, pulse ◉ kalau aligned dengan H4
+        # ── CMP cell — BUY=hijau, SELL=merah, pulse kalau aligned
         aligned_cmp = (cmp_val == h4_dir and h4_dir != "WAIT")
         if cmp_val == "BUY":
             sym = "◉" if (BLINK and aligned_cmp) else "▣"
-            cmp_cell = f"[bold white on dark_green] {sym} BUY  [/]"
+            cmp_cell = f"[bold white on dark_green] {sym} BUY [/]"
         elif cmp_val == "SELL":
             sym = "◉" if (BLINK and aligned_cmp) else "▣"
-            cmp_cell = f"[bold white on dark_red] {sym} SELL [/]"
+            cmp_cell = f"[bold white on dark_red] {sym} SELL[/]"
         else:
-            cmp_cell = f"[{DG}]  ──────  [/]"
+            cmp_cell = f"[{DG}]  ─────  [/]"
 
-        # VR cell
-        role = roles.get(tf, "")
-        if role == "VR":
-            sym = "⚡ VR ⚡" if BLINK else "·  VR  ·"
+        # ── ROLE cell — sama dengan HIERARCHY.MATRIX lama
+        if tf in ("MN1", "W1", "D1"):
+            r_lbl = "MACRO"
+            r_col = MG if aligned_cmp else DG
+            role_cell = f"[{r_col}]{r_lbl}[/]"
+            row_s_role = ""
+        elif tf == "H4":
+            role_cell = f"[bold white on grey19] ★ MASTER [/]"
+            row_s_role = ""
+        elif tf == "H1":
+            cr = cascade_roles.get("H1", "")
+            if cr == "VR":
+                role_cell = f"[bold white on dark_blue] H1_VR [/]"
+            else:
+                role_cell = f"[white]H1_CMP[/]" if aligned_cmp else f"[{DG}]H1_CMP[/]"
+            row_s_role = ""
+        elif tf == "M30":
+            if cmp_val != "WAIT":
+                role_cell = f"[bold bright_cyan]SETUP_CMP[/]"
+            else:
+                role_cell = f"[{DG}]WAIT[/]"
+            row_s_role = ""
+        elif tf == "M15":
+            if m15_is_vr:
+                lbl = "VR ⚡" if BLINK else "VR ·"
+                role_cell = f"[bold white on dark_blue] {lbl} [/]"
+            elif m15_solid:
+                role_cell = f"[bold white on grey23] SOLID ▣ [/]"
+            else:
+                role_cell = f"[{DG}]STANDBY[/]"
+            row_s_role = ""
+        elif tf == "M5":
+            if cf_ready and cf_type == "MINOR_CF":
+                lbl = "MINOR_CF ◉" if BLINK else "MINOR_CF ▣"
+                role_cell = f"[bold white on dark_green] {lbl} [/]"
+            elif cf_ready:
+                lbl = f"{cf_type} ◉" if BLINK else f"{cf_type} ▣"
+                role_cell = f"[bold white on dark_green] {lbl} [/]"
+            elif m15_is_vr and cmp_val == direction:
+                role_cell = f"[{CC}]CF_ZONE[/]"
+            elif m15_is_vr:
+                role_cell = f"[yellow]VR[/]"
+            else:
+                role_cell = f"[{DG}]STANDBY[/]"
+            row_s_role = ""
+        else:
+            role_cell = f"[{DG}]──[/]"
+            row_s_role = ""
+
+        # ── VR cell
+        cr = cascade_roles.get(tf, "")
+        if cr == "VR":
+            sym = "⚡VR⚡" if BLINK else "· VR ·"
             vr_cell = f"[bold white on dark_blue] {sym} [/]"
         else:
-            vr_cell = f"[{DG}]  ──────  [/]"
+            vr_cell = f"[{DG}] ───── [/]"
 
-        # CF cell
-        is_cf = (role == "CF") or (cf_ready and tf == "M5")
+        # ── CF cell
+        is_cf = (cr == "CF") or (cf_ready and tf == "M5")
         if is_cf:
-            sym = "◉ CF ◉" if BLINK else "● CF ●"
+            sym = "◉CF◉" if BLINK else "●CF●"
             cf_cell = f"[bold white on dark_green] {sym} [/]"
         else:
-            cf_cell = f"[{DG}]  ──────  [/]"
+            cf_cell = f"[{DG}] ───── [/]"
 
-        # Align indicator
-        aligned = aligned_cmp
-        if aligned:
+        # ── Align indicator ⊕
+        if aligned_cmp:
             aligned_count += 1
-        if aligned:
             alg = f"[{MG}]▼[/]" if h4_dir == "SELL" else f"[{MG}]▲[/]"
         elif cmp_val == "WAIT":
             alg = f"[{DG}]·[/]"
@@ -398,15 +450,16 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
         row_style = "on grey15" if is_master else ""
         tf_lbl = f"[{BY}]{tf}★[/]" if is_master else f"[{CC}]{tf}[/]"
 
-        t.add_row(tf_lbl, cmp_cell, vr_cell, cf_cell, alg, style=row_style)
+        t.add_row(tf_lbl, cmp_cell, role_cell, vr_cell, cf_cell, alg, style=row_style)
 
     # Summary row
     sync_col = MG if aligned_count >= 6 else GD if aligned_count >= 4 else RD
     t.add_row(
         f"[{DG}]SYNC[/]",
-        f"[{DG}]──────────[/]",
-        f"[{DG}]──────────[/]",
-        f"[{DG}]──────────[/]",
+        f"[{DG}]────────[/]",
+        f"[{DG}]───────────[/]",
+        f"[{DG}]────────[/]",
+        f"[{DG}]────────[/]",
         f"[{sync_col}]{aligned_count}/8[/]",
     )
 
