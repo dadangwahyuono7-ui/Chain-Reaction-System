@@ -210,63 +210,114 @@ class SacredDoctrineAnalyst:
         m15 = self.states["M15"]
         m5  = self.states["M5"]
 
+        """
+        VR dan CF hanya STATUS CMP tiap TF.
+        Tidak ada blocking — setiap TF bisa jadi setup selama ada VR → CF sequence.
+        CMP aktif = TF satu level di atas TF yang sedang VR.
+
+        Level priority (macro → micro):
+          ④ H4_CF_HIGH : H1 VR  + M30 CF          SL=H1  TP=H4
+          ③ CF_HIGH    : M30 VR + M5  CF           SL=M15 TP=H4/M30
+          ② CF_LOW     : M30 VR + M15 CF           SL=M15 TP=H4/M30
+             CF_HIGH   : M15 VR + M5  CF           SL=M15 TP=M30
+             CF_LOW    : M15 VR + M15 CF           SL=M15 TP=M30
+          ① MINOR_CF   : M15 solid + M5 VR→CF      SL=M5  TP=M15
+        """
         # H4 adalah direction master
         direction = h4.cmp
         if direction == "WAIT":
             return None
 
-        # ── Deteksi fase H1 (untuk H4_CF_HIGH dan info cascade) ──────────────────
-        # H1 belum VR  = arah H4 masih KUAT, semua TF aligned → CONTI territory
-        # H1 VR        = H4 sedang di-test → tunggu M30 CF (H4_CF_HIGH)
-        # H1 CF        = VR selesai → full sub-chain tersedia
+        # ── Level 0: H1 VR → M30 CF = H4_CF_HIGH ────────────────────────────────
         h1_is_vr = (
-            h1.cmp != direction and
-            h1.cmp != "WAIT" and
+            h1.cmp != direction and h1.cmp != "WAIT" and
             h1.cmp_change_time > h4.cmp_change_time
         )
+        if (h1_is_vr and
+            m30.cmp == direction and m30.cmp != "WAIT" and
+            m30.cmp_change_time > h1.cmp_change_time):
+            return {
+                "action": direction,
+                "type":   "H4_CF_HIGH",
+                "tf":     "M30",
+                "tp_tf":  "H4",
+                "sl_tf":  "H1",
+                "reason": f"H4 {direction} | H1 VR | M30 CF HIGH ⚡"
+            }
 
-        # ── ④ H4_CF_HIGH: H1 VR + M30 BO direction ──────────────────────────────
-        # 3 TF: H4 (direction) → H1 (VR) → M30 (CF HIGH)
-        if h1_is_vr:
-            if (m30.cmp == direction and
-                m30.cmp != "WAIT" and
-                m30.cmp_change_time > h1.cmp_change_time):
+        # ── Level 1: M30 VR ke H4 → cek M15 atau M5 CF ──────────────────────────
+        # Tidak diblock — M30 VR = CMP aktif H4, tunggu CF di bawahnya
+        m30_is_vr = (m30.cmp != direction and m30.cmp != "WAIT")
+        if m30_is_vr:
+            # CF_LOW: M15 sudah VR ke M30 lalu balik ke H4 direction
+            if (m15.vr_occurred and
+                m15.cmp == direction and
+                m15.cmp_change_time > getattr(m15, "vr_change_time", 0) and
+                m15.cmp_change_time > m30.cmp_change_time):
                 return {
                     "action": direction,
-                    "type":   "H4_CF_HIGH",
-                    "tf":     "M30",
+                    "type":   "CF_LOW",
+                    "tf":     "M15",
                     "tp_tf":  "H4",
-                    "sl_tf":  "H1",
-                    "reason": f"H4 {direction} | H1 VR | M30 CF HIGH ⚡"
+                    "sl_tf":  "M15",
+                    "reason": f"CF Low: H4 {direction} | M30 VR | M15 CF"
                 }
-            # H1 VR tapi M30 belum CF → block sub-chain (M30 mungkin counter juga)
-            # Kecuali M30 aligned (M30 belum VR) → tetap boleh CONTI di sub-chain
-            # Jika M30 counter H4 saat H1 VR → kedua TF counter = block
-            if m30.cmp != direction and m30.cmp != "WAIT":
-                return None  # Bahaya: H1 + M30 keduanya counter H4
+            # CF_HIGH: M15 masih VR ke M30, M5 balik ke H4 direction
+            if (m15.cmp != direction and m15.cmp != "WAIT" and
+                m5.vr_occurred and
+                m5.cmp == direction and
+                m5.cmp_change_time > getattr(m5, "vr_change_time", 0) and
+                m5.cmp_change_time > m15.cmp_change_time):
+                return {
+                    "action": direction,
+                    "type":   "CF_HIGH",
+                    "tf":     "M5",
+                    "tp_tf":  "M30",
+                    "sl_tf":  "M15",
+                    "reason": f"CF High: H4 {direction} | M30 VR | M15 VR | M5 CF"
+                }
+            return None  # M30 VR tapi CF belum
 
-        # ── GUARD: M30 counter H4 = block ────────────────────────────────────────
-        # M30 VR ke H4 (tanpa H1 VR) = M30 melawan direction master → bahaya
-        if m30.cmp != direction and m30.cmp != "WAIT":
-            return None
-
-        # M15 state relative to M30 direction
+        # ── Level 2: M30 aligned, M15 VR → M15 CF atau M5 CF ────────────────────
         m15_is_vr = (
-            m15.cmp != direction and
-            m15.cmp != "WAIT" and
+            m15.cmp != direction and m15.cmp != "WAIT" and
             m15.cmp_change_time > m30.cmp_change_time
         )
-        m15_solid = (
-            m15.cmp == direction and
-            m15.cmp != "WAIT" and
-            not m15_is_vr
-        )
+        m15_solid = (m15.cmp == direction and m15.cmp != "WAIT" and not m15_is_vr)
 
-        # Guard: M30 tidak boleh di-break oleh M15 VR (M30 flip SETELAH M15 VR)
+        # Time Law: jika M30 flip setelah M15 VR → M15 berhasil break M30, reset
         if m15_is_vr and m30.cmp_change_time > m15.cmp_change_time:
             return None
 
-        # ── ① MINOR_CF: M15 solid + M5 VR → M5 CF (paling aman) ─────────────────
+        if m15_is_vr:
+            # CF_LOW: M15 VR → M15 CF
+            if (m15.vr_occurred and
+                m15.cmp == direction and
+                m15.cmp_change_time > getattr(m15, "vr_change_time", 0)):
+                return {
+                    "action": direction,
+                    "type":   "CF_LOW",
+                    "tf":     "M15",
+                    "tp_tf":  "M30",
+                    "sl_tf":  "M15",
+                    "reason": f"CF Low: M30 solid | M15 VR→CF"
+                }
+            # CF_HIGH: M15 masih VR, M5 sudah CF
+            if (m5.vr_occurred and
+                m5.cmp == direction and
+                m5.cmp_change_time > m15.cmp_change_time and
+                m5.cmp_change_time > getattr(m5, "vr_change_time", 0)):
+                return {
+                    "action": direction,
+                    "type":   "CF_HIGH",
+                    "tf":     "M5",
+                    "tp_tf":  "M30",
+                    "sl_tf":  "M15",
+                    "reason": f"CF High: M30 solid | M15 VR | M5 CF"
+                }
+            return None
+
+        # ── Level 3: M30+M15 solid → M5 VR→CF = MINOR_CF ────────────────────────
         if m15_solid:
             if (m5.vr_occurred and
                 m5.cmp == direction and
@@ -278,41 +329,11 @@ class SacredDoctrineAnalyst:
                     "tf":     "M5",
                     "tp_tf":  "M15",
                     "sl_tf":  "M5",
-                    "reason": f"Minor CF: H4+H1+M30+M15 solid | M5 VR→CF"
+                    "reason": f"Minor CF: M30+M15 solid | M5 VR→CF"
                 }
-            return None  # M15 solid tapi M5 belum CF → tunggu
-
-        if not m15_is_vr:
             return None
 
-        # ── ② CF_LOW: M15 VR → M15 sendiri balik ke arah H4 ─────────────────────
-        if (m15.vr_occurred and
-            m15.cmp == direction and
-            m15.cmp_change_time > getattr(m15, "vr_change_time", 0)):
-            return {
-                "action": direction,
-                "type":   "CF_LOW",
-                "tf":     "M15",
-                "tp_tf":  "M30",
-                "sl_tf":  "M15",
-                "reason": f"CF Low: H4+H1 CF | M30 solid | M15 VR→CF"
-            }
-
-        # ── ③ CF_HIGH: M15 masih VR, M5 sudah VR lalu CF ────────────────────────
-        if (m5.vr_occurred and
-            m5.cmp == direction and
-            m5.cmp_change_time > m15.cmp_change_time and
-            m5.cmp_change_time > getattr(m5, "vr_change_time", 0)):
-            return {
-                "action": direction,
-                "type":   "CF_HIGH",
-                "tf":     "M5",
-                "tp_tf":  "M30",
-                "sl_tf":  "M15",
-                "reason": f"CF High: H4+H1 CF | M30 solid | M15 VR | M5 CF"
-            }
-
-        return None  # VR ada tapi CF belum terkonfirmasi
+        return None
             
     def get_chain_status(self):
         """Returns structured chain state for dashboard panels."""
@@ -460,11 +481,6 @@ class SacredDoctrineAnalyst:
         if not cs["step1_ok"]:
             return "H4 SCANNING: Menunggu breakout H4 untuk menentukan direction utama."
 
-        # ── H1 belum VR: tunggu ───────────────────────────────────────────────────
-        if not cs["h1_is_vr"] and not cs["h1_is_cf"]:
-            return (f"[bold {d_col}]H4 {direction}[/] — Menunggu H1 VR ({opp}) sebagai "
-                    f"syarat entry. Saat ini semua TF aligned — belum ada retracement valid.")
-
         # ── H4_CF_HIGH: H1 VR + M30 CF ───────────────────────────────────────────
         if cs["cf_ready"] and cs["cf_type"] == "H4_CF_HIGH":
             return (f"[blink bold magenta]⚡ H4_CF_HIGH SIAP[/]: "
@@ -473,7 +489,34 @@ class SacredDoctrineAnalyst:
 
         if cs["h1_is_vr"]:
             return (f"[bold {d_col}]H4 {direction}[/] | [bold red]H1 VR ({opp})[/] — "
-                    f"Menunggu M30 BO {direction} untuk H4_CF_HIGH entry.")
+                    f"H4 sedang ditest H1. Menunggu M30 BO {direction} (H4_CF_HIGH) "
+                    f"atau M30 VR lalu cari CF di M15/M5.")
+
+        # ── H1 belum VR: CONTI territory ─────────────────────────────────────────
+        # H4 direction kuat, semua TF masih aligned → cari CF di sub-chain
+        if not cs["h1_is_vr"] and not cs["h1_is_cf"]:
+            # Sub-chain masih bisa entry (CONTI)
+            if cs["cf_ready"] and cs["cf_type"] == "MINOR_CF":
+                return (f"[blink bold green]✅ MINOR CF SIAP[/] [grey62](CONTI)[/]: "
+                        f"H4+M30+M15 solid | M5 VR→CF. SL=M5 | TP=M15")
+            if cs["cf_ready"] and cs["cf_type"] == "CF_LOW":
+                return (f"[blink bold green]🔥 CF LOW SIAP[/] [grey62](CONTI)[/]: "
+                        f"H4+M30 solid | M15 VR→CF. SL=M15 | TP=M30")
+            if cs["cf_ready"] and cs["cf_type"] == "CF_HIGH":
+                return (f"[blink bold yellow]⚡ CF HIGH SIAP[/] [grey62](CONTI)[/]: "
+                        f"H4+M30 solid | M15 VR | M5 CF. SL=M15 | TP=M30")
+            if cs["m30_vr_to_h4"]:
+                return (f"[bold {d_col}]H4 {direction}[/] [grey62](CONTI — H1 aligned)[/] | "
+                        f"[bold red]M30 VR[/] ke H4 — Tunggu CF di M15/M5.")
+            if cs["m15_solid"]:
+                return (f"[bold {d_col}]H4+M30+M15 SOLID[/] [grey62](CONTI)[/] — "
+                        f"Tunggu M5 VR→CF ({opp} → {direction}).")
+            if cs["m15_is_vr"]:
+                return (f"[bold {d_col}]H4+M30 solid[/] [grey62](CONTI)[/] | "
+                        f"[bold blue]M15 VR {opp}[/] — Tunggu M5 CF {direction} (CF HIGH) "
+                        f"atau M15 balik {direction} (CF LOW).")
+            return (f"[bold {d_col}]H4 {direction}[/] [grey62](CONTI — H1 masih aligned)[/] — "
+                    f"Menunggu VR di sub-chain (M30/M15/M5) untuk CF entry.")
 
         # ── H1 sudah CF: sub-chain aktif ─────────────────────────────────────────
         if cs["m30_broken"]:
@@ -482,7 +525,7 @@ class SacredDoctrineAnalyst:
 
         if cs["m30_vr_to_h4"]:
             return (f"[bold {d_col}]H4+H1 CF[/] | [bold red]M30 VR ke H4[/] — "
-                    f"M30 counter {direction}. Tunggu M30 CF balik.")
+                    f"M30 counter {direction}. Tunggu CF di M15/M5.")
 
         if cs["cf_ready"] and cs["cf_type"] == "MINOR_CF":
             return (f"[blink bold green]✅ MINOR CF SIAP[/]: "

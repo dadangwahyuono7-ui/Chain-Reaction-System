@@ -147,8 +147,16 @@ class BacktestAnalyst:
     def get_signal(self) -> dict | None:
         """
         Deteksi signal entry — identik dengan get_strike_signal() di engine.
-        Pasangan TF per doctrine: H4(dir)→H1(VR)→M30/M15/M5(CF).
-        VR hanya sekali, CF bisa berkali-kali selama H4 CMP valid.
+        NO BLOCK: VR/CF hanya status CMP. Setiap TF bisa jadi CF selama ada
+        VR → CF sequence. Tidak ada gate yang memblokir level lebih rendah.
+
+        Level priority (macro → micro):
+          ④ H4_CF_HIGH : H1 VR  + M30 CF            SL=H1  TP=H4
+          ③ CF_HIGH    : M30 VR + M15 VR + M5 CF    SL=M15 TP=M30
+          ② CF_LOW     : M30 VR + M15 CF             SL=M15 TP=H4
+             CF_HIGH   : M15 VR + M5 CF              SL=M15 TP=M30
+             CF_LOW    : M15 VR → CF                 SL=M15 TP=M30
+          ① MINOR_CF   : M30+M15 solid + M5 VR→CF   SL=M5  TP=M15
         """
         h4  = self.states["H4"]
         h1  = self.states["H1"]
@@ -161,45 +169,86 @@ class BacktestAnalyst:
         if direction == "WAIT":
             return None
 
-        # ── Deteksi fase H1 ──────────────────────────────────────────────────────
-        # H1 belum VR = arah H4 kuat, CONTI territory, sub-chain tetap boleh entry
-        # H1 VR       = H4 sedang ditest → cek H4_CF_HIGH (M30 CF)
+        # ── Level 0: H1 VR → M30 CF = H4_CF_HIGH ────────────────────────────────
         h1_is_vr = (
-            h1.cmp != direction and
-            h1.cmp != "WAIT" and
+            h1.cmp != direction and h1.cmp != "WAIT" and
             h1.cmp_change_time > h4.cmp_change_time
         )
+        if (h1_is_vr and
+            m30.cmp == direction and m30.cmp != "WAIT" and
+            m30.cmp_change_time > h1.cmp_change_time):
+            return {
+                "action":   direction,
+                "type":     "H4_CF_HIGH",
+                "sl_price": h1.sup if direction == "BUY" else h1.res,
+                "tp_price": h4.res if direction == "BUY" else h4.sup,
+            }
 
-        # ── H4_CF_HIGH: H1 VR + M30 BO direction ────────────────────────────────
-        if h1_is_vr:
-            if (m30.cmp == direction and
-                m30.cmp != "WAIT" and
-                m30.cmp_change_time > h1.cmp_change_time):
+        # ── Level 1: M30 VR ke H4 → cek M15 atau M5 CF ──────────────────────────
+        # Tidak diblock — M30 VR = CMP aktif H4, tunggu CF di bawahnya
+        m30_is_vr = (m30.cmp != direction and m30.cmp != "WAIT")
+        if m30_is_vr:
+            # CF_LOW: M15 sudah VR ke M30 lalu balik ke H4 direction
+            if (m15.vr_occurred and
+                m15.cmp == direction and
+                m15.cmp_change_time > getattr(m15, "vr_change_time", 0) and
+                m15.cmp_change_time > m30.cmp_change_time):
                 return {
                     "action":   direction,
-                    "type":     "H4_CF_HIGH",
-                    "sl_price": h1.sup if direction == "BUY" else h1.res,
+                    "type":     "CF_LOW",
+                    "sl_price": m15.sup if direction == "BUY" else m15.res,
                     "tp_price": h4.res if direction == "BUY" else h4.sup,
                 }
-            # H1 VR + M30 juga counter → keduanya counter H4 → block
-            if m30.cmp != direction and m30.cmp != "WAIT":
-                return None
+            # CF_HIGH: M15 masih VR ke M30, M5 balik ke H4 direction
+            if (m15.cmp != direction and m15.cmp != "WAIT" and
+                m5.vr_occurred and
+                m5.cmp == direction and
+                m5.cmp_change_time > getattr(m5, "vr_change_time", 0) and
+                m5.cmp_change_time > m15.cmp_change_time):
+                return {
+                    "action":   direction,
+                    "type":     "CF_HIGH",
+                    "sl_price": m15.sup if direction == "BUY" else m15.res,
+                    "tp_price": m30.res if direction == "BUY" else m30.sup,
+                }
+            return None  # M30 VR tapi CF belum
 
-        # ── GUARD: M30 counter H4 → block ────────────────────────────────────────
-        if m30.cmp != direction and m30.cmp != "WAIT":
-            return None
-
+        # ── Level 2: M30 aligned, M15 VR → M15 CF atau M5 CF ────────────────────
         m15_is_vr = (
-            m15.cmp != direction and
-            m15.cmp != "WAIT" and
+            m15.cmp != direction and m15.cmp != "WAIT" and
             m15.cmp_change_time > m30.cmp_change_time
         )
-        m15_solid = (m15.cmp == direction and not m15_is_vr)
+        m15_solid = (m15.cmp == direction and m15.cmp != "WAIT" and not m15_is_vr)
 
+        # Time Law: jika M30 flip setelah M15 VR → M15 berhasil break M30, reset
         if m15_is_vr and m30.cmp_change_time > m15.cmp_change_time:
             return None
 
-        # ① MINOR_CF: M15 solid + M5 VR → M5 CF
+        if m15_is_vr:
+            # CF_LOW: M15 VR → M15 CF
+            if (m15.vr_occurred and
+                m15.cmp == direction and
+                m15.cmp_change_time > getattr(m15, "vr_change_time", 0)):
+                return {
+                    "action":   direction,
+                    "type":     "CF_LOW",
+                    "sl_price": m15.sup if direction == "BUY" else m15.res,
+                    "tp_price": m30.res if direction == "BUY" else m30.sup,
+                }
+            # CF_HIGH: M15 masih VR, M5 sudah CF
+            if (m5.vr_occurred and
+                m5.cmp == direction and
+                m5.cmp_change_time > m15.cmp_change_time and
+                m5.cmp_change_time > getattr(m5, "vr_change_time", 0)):
+                return {
+                    "action":   direction,
+                    "type":     "CF_HIGH",
+                    "sl_price": m15.sup if direction == "BUY" else m15.res,
+                    "tp_price": m30.res if direction == "BUY" else m30.sup,
+                }
+            return None
+
+        # ── Level 3: M30+M15 solid → M5 VR→CF = MINOR_CF ────────────────────────
         if m15_solid:
             if (m5.vr_occurred and
                 m5.cmp == direction and
@@ -212,32 +261,6 @@ class BacktestAnalyst:
                     "tp_price": m15.res if direction == "BUY" else m15.sup,
                 }
             return None
-
-        if not m15_is_vr:
-            return None
-
-        # ② CF_LOW: M15 VR → M15 CF
-        if (m15.vr_occurred and
-            m15.cmp == direction and
-            m15.cmp_change_time > getattr(m15, "vr_change_time", 0)):
-            return {
-                "action":   direction,
-                "type":     "CF_LOW",
-                "sl_price": m15.sup if direction == "BUY" else m15.res,
-                "tp_price": m30.res if direction == "BUY" else m30.sup,
-            }
-
-        # ③ CF_HIGH: M15 masih VR, M5 CF
-        if (m5.vr_occurred and
-            m5.cmp == direction and
-            m5.cmp_change_time > m15.cmp_change_time and
-            m5.cmp_change_time > getattr(m5, "vr_change_time", 0)):
-            return {
-                "action":   direction,
-                "type":     "CF_HIGH",
-                "sl_price": m15.sup if direction == "BUY" else m15.res,
-                "tp_price": m30.res if direction == "BUY" else m30.sup,
-            }
 
         return None
 
