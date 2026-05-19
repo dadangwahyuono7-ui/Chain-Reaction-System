@@ -238,10 +238,16 @@ class ChainReactionExecutor:
                     events.append(f"💰 MINOR_CF EXIT: #{p.ticket} — M15 jadi VR, profit diambil")
                     continue
 
-            # 4. TP Paksa — M30 counter-direction (nuklir exit, semua jenis posisi)
-            if (is_buy and m30.cmp == "SELL") or (not is_buy and m30.cmp == "BUY"):
-                self.close_position(p, "TP PAKSA: M30 Counter")
-                events.append(f"🚪 TP PAKSA: #{p.ticket} M30 Counter")
+            # 4. TP Paksa — hanya fire kalau H4 DAN M30 dua-duanya counter trade
+            # Jika H4 aligned (trade ikut H4), M30 VR ke H4 adalah kondisi NORMAL
+            # TP Paksa tidak boleh close trade yang masih punya dukungan H4 master
+            h4 = analyst.states["H4"]
+            h4_counter  = (h4.cmp != "WAIT" and h4.cmp == counter)   # H4 lawan trade
+            m30_counter = (m30.cmp == counter)                         # M30 lawan trade
+            if h4_counter and m30_counter:
+                # Kedua H4 dan M30 lawan trade = tidak ada macro support = force close
+                self.close_position(p, "TP PAKSA: H4+M30 Counter")
+                events.append(f"🚪 TP PAKSA: #{p.ticket} H4+M30 Counter — no macro support")
 
         return events
 
