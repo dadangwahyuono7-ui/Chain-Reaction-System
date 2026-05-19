@@ -610,11 +610,11 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         else:
             r_lbl = st.cmp; r_col = "white"
 
-        if scanning:                        row_s = "bold on grey15"
-        elif "MASTER" in r_lbl:            row_s = "on grey11"
+        if scanning:                        row_s = "bold on grey19"
+        elif "MASTER" in r_lbl:            row_s = "on grey15"
         elif "CF" in r_lbl and tf == "M5": row_s = "on dark_green"
         elif "VR" in r_lbl:                row_s = "on dark_blue"
-        elif "SOLID" in r_lbl:             row_s = "on dark_cyan"
+        elif "SOLID" in r_lbl:             row_s = "on grey23"
         else:                              row_s = ""
 
         scan_pfx = f"[blink {MG}]►[/]" if scanning and BLINK else ("►" if scanning else " ")
@@ -622,12 +622,21 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         if scanning:
             tf_lbl += f"  [{DG}]{_htag(4)}[/]"
 
+        # Jika ada background, paksa semua teks terang agar kontras
+        if row_s:
+            role_display = f"[bold white]{r_lbl}[/]"
+            sup_c        = "bold white"
+            res_c        = "bold white"
+        else:
+            role_display = f"[{r_col}]{r_lbl}[/]"
+            sup_c        = "bright_green"
+            res_c        = "bright_red"
         mx.add_row(
             tf_lbl,
             f"[{cmp_col}]{st.cmp}[/]",
-            f"[{r_col}]{r_lbl}[/]",
-            f"[green]{st.sup:.1f}[/]",
-            f"[red]{st.res:.1f}[/]",
+            role_display,
+            f"[{sup_c}]{st.sup:.1f}[/]",
+            f"[{res_c}]{st.res:.1f}[/]",
             style=row_s,
         )
 
@@ -671,8 +680,8 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     steps_t.add_column("", width=12, justify="right")
     steps_t.add_column("", ratio=1,  style="grey74")
 
-    s1_rs = "bold on dark_green"     if s1_ok else ""
-    s2_rs = "bold on dark_blue"      if _cs["m15_is_vr"] else "bold on dark_green" if _cs["m15_solid"] else ""
+    s1_rs = "bold on grey19"         if s1_ok else ""
+    s2_rs = "bold on dark_blue"      if _cs["m15_is_vr"] else "bold on grey19" if _cs["m15_solid"] else ""
     s3_rs = ("bold on dark_green" if cf_type in ("MINOR_CF","CF_LOW") else "bold on dark_red") if cf_fired else ""
 
     steps_t.add_row(_sicon(s1_ok), "M30_CMP",   s1_lbl, s1_sub, style=s1_rs)
@@ -730,7 +739,7 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         bar_s  = "".join(bar)
         zone   = f"[{MG}]SUP_ZONE[/]" if pct < 0.3 else f"[{RD}]RES_ZONE[/]" if pct > 0.7 else "[yellow]MID_ZONE[/]"
         pct_r  = (1 - pct) * 100
-        l1 = f"[{col}]{label}[/]  [green]{st.sup:.1f}[/]|{bar_s}|[red]{st.res:.1f}[/]"
+        l1 = f"[{col}]{label}[/]  [bright_green]{st.sup:.1f}[/]|{bar_s}|[bright_red]{st.res:.1f}[/]"
         l2 = f"  [grey74]↑RES {st.res-cp:.1f}$ ({pct_r:.0f}%)[/]  [grey74]↓SUP {cp-st.sup:.1f}$[/]  {zone}"
         return l1, l2
 
