@@ -57,9 +57,6 @@ _RSS_SOURCES = [
     ("MarketWatch", "https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines"),
 ]
 
-fetch_live_news._last_source = "STATIC"
-fetch_live_news._last_fetch_wib = "──:──"
-
 def fetch_live_news():
     """Try multiple RSS sources with proper headers. Falls back to static intel."""
     gold_kw = {"gold","xauusd","commodit","metal","fed","fomc","rate","dollar","usd"}
@@ -94,6 +91,9 @@ def fetch_live_news():
     fetch_live_news._last_source    = "STATIC"
     fetch_live_news._last_fetch_wib = datetime.now(wib).strftime("%H:%M")
     return _STATIC_INTEL
+
+fetch_live_news._last_source    = "STATIC"
+fetch_live_news._last_fetch_wib = "──:──"
 
 def load_settings():
     path = "chain_settings.json"
@@ -215,7 +215,7 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     CC  = "bright_cyan"           # cyber cyan
     RD  = "bright_red"            # alert red
     GD  = "gold1"                 # gold/master
-    DG  = "dim green"             # dim label
+    DG  = "grey62"                # visible label on any background
     BG  = "bold bright_green"
     BC  = "bold bright_cyan"
     BR  = "bold bright_red"
@@ -248,14 +248,14 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         (" ── ", DG),
         ("CMDR::DADANG  ", BY),
         (" ── ", DG),
-        (f"{symbol}  ", "dim white"),
+        (f"{symbol}  ", "white"),
         (bid, BG),
         (" / ", DG),
         (ask, BR),
         ("  ──  ", DG),
         (datetime.now().strftime("%H:%M:%S"), BC),
-        (" WIB  ", "dim"),
-        (f"[{pid}]  {enc_s}  {fw_s}  [dim green]UP:{uptime}[/dim green]", ""),
+        (" WIB  ", "grey74"),
+        (f"[{pid}]  {enc_s}  {fw_s}  [grey62]UP:{uptime}[/grey62]", ""),
     )
     layout["header"].update(Panel(Align.center(header_text), style=f"bold {theme}", padding=(0, 0)))
 
@@ -433,8 +433,8 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     mx.add_column("TF",   justify="center", width=8)
     mx.add_column("CMP",  justify="center", width=7)
     mx.add_column("ROLE", justify="center", width=14)
-    mx.add_column("SUP",  justify="right",  style=DG, width=8)
-    mx.add_column("RES",  justify="right",  style="dim red", width=8)
+    mx.add_column("SUP",  justify="right",  style="white",   width=8)
+    mx.add_column("RES",  justify="right",  style="white",   width=8)
 
     tfs = ["MN1","W1","D1","H4","H1","M30","M15","M5"]
     scan_idx = frame % len(tfs)
@@ -467,11 +467,11 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         else:
             r_lbl = st.cmp; r_col = "white"
 
-        if scanning:                        row_s = f"bold on grey15"
+        if scanning:                        row_s = "bold on grey15"
         elif "MASTER" in r_lbl:            row_s = "on grey11"
         elif "CF" in r_lbl and tf == "M5": row_s = "on dark_green"
-        elif "VR" in r_lbl:                row_s = "on navy_blue"
-        elif "SOLID" in r_lbl:             row_s = "on dark_slate_gray3"
+        elif "VR" in r_lbl:                row_s = "on dark_blue"
+        elif "SOLID" in r_lbl:             row_s = "on dark_cyan"
         else:                              row_s = ""
 
         scan_pfx = f"[blink {MG}]►[/]" if scanning and BLINK else ("►" if scanning else " ")
@@ -479,8 +479,14 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         if scanning:
             tf_lbl += f"  [{DG}]{_htag(4)}[/]"
 
-        mx.add_row(tf_lbl, f"[{cmp_col}]{st.cmp}[/]", f"[{r_col}]{r_lbl}[/]",
-                   f"{st.sup:.1f}", f"{st.res:.1f}", style=row_s)
+        mx.add_row(
+            tf_lbl,
+            f"[{cmp_col}]{st.cmp}[/]",
+            f"[{r_col}]{r_lbl}[/]",
+            f"[green]{st.sup:.1f}[/]",
+            f"[red]{st.res:.1f}[/]",
+            style=row_s,
+        )
 
     aligned_n  = sum(1 for tf in tfs if analyst.states[tf].cmp == _h4_dir and _h4_dir != "WAIT")
     wib_now    = datetime.now(pytz.timezone("Asia/Jakarta")).strftime("%H:%M:%S")
@@ -518,20 +524,20 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
 
     steps_t = Table(box=None, expand=True, show_header=False, padding=(0, 1), show_edge=False)
     steps_t.add_column("", width=3,  justify="center")
-    steps_t.add_column("", width=10, style=DG)
+    steps_t.add_column("", width=10, style="white")
     steps_t.add_column("", width=12, justify="right")
-    steps_t.add_column("", ratio=1,  style="dim")
+    steps_t.add_column("", ratio=1,  style="grey74")
 
-    s1_rs = f"on dark_green"       if s1_ok else ""
-    s2_rs = f"on navy_blue"        if _cs["m15_is_vr"] else "on dark_green" if _cs["m15_solid"] else ""
-    s3_rs = ("on dark_green" if cf_type in ("MINOR_CF","CF_LOW") else "on dark_orange3") if cf_fired else ""
+    s1_rs = "bold on dark_green"     if s1_ok else ""
+    s2_rs = "bold on dark_blue"      if _cs["m15_is_vr"] else "bold on dark_green" if _cs["m15_solid"] else ""
+    s3_rs = ("bold on dark_green" if cf_type in ("MINOR_CF","CF_LOW") else "bold on dark_red") if cf_fired else ""
 
     steps_t.add_row(_sicon(s1_ok), "M30_CMP",   s1_lbl, s1_sub, style=s1_rs)
     steps_t.add_row(_sicon(s2_ok), "M15_STATE", s2_lbl, s2_sub, style=s2_rs)
     steps_t.add_row(_sicon(s3_ok), "CF_ENTRY",  s3_lbl, s3_sub, style=s3_rs)
 
     ctx_t = Table(box=None, expand=True, show_header=False, padding=(0, 1))
-    ctx_t.add_column("", width=9, style=DG)
+    ctx_t.add_column("", width=9, style="white")
     ctx_t.add_column("", ratio=1)
     ctx_t.add_row("MACRO",  macro_lbl)
     ctx_t.add_row("REGIME", f"[{reg_c}]{regime_str}[/]")
@@ -540,7 +546,7 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     next_blink = BLINK and "──" not in next_txt
     next_display = f"[blink {next_bc}]{next_txt}[/]" if next_blink else f"[{next_bc}]{next_txt}[/]"
     next_panel = Panel(
-        Text.from_markup(f"  [dim green]>>>[/dim green]  {next_display}"),
+        Text.from_markup(f"  [grey62]>>>[/grey62]  {next_display}"),
         border_style=next_bc if next_bc not in ("dim","") else "green",
         height=3, padding=(0, 0),
     )
@@ -581,8 +587,8 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         bar_s  = "".join(bar)
         zone   = f"[{MG}]SUP_ZONE[/]" if pct < 0.3 else f"[{RD}]RES_ZONE[/]" if pct > 0.7 else "[yellow]MID_ZONE[/]"
         pct_r  = (1 - pct) * 100
-        l1 = f"[{col}]{label}[/]  [{DG}]{st.sup:.1f}[/]|{bar_s}|[dim red]{st.res:.1f}[/]"
-        l2 = f"  [{DG}]↑RES {st.res-cp:.1f}$ ({pct_r:.0f}%)[/]  [{DG}]↓SUP {cp-st.sup:.1f}$[/]  {zone}"
+        l1 = f"[{col}]{label}[/]  [green]{st.sup:.1f}[/]|{bar_s}|[red]{st.res:.1f}[/]"
+        l2 = f"  [grey74]↑RES {st.res-cp:.1f}$ ({pct_r:.0f}%)[/]  [grey74]↓SUP {cp-st.sup:.1f}$[/]  {zone}"
         return l1, l2
 
     liq_t = Table(box=None, expand=True, show_header=False, padding=(0, 0))
@@ -635,7 +641,7 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         f"  [{DG}]PKT_OK[/]"
     )
     layout["ticker"].update(
-        Panel(Align.center(ticker_text), border_style="grey19", padding=(0, 0))
+        Panel(Align.center(ticker_text), border_style="grey35", padding=(0, 0))
     )
 
 
