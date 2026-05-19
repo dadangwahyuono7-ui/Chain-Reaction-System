@@ -277,15 +277,20 @@ class SacredDoctrineAnalyst:
             }
 
         # ── ② CF_HIGH: M15 masih VR, M5 balik ke arah M30 ───────────────────────
+        # Time Law: M5 HARUS sudah VR dulu (vr_occurred) SEBELUM CF
+        # NO CF before VR — Iron Law
         if m15.cmp != direction:
-            if m5.cmp == direction and m5.cmp_change_time > m15.cmp_change_time:
+            if (m5.vr_occurred and
+                m5.cmp == direction and
+                m5.cmp_change_time > m15.cmp_change_time and
+                m5.cmp_change_time > getattr(m5, 'vr_change_time', 0)):
                 return {
                     "action": direction,
                     "type":   "CF_HIGH",
                     "tf":     "M5",
                     "tp_tf":  "M30",
                     "sl_tf":  "M15",
-                    "reason": f"CF High: M30 {direction} | M15 VR → M5 CF"
+                    "reason": f"CF High: M30 {direction} | M15 VR → M5 VR → M5 CF"
                 }
 
         return None  # VR ada tapi CF belum terkonfirmasi
@@ -351,7 +356,10 @@ class SacredDoctrineAnalyst:
                m15.cmp_change_time > getattr(m15, 'vr_change_time', 0):
                 cf_ready = True
                 cf_type  = "CF_LOW"
-            elif m5.cmp == direction and m5.cmp_change_time > m15.cmp_change_time:
+            elif (m5.vr_occurred and
+                  m5.cmp == direction and
+                  m5.cmp_change_time > m15.cmp_change_time and
+                  m5.cmp_change_time > getattr(m5, 'vr_change_time', 0)):
                 cf_ready = True
                 cf_type  = "CF_HIGH"
 
