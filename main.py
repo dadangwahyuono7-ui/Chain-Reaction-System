@@ -266,10 +266,11 @@ def make_layout() -> Layout:
     )
     layout["body"].split_column(
         Layout(name="intel",        size=3),
-        Layout(name="heatmap_row",  size=13),
+        Layout(name="heatmap_row",  size=12),
         Layout(name="matrix_row",   ratio=2),
-        Layout(name="anim_row",     size=16),
-        Layout(name="news_feed",    size=8),
+        Layout(name="liquidity",    size=6),
+        Layout(name="anim_row",     size=15),
+        Layout(name="news_feed",    size=7),
     )
     layout["heatmap_row"].split_row(
         Layout(name="heatmap", ratio=5),
