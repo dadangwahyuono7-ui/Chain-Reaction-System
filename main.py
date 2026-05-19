@@ -357,13 +357,16 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
         is_master = (tf == "H4")
         cmp_val = st.cmp
 
-        # CMP cell
-        if cmp_val == h4_dir and h4_dir != "WAIT":
-            cmp_cell = f"[bold white on dark_green] ▣ {cmp_val}  [/]"
-        elif cmp_val == "WAIT":
-            cmp_cell = f"[{DG}]  ──────  [/]"
+        # CMP cell — hijau=BUY, merah=SELL, pulse ◉ kalau aligned dengan H4
+        aligned_cmp = (cmp_val == h4_dir and h4_dir != "WAIT")
+        if cmp_val == "BUY":
+            sym = "◉" if (BLINK and aligned_cmp) else "▣"
+            cmp_cell = f"[bold white on dark_green] {sym} BUY  [/]"
+        elif cmp_val == "SELL":
+            sym = "◉" if (BLINK and aligned_cmp) else "▣"
+            cmp_cell = f"[bold white on dark_red] {sym} SELL [/]"
         else:
-            cmp_cell = f"[bold white on dark_red] ✗ {cmp_val}  [/]"
+            cmp_cell = f"[{DG}]  ──────  [/]"
 
         # VR cell
         role = roles.get(tf, "")
@@ -382,10 +385,15 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
             cf_cell = f"[{DG}]  ──────  [/]"
 
         # Align indicator
-        aligned = (cmp_val == h4_dir and h4_dir != "WAIT")
+        aligned = aligned_cmp
         if aligned:
             aligned_count += 1
-        alg = (f"[{MG}]▼[/]" if h4_dir == "SELL" else f"[{MG}]▲[/]") if aligned else f"[{RD}]✗[/]"
+        if aligned:
+            alg = f"[{MG}]▼[/]" if h4_dir == "SELL" else f"[{MG}]▲[/]"
+        elif cmp_val == "WAIT":
+            alg = f"[{DG}]·[/]"
+        else:
+            alg = f"[{RD}]✗[/]"
 
         row_style = "on grey15" if is_master else ""
         tf_lbl = f"[{BY}]{tf}★[/]" if is_master else f"[{CC}]{tf}[/]"
