@@ -37,12 +37,35 @@ class ChainFeed:
 feed = ChainFeed()
 
 _STATIC_INTEL = [
-    "🔴 KAMIS 01:00 WIB — FOMC Meeting Minutes (High Impact)",
-    "🔴 KAMIS 20:45 WIB — Flash Manufacturing PMI (High Impact)",
-    "📡 INTEL: Kevin Warsh (New Fed Chair) stance is Hawkish",
-    "🔥 GEOPOLITICS: Hormuz Strait tensions increase Gold demand",
-    "📊 SENTIMENT: Markets pricing in 'No Rate Cut' for 2026",
+    "🔴 KAMIS 01:00 WIB — Notulen Rapat FOMC (Dampak Tinggi)",
+    "🔴 KAMIS 20:45 WIB — Flash PMI Manufaktur (Dampak Tinggi)",
+    "📡 INTEL: Kevin Warsh (Ketua The Fed Baru) bersikap Hawkish",
+    "🔥 GEOPOLITIK: Ketegangan Selat Hormuz dorong permintaan Emas",
+    "📊 SENTIMEN: Pasar memperkirakan 'Tidak ada Pemangkasan Suku Bunga' 2026",
 ]
+
+_TRANS_CACHE = {}   # {original_text: translated_text}
+
+def _translate_id(text):
+    """Terjemahkan teks ke Bahasa Indonesia via Google Translate gratis."""
+    if text in _TRANS_CACHE:
+        return _TRANS_CACHE[text]
+    try:
+        r = requests.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params={"client": "gtx", "sl": "en", "tl": "id", "dt": "t", "q": text},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=3,
+        )
+        if r.status_code == 200:
+            data  = r.json()
+            result = "".join(p[0] for p in data[0] if p[0])
+            _TRANS_CACHE[text] = result
+            return result
+    except Exception:
+        pass
+    _TRANS_CACHE[text] = text
+    return text
 
 _NEWS_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -77,11 +100,12 @@ def fetch_live_news():
                         continue
                     txt = t.text.strip()
                     if any(k in txt.lower() for k in gold_kw):
-                        headlines.append(f"📡 {source_name.upper()}: {txt}")
+                        translated = _translate_id(txt)
+                        headlines.append(f"📡 {source_name.upper()}: {translated}")
                     if len(headlines) >= 4:
                         break
                 if headlines:
-                    fetch_live_news._last_source   = source_name
+                    fetch_live_news._last_source    = source_name
                     fetch_live_news._last_fetch_wib = datetime.now(wib).strftime("%H:%M")
                     return _STATIC_INTEL + headlines
             except Exception:
@@ -138,33 +162,115 @@ def get_market_volatility():
 
 def get_commander_greeting():
     hour = datetime.now().hour
-    if 5 <= hour < 12: return "Good Morning, Commander. Markets are waking up."
-    if 12 <= hour < 17: return "Good Afternoon, Commander. Liquidity is peaking."
-    if 17 <= hour < 22: return "Good Evening, Commander. Night Ops in progress."
-    return "Late Night, Commander. High Volatility expected."
+    if 5  <= hour < 12: return "Selamat Pagi, Komandan. Pasar mulai bergerak."
+    if 12 <= hour < 17: return "Selamat Siang, Komandan. Likuiditas sedang puncak."
+    if 17 <= hour < 22: return "Selamat Malam, Komandan. Operasi Malam aktif."
+    return "Dini Hari, Komandan. Volatilitas tinggi — waspada."
+
+def get_price_sparkline(symbol, n=24):
+    """Mini chart harga M5 terakhir pakai block chars."""
+    _BLOCKS = "▁▂▃▄▅▆▇█"
+    try:
+        rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M5, 0, n)
+        if rates is None or len(rates) < 4:
+            return "─" * n
+        closes = [float(r['close']) for r in rates]
+        lo, hi = min(closes), max(closes)
+        rng = hi - lo or 0.01
+        bars = []
+        for i, c in enumerate(closes):
+            lvl = int((c - lo) / rng * 7)
+            # Warnai berdasarkan arah dari bar sebelumnya
+            if i == 0:
+                bars.append(f"[grey50]{_BLOCKS[lvl]}[/]")
+            elif closes[i] > closes[i-1]:
+                bars.append(f"[bright_green]{_BLOCKS[lvl]}[/]")
+            elif closes[i] < closes[i-1]:
+                bars.append(f"[bright_red]{_BLOCKS[lvl]}[/]")
+            else:
+                bars.append(f"[grey74]{_BLOCKS[lvl]}[/]")
+        return "".join(bars)
+    except Exception:
+        return "─" * n
+
+def get_adr_info(symbol):
+    """ADR 14 hari — berapa USD rata-rata range harian, dan sudah terpakai berapa %."""
+    try:
+        daily = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_D1, 0, 15)
+        if daily is None or len(daily) < 2:
+            return None, None, None
+        ranges = [float(r['high']) - float(r['low']) for r in daily[1:15]]
+        adr    = sum(ranges) / len(ranges)
+        today  = daily[0]
+        used   = float(today['high']) - float(today['low'])
+        pct    = min(used / adr * 100, 100) if adr > 0 else 0
+        return adr, used, pct
+    except Exception:
+        return None, None, None
+
+def get_session_countdown():
+    """Hitung sisa waktu ke sesi berikutnya (London/NY)."""
+    now   = datetime.now(pytz.utc)
+    hour  = now.hour
+    sesi  = [("London", 8), ("New York", 13), ("London", 32)]   # 32 = 8+24 next day
+    for nama, buka in sesi:
+        if buka > hour:
+            sisa_jam  = buka - hour - 1
+            sisa_mnt  = 60 - now.minute
+            if sisa_mnt == 60: sisa_jam += 1; sisa_mnt = 0
+            return f"{nama} buka {sisa_jam:02d}:{sisa_mnt:02d}"
+    return "Semua sesi aktif"
+
+def get_open_positions_summary(symbol, magic):
+    """Ringkasan posisi terbuka: jumlah, total lot, total P&L."""
+    positions = mt5.positions_get(symbol=symbol, magic=magic) or []
+    if not positions:
+        return []
+    tick = mt5.symbol_info_tick(symbol)
+    rows = []
+    for p in positions:
+        is_buy  = p.type == mt5.POSITION_TYPE_BUY
+        curr    = tick.bid if is_buy else tick.ask
+        pnl_col = "bright_green" if p.profit >= 0 else "bright_red"
+        pips    = (curr - p.price_open) * 10 if is_buy else (p.price_open - curr) * 10
+        pip_col = "bright_green" if pips >= 0 else "bright_red"
+        cmt     = (p.comment or "")[:10]
+        rows.append({
+            "ticket": p.ticket,
+            "dir":    "BUY" if is_buy else "SELL",
+            "lot":    p.volume,
+            "open":   p.price_open,
+            "pnl":    p.profit,
+            "pips":   pips,
+            "pnl_col": pnl_col,
+            "pip_col": pip_col,
+            "comment": cmt,
+        })
+    return rows
 
 def make_layout() -> Layout:
     layout = Layout(name="root")
     layout.split_column(
-        Layout(name="header", size=3),
-        Layout(name="main", ratio=1),
-        Layout(name="ticker", size=3)
+        Layout(name="header",  size=4),   # +1 untuk sparkline row
+        Layout(name="main",    ratio=1),
+        Layout(name="ticker",  size=3)
     )
     layout["main"].split_row(Layout(name="side", ratio=1), Layout(name="body", ratio=3))
     layout["side"].split_column(
-        Layout(name="greeting", size=3),
-        Layout(name="account", ratio=2),
-        Layout(name="stats", ratio=2),
+        Layout(name="greeting",  size=3),
+        Layout(name="account",   ratio=2),
+        Layout(name="positions", size=6),  # panel posisi terbuka
+        Layout(name="stats",     ratio=2),
         Layout(name="sentiment", size=5)
     )
     layout["body"].split_column(
-        Layout(name="intel", size=3),
+        Layout(name="intel",      size=3),
         Layout(name="matrix_row", ratio=2),
-        Layout(name="liquidity", size=6),
-        Layout(name="news_feed", ratio=1)
+        Layout(name="liquidity",  size=7),  # +1 untuk ADR row
+        Layout(name="news_feed",  ratio=1)
     )
     layout["matrix_row"].split_row(
-        Layout(name="matrix", ratio=5),
+        Layout(name="matrix",    ratio=5),
         Layout(name="bs_matrix", ratio=6)
     )
     layout["news_feed"].split_row(
@@ -239,9 +345,11 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     uptime = f"{frame // 10:05d}s"
 
     # ── HEADER ─────────────────────────────────────────────────────────────────
-    enc_s  = f"[{MG}]ENC:OK[/]" if BLINK else f"[green]ENC:OK[/]"
-    fw_s   = f"[{CC}]FW:ACT[/]"
-    header_text = Text.assemble(
+    enc_s    = f"[{MG}]ENC:OK[/]" if BLINK else f"[green]ENC:OK[/]"
+    fw_s     = f"[{CC}]FW:ACT[/]"
+    sparkline = get_price_sparkline(symbol)
+    countdown = get_session_countdown()
+    header_top = Text.assemble(
         (f" {spin} ", f"bold {theme}"),
         ("CHAIN_REACTION::", f"bold {theme}"),
         ("OVERLORD_v4.0  ", BC),
@@ -257,7 +365,15 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
         (" WIB  ", "grey74"),
         (f"[{pid}]  {enc_s}  {fw_s}  [grey62]UP:{uptime}[/grey62]", ""),
     )
-    layout["header"].update(Panel(Align.center(header_text), style=f"bold {theme}", padding=(0, 0)))
+    header_bot = Text.from_markup(
+        f"  [grey62]M5:[/grey62] {sparkline}"
+        f"  [grey62]║[/grey62]  "
+        f"[grey62]Sesi:[/grey62] [{CC}]{countdown}[/{CC}]"
+    )
+    layout["header"].update(Panel(
+        RichGroup(Align.center(header_top), header_bot),
+        style=f"bold {theme}", padding=(0, 0)
+    ))
 
     # ── GREETING  (matrix rain) ────────────────────────────────────────────────
     greeting_rain = _rain(34, frame)
@@ -301,6 +417,33 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     acc_t.add_row("NET", uplink_bar)
     layout["account"].update(
         Panel(acc_t, title=_T("VAULT.ACCESS", pid), border_style=CC, padding=(0, 0))
+    )
+
+    # ── OPEN POSITIONS ─────────────────────────────────────────────────────────
+    pos_rows = get_open_positions_summary(symbol, settings.get("magic_number", 2026))
+    pos_t    = Table(box=None, expand=True, padding=(0, 1), show_header=False)
+    pos_t.add_column("", style="white",  width=5)
+    pos_t.add_column("", width=5)
+    pos_t.add_column("", justify="right", width=6)
+    pos_t.add_column("", justify="right", width=8)
+    if pos_rows:
+        total_pnl = sum(p["pnl"] for p in pos_rows)
+        tp_col    = MG if total_pnl >= 0 else RD
+        for p in pos_rows[:4]:   # max 4 baris agar muat
+            d_col = MG if p["dir"] == "BUY" else RD
+            pos_t.add_row(
+                f"[{d_col}]{p['dir'][:1]}[/]",
+                f"[white]{p['lot']}L[/]",
+                f"[{p['pip_col']}]{p['pips']:+.1f}p[/]",
+                f"[{p['pnl_col']}]{p['pnl']:+.2f}[/]",
+            )
+        pos_t.add_row("", "", "", f"[{tp_col}]={total_pnl:+.2f}[/]")
+        pos_border = MG if total_pnl >= 0 else RD
+    else:
+        pos_t.add_row("[grey62]──[/]", "[grey62]TIDAK ADA POSISI[/]", "", "")
+        pos_border = "grey35"
+    layout["positions"].update(
+        Panel(pos_t, title=_T("POSISI.AKTIF"), border_style=pos_border, padding=(0, 0))
     )
 
     # ── LIVE STATS  (SYS METRICS) ──────────────────────────────────────────────
@@ -597,6 +740,21 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     d1l1, d1l2 = _liq_row(d1s, "D1", BY)
     liq_t.add_row(h4l1); liq_t.add_row(h4l2)
     liq_t.add_row(d1l1); liq_t.add_row(d1l2)
+
+    # ADR Meter
+    adr_val, adr_used, adr_pct = get_adr_info(symbol)
+    if adr_val is not None:
+        adr_bw  = 20
+        adr_f   = int((adr_pct or 0) / 100 * adr_bw)
+        adr_col = MG if (adr_pct or 0) < 50 else "yellow" if (adr_pct or 0) < 80 else RD
+        adr_bar = _bar(adr_f, adr_bw, fill_color=adr_col, empty_color="grey19")
+        adr_txt = (
+            f"  [grey62]ADR 14D:[/grey62] [white]{adr_val:.1f}$[/white]"
+            f"  [grey62]Hari ini:[/grey62] [white]{adr_used:.1f}$[/white]"
+            f"  {adr_bar} [{adr_col}]{adr_pct:.0f}%[/]"
+        )
+        liq_t.add_row(Text.from_markup(adr_txt))
+
     layout["liquidity"].update(
         Panel(liq_t, title=_T("ZONE.RADAR"), border_style=CC, padding=(0, 1))
     )
