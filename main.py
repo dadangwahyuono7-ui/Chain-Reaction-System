@@ -501,14 +501,14 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
                 role_cell = f"[{DG}]H1_WAIT[/]"
             row_s_role = ""
         elif tf == "M30":
-            h1_cmp = analyst.states["H1"].cmp
+            # Compare vs H4 (master), NOT vs direction (direction=M30.cmp → always equal!)
             if cmp_val == "WAIT":
                 role_cell = f"[{DG}]WAIT[/]"
-            elif cmp_val == direction:
-                # M30 aligned H4 = CMP setup confirmed
+            elif cmp_val == h4_dir:
+                # M30 aligned H4 = solid CMP setup
                 role_cell = f"[bold bright_cyan]SETUP_CMP[/]"
             else:
-                # M30 counter H4 = VR ke H4 (pullback/testing master)
+                # M30 counter H4 = VR ke H4 (pullback / testing master)
                 lbl = "VR→H4 ⚡" if BLINK else "VR→H4 ·"
                 role_cell = f"[bold white on dark_blue] {lbl} [/]"
             row_s_role = ""
@@ -522,15 +522,32 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
                 role_cell = f"[{DG}]STANDBY[/]"
             row_s_role = ""
         elif tf == "M5":
-            m15_cmp = analyst.states["M15"].cmp
+            _m5_st    = analyst.states["M5"]
+            _m30_is_vr_to_h4 = (h4_dir != "WAIT" and direction != "WAIT" and direction != h4_dir)
+            # CF to M15: M5 same as M15 SOLID direction + M5 went through VR phase (vr_occurred)
+            _m5_cf_to_m15 = (
+                m15_solid and
+                cmp_val == direction and
+                cmp_val != "WAIT" and
+                _m5_st.vr_occurred          # M5 was previously counter (VR phase confirmed)
+            )
+
             if cf_ready and cf_type == "MINOR_CF":
                 lbl = "MINOR_CF ◉" if BLINK else "MINOR_CF ▣"
                 role_cell = f"[bold white on dark_green] {lbl} [/]"
             elif cf_ready:
                 lbl = f"{cf_type} ◉" if BLINK else f"{cf_type} ▣"
                 role_cell = f"[bold white on dark_green] {lbl} [/]"
-            elif m15_solid and cmp_val != m15_cmp and cmp_val != "WAIT":
-                # M15 SOLID BUY, M5 SELL counter → M5 adalah VR ke M15
+            elif _m5_cf_to_m15 and _m30_is_vr_to_h4:
+                # M5 CF ke M15 SOLID, tapi M30 masih VR ke H4 → HIGH RISK (counter-trend)
+                lbl = "CF_RISK ◉" if BLINK else "CF_RISK ▣"
+                role_cell = f"[bold white on dark_orange3] {lbl} [/]"
+            elif _m5_cf_to_m15:
+                # M5 CF ke M15, M30 aligned H4 → normal MINOR_CF zone
+                lbl = "CF→M15 ◉" if BLINK else "CF→M15 ▣"
+                role_cell = f"[bold white on dark_green] {lbl} [/]"
+            elif m15_solid and cmp_val != _m15_cmp and cmp_val != "WAIT":
+                # M5 counter M15 SOLID → VR ke M15 (entry trigger building)
                 lbl = "VR→M15 ⚡" if BLINK else "VR→M15 ·"
                 role_cell = f"[bold white on dark_blue] {lbl} [/]"
             elif m15_is_vr and cmp_val == direction:
@@ -567,10 +584,14 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
             vr_cell = f"[{DG}] ───── [/]"
 
         # ── CF cell — per-parent: which TF FIRED CF back to parent direction
-        # M5 CF = cf_ready (any type); M15 CF = CF_LOW; M30/H1 CF = cascade_roles "CF"
+        # M5 CF = cf_ready OR cf_to_m15; M15 CF = CF_LOW; M30/H1 CF = cascade_roles "CF"
         if tf == "M5":
-            _is_cf = cf_ready and cf_type in ("MINOR_CF", "CF_HIGH")
-            _cf_lbl = cf_type if cf_ready else "CF"
+            _m5_cf_dash = (
+                m15_solid and _m5_cmp == direction and _m5_cmp != "WAIT"
+                and analyst.states["M5"].vr_occurred
+            )
+            _is_cf = (cf_ready and cf_type in ("MINOR_CF", "CF_HIGH")) or _m5_cf_dash
+            _cf_lbl = cf_type if cf_ready else ("CF→M15" if _m5_cf_dash else "CF")
         elif tf == "M15":
             _is_cf = cf_ready and cf_type == "CF_LOW"                  # M15 returned to M30
             _cf_lbl = "CF_LOW"
@@ -654,17 +675,24 @@ def build_neural_flow_panel(frame, analyst, _cs, h4_dir):
     m5_cmp   = analyst.states["M5"].cmp
 
     # Step 1: M30 CMP locked (aligned H4)
-    m30_locked = m30_cmp == h4_dir and h4_dir != "WAIT"
-    # Step 2: M15 VR aktif (counter H4 = VR) atau SOLID
-    m15_active = m15_is_vr or m15_solid
-    m15_vr_dir = m15_cmp != h4_dir and m15_cmp != "WAIT"   # M15 counter H4
-    # Step 3: M5 CF fired
-    m5_cf = cf_ready
+    m30_locked   = m30_cmp == h4_dir and h4_dir != "WAIT"
+    m30_is_vr    = (h4_dir != "WAIT" and direction != "WAIT" and direction != h4_dir)
+    # Step 2: M15 VR aktif (counter M30) atau SOLID
+    m15_active   = m15_is_vr or m15_solid
+    # Step 3: M5 CF (engine) or CF-to-M15 (dashboard check)
+    _m5n_st      = analyst.states["M5"]
+    m5_cf_to_m15 = (m15_solid and m5_cmp == direction and m5_cmp != "WAIT"
+                    and _m5n_st.vr_occurred)
+    m5_cf        = cf_ready or m5_cf_to_m15
 
     # M5 state label
     m5_state = ""
     if cf_ready:
         m5_state = f"[blink bold {MG}] ⚡ CF::FIRE ⚡ [/]" if BLINK else f"[bold {MG}] ◉ CF READY [/]"
+    elif m5_cf_to_m15 and m30_is_vr:
+        m5_state = f"[bold dark_orange3] ⚠ CF_RISK::COUNTER-TREND [/]" if BLINK else f"[dark_orange3] ◉ CF_RISK [/]"
+    elif m5_cf_to_m15:
+        m5_state = f"[bold {MG}] ◉ CF→M15 READY [/]" if BLINK else f"[{MG}] ◉ CF→M15 [/]"
     elif m15_is_vr and m5_cmp == h4_dir:
         m5_state = f"[{CC}] CF_ZONE [/]"
     elif m15_solid and m5_cmp != m15_cmp and m5_cmp != "WAIT":
@@ -743,8 +771,8 @@ def build_neural_flow_panel(frame, analyst, _cs, h4_dir):
         # Baris 4: M15 → M5 CF (step 3)
         Text.from_markup(
             f"  [{DG}]        ↓  Step 3[/]\n"
-            f"  {pipe(m5_cf, MG)}"
-            f"{node('M5', m5_cf, 'dark_green', fire=m5_cf)}"
+            f"  {pipe(m5_cf, 'dark_orange3' if m5_cf_to_m15 and m30_is_vr else MG)}"
+            f"{node('M5', m5_cf, 'dark_orange3' if (m5_cf_to_m15 and m30_is_vr) else 'dark_green', fire=m5_cf)}"
             f"  {m5_state}"
         ),
 
@@ -756,7 +784,8 @@ def build_neural_flow_panel(frame, analyst, _cs, h4_dir):
         ),
     ]
 
-    border = (MG if BLINK else "green") if m5_cf else (CC if m15_active else DG)
+    _cf_risk_mode = m5_cf_to_m15 and m30_is_vr
+    border = ("dark_orange3" if _cf_risk_mode else (MG if BLINK else "green")) if m5_cf else (CC if m15_active else DG)
     return Panel(RichGroup(*lines), title=_T_local("NEURAL.FLOW"), border_style=border, padding=(0, 1))
 
 
@@ -1298,21 +1327,30 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
             elif _cs["m15_solid"]:  r_lbl = "SOLID ▣";  r_col = MG
             else:                   r_lbl = "STANDBY";   r_col = "dim"
         elif tf == "M5":
+            _m5x_st = analyst.states["M5"]
+            _m30x_vr = (_h4_dir != "WAIT" and _dir != "WAIT" and _dir != _h4_dir)
+            _m5x_cf_to_m15 = (
+                _cs["m15_solid"] and st.cmp == _dir and st.cmp != "WAIT"
+                and _m5x_st.vr_occurred
+            )
             if cf_fired and cf_type == "MINOR_CF":              r_lbl = "MINOR_CF ▣"; r_col = MG
             elif cf_fired:                                      r_lbl = f"{cf_type} ▣"; r_col = MG
+            elif _m5x_cf_to_m15 and _m30x_vr:                  r_lbl = "CF_RISK ▣";  r_col = "dark_orange3"
+            elif _m5x_cf_to_m15:                                r_lbl = "CF→M15 ▣";   r_col = MG
             elif _cs["m15_solid"] and st.cmp!=_dir and st.cmp!="WAIT": r_lbl="VR→M15"; r_col="yellow"
-            elif _cs["m15_is_vr"] and st.cmp!=_dir:            r_lbl = "VR";        r_col = "yellow"
-            elif _cs["m15_is_vr"] and st.cmp==_dir:            r_lbl = "CF_ZONE";   r_col = CC
-            else:                                               r_lbl = "STANDBY";   r_col = "dim"
+            elif _cs["m15_is_vr"] and st.cmp!=_dir:            r_lbl = "VR";         r_col = "yellow"
+            elif _cs["m15_is_vr"] and st.cmp==_dir:            r_lbl = "CF_ZONE";    r_col = CC
+            else:                                               r_lbl = "STANDBY";    r_col = "dim"
         else:
             r_lbl = st.cmp; r_col = "white"
 
-        if scanning:                        row_s = "bold on grey19"
-        elif "MASTER" in r_lbl:            row_s = "on grey15"
-        elif "CF" in r_lbl and tf == "M5": row_s = "on dark_green"
-        elif "VR" in r_lbl:                row_s = "on dark_blue"
-        elif "SOLID" in r_lbl:             row_s = "on grey23"
-        else:                              row_s = ""
+        if scanning:                              row_s = "bold on grey19"
+        elif "MASTER" in r_lbl:               row_s = "on grey15"
+        elif "CF_RISK" in r_lbl and tf=="M5": row_s = "on dark_orange3"
+        elif "CF" in r_lbl and tf == "M5":    row_s = "on dark_green"
+        elif "VR" in r_lbl:                   row_s = "on dark_blue"
+        elif "SOLID" in r_lbl:                row_s = "on grey23"
+        else:                                 row_s = ""
 
         scan_pfx = f"[blink {MG}]►[/]" if scanning and BLINK else ("►" if scanning else " ")
         tf_lbl   = f"{scan_pfx} {tf}"
