@@ -18,8 +18,8 @@ from rich.text import Text
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich import box as rich_box
 
-# Import ONLY TFState & CMPDetector — tidak sentuh engine keseluruhan
-from engine.core import TFState, CMPDetector
+# Import engine components — TFState/CMPDetector for Sacred Doctrine, DailyDeployAnalyst for DD layers
+from engine.core import TFState, CMPDetector, DailyDeployAnalyst
 
 console = Console()
 
@@ -46,6 +46,16 @@ TF_MINUTES = {
 }
 
 PIP = 0.1   # 1 pip Gold = 0.1 USD
+
+# TP/SL TF mapping untuk DailyDeployAnalyst — matches main.py _DD_TP_SL
+_DD_TP_SL = {
+    ("D1_DEPLOY", "CF_LOW"):  ("D1",  "H4"),
+    ("D1_DEPLOY", "CF_HIGH"): ("H4",  "H4"),
+    ("H4_DEPLOY", "CF_LOW"):  ("H4",  "H1"),
+    ("H4_DEPLOY", "CF_HIGH"): ("H1",  "H1"),
+    ("H1_DEPLOY", "CF_LOW"):  ("H1",  "M30"),
+    ("H1_DEPLOY", "CF_HIGH"): ("M30", "M30"),
+}
 
 
 # ── Data Loader ───────────────────────────────────────────────────────────────
@@ -406,13 +416,13 @@ def run_backtest(
 # ── Report Printer ────────────────────────────────────────────────────────────
 
 def print_report(trades, equity_curve, initial_balance, final_balance,
-                 symbol, start, end):
+                 symbol, start, end, engine="SACRED DOCTRINE"):
     MG = "bright_green"; RD = "bright_red"; CC = "bright_cyan"; DG = "grey62"
     GD = "gold1"
 
     console.print()
     console.print(Panel(
-        f"[bold {CC}]BACKTEST RESULT — SACRED DOCTRINE ENGINE[/]\n"
+        f"[bold {CC}]BACKTEST RESULT — {engine} ENGINE[/]\n"
         f"[{DG}]Symbol:[/] [white]{symbol}[/]   "
         f"[{DG}]Period:[/] [white]{start} → {end}[/]",
         border_style="cyan", padding=(0, 2)
@@ -573,6 +583,144 @@ def print_report(trades, equity_curve, initial_balance, final_balance,
                       f"{final_balance-initial_balance:+,.2f}[/])[/]")
 
 
+# ── Daily Deploy Backtest ─────────────────────────────────────────────────────
+
+def run_dd_backtest(
+    symbol:          str   = "XAUUSD",
+    start:           str   = "2025-01-01",
+    end:             str   = "2025-12-31",
+    initial_balance: float = 10_000.0,
+    sl_buffer_pips:  float = 5.0,
+    rr_ratio:        float = 0.0,
+    cooldown_bars:   int   = 12,
+    max_trades:      int   = 0,
+    layers:          list  = None,        # None = semua layer, atau ["H1_DEPLOY"]
+    signal_types:    list  = None,        # None = CF_LOW + CF_HIGH saja (filter CONTI)
+):
+    """
+    Replay historical data melalui DailyDeployAnalyst.
+    CONTI signals difilter default — hanya CF_LOW dan CF_HIGH yang dieksekusi.
+    """
+    if signal_types is None:
+        signal_types = ["CF_LOW", "CF_HIGH"]
+
+    start_dt = datetime.strptime(start, "%Y-%m-%d")
+    end_dt   = datetime.strptime(end,   "%Y-%m-%d")
+
+    all_data = load_historical_data(symbol, start_dt, end_dt)
+
+    m5_df = all_data.get("M5", pd.DataFrame())
+    if len(m5_df) == 0:
+        console.print("[red]ERROR: M5 data kosong[/]")
+        return None
+
+    m5_bars = m5_df[
+        (m5_df["time"] >= pd.Timestamp(start_dt)) &
+        (m5_df["time"] <= pd.Timestamp(end_dt))
+    ].reset_index(drop=True)
+
+    total_bars = len(m5_bars)
+    layer_label = ", ".join(layers) if layers else "ALL LAYERS"
+    console.print(f"\n[cyan]DD Backtest [{layer_label}] — Replaying [bold]{total_bars:,}[/] M5 bars "
+                  f"[grey62]({start} → {end})[/][/]")
+
+    bt_analyst = BacktestAnalyst(symbol, all_data)
+    dd_analyst = DailyDeployAnalyst(symbol)
+
+    trades       = []
+    open_trade: Trade | None = None
+    balance      = initial_balance
+    equity_curve = [initial_balance]
+    cooldown     = 0
+    last_sig_key = None
+
+    with Progress(
+        TextColumn("[cyan]Progress[/]"),
+        BarColumn(bar_width=50),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("dd-replay", total=total_bars)
+
+        for _, bar in m5_bars.iterrows():
+            t     = bar["time"]
+            high  = bar["high"]
+            low   = bar["low"]
+            close = bar["close"]
+
+            # ── 1. Cek exit open trade
+            if open_trade is not None:
+                result = open_trade.check(high, low, t)
+                if result is not None:
+                    trades.append(result)
+                    balance += result["pips"] * 1.0
+                    open_trade = None
+                    cooldown = cooldown_bars
+
+            equity_curve.append(balance)
+
+            if cooldown > 0:
+                cooldown -= 1
+                progress.advance(task)
+                continue
+
+            if open_trade is not None:
+                progress.advance(task)
+                continue
+
+            if max_trades > 0 and len(trades) >= max_trades:
+                progress.advance(task)
+                continue
+
+            # ── 2. Update engine
+            bt_analyst.update_at(t)
+            dd_analyst.update(bt_analyst)
+
+            sig = dd_analyst.get_best_signal()
+            if sig and sig["type"] in signal_types:
+                if layers is None or sig["layer"] in layers:
+                    tp_tf, sl_tf = _DD_TP_SL.get((sig["layer"], sig["type"]), ("M30", "M30"))
+                    st_tp = bt_analyst.states[tp_tf]
+                    st_sl = bt_analyst.states[sl_tf]
+                    direction = sig["action"]
+
+                    sl_ref = st_sl.sup if direction == "BUY" else st_sl.res
+                    tp_ref = st_tp.res if direction == "BUY" else st_tp.sup
+
+                    sig_key = f"{sig['layer']}_{sig['type']}"
+                    if sig_key != last_sig_key:
+                        if direction == "BUY":
+                            entry = close
+                            sl = (sl_ref - sl_buffer_pips * PIP) if sl_ref and sl_ref > 0 else close - 15 * PIP
+                            tp = entry + (entry - sl) * rr_ratio if rr_ratio > 0 else \
+                                 (tp_ref + sl_buffer_pips * PIP) if tp_ref and tp_ref > 0 else close + 30 * PIP
+                        else:
+                            entry = close
+                            sl = (sl_ref + sl_buffer_pips * PIP) if sl_ref and sl_ref > 0 else close + 15 * PIP
+                            tp = entry - (sl - entry) * rr_ratio if rr_ratio > 0 else \
+                                 (tp_ref - sl_buffer_pips * PIP) if tp_ref and tp_ref > 0 else close - 30 * PIP
+
+                        valid = (sl > 0 and tp > 0 and sl != entry and tp != entry and
+                                 ((direction == "BUY"  and tp > entry > sl) or
+                                  (direction == "SELL" and tp < entry < sl)))
+                        if valid:
+                            open_trade   = Trade(direction, entry, sl, tp, sig_key, t)
+                            last_sig_key = sig_key
+
+            progress.advance(task)
+
+    if open_trade is not None:
+        last   = m5_bars.iloc[-1]
+        result = open_trade._result(last["close"], "EOD", last["time"])
+        trades.append(result)
+        balance += result["pips"] * 1.0
+
+    print_report(trades, equity_curve, initial_balance, balance, symbol, start, end,
+                 engine="DAILY DEPLOY")
+    return trades, equity_curve
+
+
 # ── Entry point (bisa run langsung: python backtest.py) ───────────────────────
 
 if __name__ == "__main__":
@@ -586,24 +734,41 @@ if __name__ == "__main__":
     SL_BUFFER_PIPS  = 5.0      # buffer pips di luar SNR
     RR_RATIO        = 0.0      # 0=SNR natural, 2.0=fixed 1:2 RR
     COOLDOWN_BARS   = 12       # cooldown M5 bars setelah trade (12=1 jam)
+
+    # DD_MODE: False = Sacred Doctrine, True = Daily Deploy Analyst
+    DD_MODE         = False
+    DD_LAYERS       = None     # None=all, atau ["H1_DEPLOY", "H4_DEPLOY"]
     # ══════════════════════════════════════════════════════════════
 
     console.print("[bold cyan]CHAIN REACTION v4.0 — BACKTEST MODE[/]")
-    console.print("[grey62]Sacred Doctrine Engine — Historical Performance Audit[/]\n")
 
     if not connect_mt5():
         console.print("[red]ERROR: MT5 connection failed[/]")
     else:
         try:
-            run_backtest(
-                symbol          = SYMBOL,
-                start           = START_DATE,
-                end             = END_DATE,
-                initial_balance = INITIAL_BALANCE,
-                sl_buffer_pips  = SL_BUFFER_PIPS,
-                rr_ratio        = RR_RATIO,
-                cooldown_bars   = COOLDOWN_BARS,
-            )
+            if DD_MODE:
+                console.print("[grey62]Daily Deploy Analyst — Historical Performance Audit[/]\n")
+                run_dd_backtest(
+                    symbol          = SYMBOL,
+                    start           = START_DATE,
+                    end             = END_DATE,
+                    initial_balance = INITIAL_BALANCE,
+                    sl_buffer_pips  = SL_BUFFER_PIPS,
+                    rr_ratio        = RR_RATIO,
+                    cooldown_bars   = COOLDOWN_BARS,
+                    layers          = DD_LAYERS,
+                )
+            else:
+                console.print("[grey62]Sacred Doctrine Engine — Historical Performance Audit[/]\n")
+                run_backtest(
+                    symbol          = SYMBOL,
+                    start           = START_DATE,
+                    end             = END_DATE,
+                    initial_balance = INITIAL_BALANCE,
+                    sl_buffer_pips  = SL_BUFFER_PIPS,
+                    rr_ratio        = RR_RATIO,
+                    cooldown_bars   = COOLDOWN_BARS,
+                )
         finally:
             mt5.shutdown()
             console.print("\n[grey62]MT5 disconnected.[/]")
