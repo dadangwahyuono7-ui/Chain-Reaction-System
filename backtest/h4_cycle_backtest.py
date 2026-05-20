@@ -28,7 +28,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich import box as rich_box
 
 from engine.core import TFState
-from backtest.backtest import load_historical_data, Trade, PIP, print_report
+from backtest.backtest import load_historical_data, Trade, PIP, print_report, TF_MINUTES
 
 console = Console()
 
@@ -73,26 +73,35 @@ def run_h4_cycle_backtest(
     sl_buffer_pips:  float = 5.0,
     rr_ratio:        float = 0.0,   # 0 = M30 SNR natural | >0 = fixed RR
     max_trades:      int   = 0,
+    child_tf:        str   = "M5",  # TF untuk VR/CF — "M5" atau "M15" jika M5 tidak ada
 ):
     start_dt = datetime.strptime(start, "%Y-%m-%d")
     end_dt   = datetime.strptime(end,   "%Y-%m-%d")
 
     all_data = load_historical_data(symbol, start_dt, end_dt)
 
-    h4_df  = all_data.get("H4",  pd.DataFrame())
-    m30_df = all_data.get("M30", pd.DataFrame())
-    m5_df  = all_data.get("M5",  pd.DataFrame())
+    h4_df  = all_data.get("H4",      pd.DataFrame())
+    m30_df = all_data.get("M30",     pd.DataFrame())
+    m5_df  = all_data.get(child_tf,  pd.DataFrame())
 
-    for name, df in [("H4", h4_df), ("M30", m30_df), ("M5", m5_df)]:
+    for name, df in [("H4", h4_df), ("M30", m30_df), (child_tf, m5_df)]:
         if len(df) == 0:
             console.print(f"[red]ERROR: {name} data kosong[/]")
+            if name == child_tf and child_tf == "M5":
+                console.print(
+                    "[yellow]TIP: M5 belum di-download di MT5.\n"
+                    "     MT5 → Tools → History Center → XAUUSD → M5 → Download\n"
+                    "     Atau ganti CHILD_TF = 'M15' di run.py untuk test sementara.[/]"
+                )
             return None
 
     # ── Pre-build M30 timeline ─────────────────────────────────────────────────
     console.print("\n[cyan]Building M30 CMP timeline...[/]")
     m30_timeline = build_m30_timeline(m30_df)
 
-    # ── Pre-index M5 for fast slice lookups ────────────────────────────────────
+    child_tf_minutes = TF_MINUTES.get(child_tf, 5)
+
+    # ── Pre-index child TF for fast slice lookups ──────────────────────────────
     m5_df = m5_df.reset_index(drop=True)
     m5_times = m5_df["time"].values   # numpy array for searchsorted
 
@@ -104,7 +113,7 @@ def run_h4_cycle_backtest(
 
     total_h4 = len(h4_test)
     console.print(
-        f"[cyan]H4 Cycle Backtest — [bold]{total_h4}[/] H4 candles "
+        f"[cyan]H4 Cycle Backtest [{child_tf} VR/CF] — [bold]{total_h4}[/] H4 candles "
         f"[grey62]({start} → {end})[/][/]\n"
     )
 
@@ -205,7 +214,8 @@ def run_h4_cycle_backtest(
 
                 # ── Force close at last M5 bar of H4 window ───────────────────
                 next_m5_time = (m5_df.iloc[j + 1]["time"]
-                                if j + 1 < len(m5_df) else t_m5 + pd.Timedelta(minutes=5))
+                                if j + 1 < len(m5_df)
+                                else t_m5 + pd.Timedelta(minutes=child_tf_minutes))
                 if next_m5_time >= T_end and open_trade is not None:
                     result = open_trade._result(close, "H4_END", t_m5)
                     trades.append(result)
@@ -292,7 +302,7 @@ def run_h4_cycle_backtest(
     print_report(
         trades, equity_curve, initial_balance, balance,
         symbol, start, end,
-        engine="H4 CYCLE (M30→M5 VR→CF)"
+        engine=f"H4 CYCLE (M30→{child_tf} VR→CF)"
     )
     return trades, equity_curve
 
@@ -309,10 +319,14 @@ if __name__ == "__main__":
     INITIAL_BALANCE = 10_000.0
     SL_BUFFER_PIPS  = 5.0      # buffer pips di luar VR SNR level
     RR_RATIO        = 0.0      # 0 = M30 SNR natural, 2.0 = fixed 1:2 RR
+
+    # CHILD_TF: "M5" (ideal) atau "M15" jika M5 belum di-download di MT5
+    # Untuk download M5: MT5 → Tools → History Center → XAUUSD → M5 → Download
+    CHILD_TF        = "M15"
     # ══════════════════════════════════════════════════════════════
 
     console.print("[bold cyan]H4 CYCLE BACKTEST[/]")
-    console.print("[grey62]Rule: New H4 → wait M30 (30min) → M5 VR → M5 CF → ENTRY[/]")
+    console.print(f"[grey62]Rule: New H4 → wait M30 (30min) → {CHILD_TF} VR → {CHILD_TF} CF → ENTRY[/]")
     console.print("[grey62]Engine: Minor SNR body breakout sesuai Daily Deploy doctrine[/]\n")
 
     if not connect_mt5():
@@ -326,6 +340,7 @@ if __name__ == "__main__":
                 initial_balance = INITIAL_BALANCE,
                 sl_buffer_pips  = SL_BUFFER_PIPS,
                 rr_ratio        = RR_RATIO,
+                child_tf        = CHILD_TF,
             )
         finally:
             mt5.shutdown()
