@@ -10,6 +10,7 @@ import MetaTrader5 as mt5
 from rich.console import Console
 from engine.connection import connect_mt5
 from backtest.backtest import run_backtest, run_dd_backtest
+from backtest.h4_cycle_backtest import run_h4_cycle_backtest
 
 console = Console()
 
@@ -27,9 +28,13 @@ RR_RATIO        = 0.0            # 0 = pakai SNR natural, 2.0 = fixed 1:2 RR
 COOLDOWN_BARS   = 12             # jeda setelah close trade (12 M5 = 1 jam)
 MAX_TRADES      = 0              # 0 = unlimited
 
-# DD_MODE: False = Sacred Doctrine engine, True = Daily Deploy Analyst
-DD_MODE         = False
-DD_LAYERS       = None           # None = semua layer, atau contoh: ["H1_DEPLOY"]
+# MODE: pilih salah satu
+#   "sacred"   — Sacred Doctrine engine (Chain signals MINOR_CF/CF_LOW/CF_HIGH)
+#   "dd"       — DailyDeployAnalyst (D1/H4/H1 layer cascade)
+#   "h4_cycle" — 1 candle H4: M30 first bar CMP → M5 VR → M5 CF → ENTRY
+MODE            = "h4_cycle"
+
+DD_LAYERS       = None           # hanya untuk mode "dd": None=all, ["H1_DEPLOY"]
 
 # ═══════════════════════════════════════════════════════════
 
@@ -41,7 +46,18 @@ if __name__ == "__main__":
         sys.exit(1)
 
     try:
-        if DD_MODE:
+        if MODE == "h4_cycle":
+            console.print("[grey62]H4 Cycle — New H4 → M30 CMP → M5 VR → M5 CF[/]\n")
+            results = run_h4_cycle_backtest(
+                symbol          = SYMBOL,
+                start           = START_DATE,
+                end             = END_DATE,
+                initial_balance = INITIAL_BALANCE,
+                sl_buffer_pips  = SL_BUFFER_PIPS,
+                rr_ratio        = RR_RATIO,
+                max_trades      = MAX_TRADES,
+            )
+        elif MODE == "dd":
             console.print("[grey62]Daily Deploy Analyst — Historical Performance Audit[/]\n")
             results = run_dd_backtest(
                 symbol          = SYMBOL,
