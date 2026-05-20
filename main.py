@@ -454,14 +454,16 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir, signal=None, fund_snr=None,
 
     t = Table(
         box=rich_box.SIMPLE_HEAD, expand=True, show_edge=False,
-        padding=(0, 1), header_style=f"bold {CC} on grey11",
+        padding=(0, 0), header_style=f"bold {CC} on grey11",
     )
-    t.add_column("TF",   justify="center", width=6)
-    t.add_column("CMP",  justify="center", width=10)
-    t.add_column("ROLE", justify="center", width=13)
-    t.add_column("VR→PARENT", justify="center", width=14)
-    t.add_column("CF",   justify="center", width=12)
-    t.add_column("⊕",    justify="center", width=3)
+    # Ratio columns — Rich distribusi proporsional sesuai lebar panel,
+    # tidak ada fixed width yang bisa overflow dan bikin kolom TF terpotong
+    t.add_column("TF",   justify="center", ratio=1, no_wrap=True)
+    t.add_column("CMP",  justify="center", ratio=2, no_wrap=True)
+    t.add_column("ROLE", justify="center", ratio=3, no_wrap=True)
+    t.add_column("VR",   justify="center", ratio=2, no_wrap=True)
+    t.add_column("CF",   justify="center", ratio=2, no_wrap=True)
+    t.add_column("⊕",    justify="center", ratio=1, no_wrap=True)
 
     tfs = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5"]
     aligned_count = 0
