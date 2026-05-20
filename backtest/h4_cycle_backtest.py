@@ -64,18 +64,158 @@ def build_m30_timeline(m30_df: pd.DataFrame) -> dict:
     return timeline
 
 
+# ── MFE Report ────────────────────────────────────────────────────────────────
+
+def _print_mfe_report(trades: list) -> None:
+    """
+    MFE (Maximum Favorable Excursion) Analysis.
+
+    Menjawab: setelah CF valid dan entry, harga jalan profit dulu atau
+    langsung SL? Dan setelah BE protection aktif, berapa yang jadi BE/TP/SL?
+    """
+    if not trades:
+        return
+
+    sl_trades  = [t for t in trades if t["reason"] == "SL"]
+    be_trades  = [t for t in trades if t["reason"] == "BE"]
+    tp_trades  = [t for t in trades if t["reason"] == "TP"]
+    h4_trades  = [t for t in trades if t["reason"] == "H4_END"]
+    be_active  = any(t.get("be_triggered") for t in trades)
+
+    console.rule("[bold yellow]MFE ANALYSIS -- Max Favorable Excursion[/]")
+    console.print()
+
+    # ── Per-outcome MFE summary ───────────────────────────────────────────────
+    tbl = Table(box=rich_box.SIMPLE_HEAD, show_header=True, header_style="bold cyan")
+    tbl.add_column("Outcome",  style="bold")
+    tbl.add_column("Trades",   justify="right")
+    tbl.add_column("Pips avg", justify="right")
+    tbl.add_column("MFE min",  justify="right")
+    tbl.add_column("MFE avg",  justify="right")
+    tbl.add_column("MFE max",  justify="right")
+    tbl.add_column(">0p",      justify="right")
+    tbl.add_column(">5p",      justify="right")
+    tbl.add_column(">10p",     justify="right")
+    tbl.add_column(">20p",     justify="right")
+
+    groups = [
+        ("SL",     sl_trades,  "red"),
+        ("BE",     be_trades,  "yellow"),
+        ("TP",     tp_trades,  "green"),
+        ("H4_END", h4_trades,  "grey62"),
+        ("ALL",    trades,     "white"),
+    ]
+    for lbl, group, style in groups:
+        if not group:
+            continue
+        mfe  = [t.get("mfe_pips", 0.0) for t in group]
+        pips = [t["pips"] for t in group]
+        n    = len(mfe)
+        tbl.add_row(
+            f"[{style}]{lbl}[/]",
+            str(n),
+            f"{sum(pips)/n:+.1f}p",
+            f"{min(mfe):.1f}p",
+            f"{sum(mfe)/n:.1f}p",
+            f"{max(mfe):.1f}p",
+            f"{sum(1 for m in mfe if m > 0)}/{n}",
+            f"{sum(1 for m in mfe if m >= 5)}/{n}",
+            f"{sum(1 for m in mfe if m >= 10)}/{n}",
+            f"{sum(1 for m in mfe if m >= 20)}/{n}",
+        )
+    console.print(tbl)
+
+    # ── BE Protection summary (kalau aktif) ──────────────────────────────────
+    if be_active and (be_trades or sl_trades):
+        total_neg  = len(sl_trades) + len(be_trades)
+        lost_pips  = sum(abs(t["pips"]) for t in sl_trades)
+        # Estimasi pips diselamatkan: BE trades yang tadinya akan jadi SL
+        # Pakai avg SL loss dari true-SL trades sebagai proxy
+        avg_sl_loss = (sum(abs(t["pips"]) for t in sl_trades) / len(sl_trades)
+                       if sl_trades else 0.0)
+        saved_est   = len(be_trades) * avg_sl_loss
+        console.print(
+            Panel(
+                f"[bold]BE Protection aktif -- hasil:[/]\n\n"
+                f"  Tidak TP total            : [white]{total_neg}[/] trades\n"
+                f"    -> Kena BE (scratch 0p) : [bold yellow]{len(be_trades)}[/]"
+                f"  ({len(be_trades)*100/total_neg:.1f}% dari yang tidak TP)\n"
+                f"    -> Masih kena SL        : [bold red]{len(sl_trades)}[/]"
+                f"  ({len(sl_trades)*100/total_neg:.1f}% dari yang tidak TP)\n\n"
+                f"  Pips diselamatkan (est.)  : [bold green]+{saved_est:.0f}p[/]"
+                f" ({len(be_trades)} BE x avg SL {avg_sl_loss:.1f}p)\n"
+                f"  Pips masih loss di SL     : [bold red]-{lost_pips:.1f}p[/]\n\n"
+                f"  [grey62]True SL = trade yang kena SL sebelum sempat\n"
+                f"  sentuh BE trigger (+{be_trades[0].get('mfe_pips',5):.0f}p dari entry).[/]"
+                if be_trades else
+                f"  [grey62]True SL = trade yang kena SL sebelum sempat\n"
+                f"  sentuh BE trigger.[/]",
+                title="[bold yellow]BE Protection Summary[/]",
+                border_style="yellow",
+            )
+        )
+
+    # ── SL deep-dive (trades yang benar-benar kena SL, bukan BE) ─────────────
+    raw_sl = sl_trades  # trades dengan reason="SL" (tidak ada BE trigger)
+    if raw_sl:
+        mfe = [t.get("mfe_pips", 0.0) for t in raw_sl]
+        n   = len(mfe)
+        moved_any = sum(1 for m in mfe if m > 0)
+        moved_5   = sum(1 for m in mfe if m >= 5)
+        moved_10  = sum(1 for m in mfe if m >= 10)
+        console.print(
+            Panel(
+                f"[bold]SL trades yang benar2 loss ({n} trades)[/]\n\n"
+                f"  Sempat jalan profit (MFE > 0p) : [bold green]{moved_any}[/] / {n}"
+                f" = [bold]{moved_any*100/n:.1f}%[/]\n"
+                f"  Sempat jalan >= 5p profit      : {moved_5} / {n}"
+                f" = {moved_5*100/n:.1f}%\n"
+                f"  Sempat jalan >= 10p profit     : {moved_10} / {n}"
+                f" = {moved_10*100/n:.1f}%\n\n"
+                f"  MFE min (sebelum SL)           : [bold yellow]{min(mfe):.1f}p[/]\n"
+                f"  MFE avg (sebelum SL)           : [bold]{sum(mfe)/n:.1f}p[/]\n\n"
+                f"  [grey62]Ini adalah trade yang langsung SL sebelum\n"
+                f"  sempat sentuh BE trigger.[/]",
+                title="[bold red]True SL -- Tidak Ada BE[/]",
+                border_style="red",
+            )
+        )
+
+    # ── MFE histogram: SL + BE gabungan (semua yang tidak TP) ────────────────
+    all_non_tp = sl_trades + be_trades
+    if all_non_tp:
+        mfe = [t.get("mfe_pips", 0.0) for t in all_non_tp]
+        n   = len(mfe)
+        buckets = [
+            ("<0p  (langsung SL tanpa gerak) ", lambda m: m <= 0),
+            ("0-5p  (tidak sentuh BE)        ", lambda m: 0 < m < 5),
+            ("5-10p                          ", lambda m: 5 <= m < 10),
+            ("10-20p                         ", lambda m: 10 <= m < 20),
+            ("20-30p                         ", lambda m: 20 <= m < 30),
+            (">30p                           ", lambda m: m >= 30),
+        ]
+        console.print("[bold cyan]Non-TP trades MFE distribution:[/]")
+        for lbl, fn in buckets:
+            count = sum(1 for m in mfe if fn(m))
+            pct   = count * 100 / n
+            bar   = "#" * int(pct / 2)
+            console.print(f"  {lbl} {count:4d} ({pct:5.1f}%) {bar}")
+        console.print()
+
+
 # ── H4 Cycle Runner ───────────────────────────────────────────────────────────
 
 def run_h4_cycle_backtest(
-    symbol:          str   = "XAUUSD",
-    start:           str   = "2025-01-01",
-    end:             str   = "2025-12-31",
-    initial_balance: float = 10_000.0,
-    sl_buffer_pips:  float = 5.0,
-    rr_ratio:        float = 0.0,   # 0 = M30 SNR natural | >0 = fixed RR
-    max_trades:      int   = 0,
-    child_tf:        str   = "M5",  # TF untuk VR/CF — "M5" atau "M15"
-    data_source:     str   = "csv", # "csv" = dari DATACSV folder | "mt5" = live MT5
+    symbol:           str   = "XAUUSD",
+    start:            str   = "2025-01-01",
+    end:              str   = "2025-12-31",
+    initial_balance:  float = 10_000.0,
+    sl_buffer_pips:   float = 5.0,
+    rr_ratio:         float = 0.0,   # 0 = M30 SNR natural | >0 = fixed RR
+    max_trades:       int   = 0,
+    child_tf:         str   = "M5",  # TF untuk VR/CF — "M5" atau "M15"
+    data_source:      str   = "csv", # "csv" = dari DATACSV folder | "mt5" = live MT5
+    be_protect_pips:  float = 0.0,   # 0 = disabled | 5.0 = geser SL ke entry saat +5p
 ):
     start_dt = datetime.strptime(start, "%Y-%m-%d")
     end_dt   = datetime.strptime(end,   "%Y-%m-%d")
@@ -304,7 +444,8 @@ def run_h4_cycle_backtest(
                             )
                             if valid:
                                 label = f"M30{direction[0]}_VR_CF"
-                                open_trade = Trade(direction, entry, sl, tp, label, t_m5)
+                                open_trade = Trade(direction, entry, sl, tp, label,
+                                                   t_m5, be_pips=be_protect_pips)
 
                 j += 1
 
@@ -339,6 +480,7 @@ def run_h4_cycle_backtest(
         symbol, start, end,
         engine=f"H4 CYCLE (M30->{child_tf} VR->CF)"
     )
+    _print_mfe_report(trades)
     return trades, equity_curve
 
 

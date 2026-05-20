@@ -22,5 +22,8 @@
         {"day": 3, "time": "01:00"},
         {"day": 3, "time": "20:45"}
     ],
-    "news_refresh_seconds": 300
+    "news_refresh_seconds": 300,
+    "ninja_enabled":   true,
+    "ninja_be_pips":   5.0,
+    "ninja_sl_buffer": 5.0
 }

@@ -21,6 +21,7 @@ from rich import box as rich_box
 from engine.connection import connect_mt5
 from engine.core import SacredDoctrineAnalyst, DailyDeployAnalyst
 from engine.executor import ChainReactionExecutor
+from engine.ninja_trade import NinjaTradeAnalyst
 
 console = Console()
 
@@ -377,6 +378,7 @@ def make_layout() -> Layout:
     layout["heatmap_row"].split_row(
         Layout(name="heatmap", ratio=5),
         Layout(name="neural",  ratio=5),
+        Layout(name="ninja",   ratio=4),   # NINJA.TRADE — kolom tersendiri
     )
     layout["matrix_row"].split_row(
         Layout(name="matrix",    ratio=5),
@@ -944,7 +946,203 @@ def build_oscilloscope_panel(frame, pos_rows):
     return Panel(content, title=_T_local("PnL.OSCILLOSCOPE"), border_style=border, padding=(0, 0))
 
 
-def update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame):
+def build_sniper_scope_panel(frame: int, analyst, stats_data: dict) -> Panel:
+    """
+    SNIPER.SCOPE — pure animated radar, no text.
+    Hanya sweep beam berputar, memenuhi kolom.
+    """
+    MG = "bright_green"; RD = "bright_red"; GD = "gold1"
+    DG = "grey23";        CC = "bright_cyan"
+
+    master   = analyst.states.get("H4")
+    h4_dir   = master.cmp if master else "WAIT"
+    beam_col = MG if h4_dir == "BUY" else RD if h4_dir == "SELL" else GD
+
+    # ── Beam: rotasi 5°/frame → putaran penuh ~7 detik ───────────────────────
+    angle_deg = (frame * 5) % 360
+
+    # ── Radar besar: 8 baris × 17 kolom, pusat (row=3, col=8) ───────────────
+    ROWS, COLS, CX, CY, ASPECT, MAX_D = 8, 17, 8, 3, 2.0, 7.5
+    radar_lines = []
+    for r in range(ROWS):
+        row = Text()
+        for c in range(COLS):
+            dx   = c - CX
+            dy   = (r - CY) * ASPECT
+            dist = math.sqrt(dx ** 2 + dy ** 2)
+
+            if dist < 0.55:                          # titik pusat
+                row.append("◉", style=f"bold {beam_col}")
+                continue
+            if dist > MAX_D:                         # di luar radius
+                row.append(" ")
+                continue
+
+            cell_ang = math.degrees(math.atan2(-dy, dx)) % 360
+            diff     = abs(cell_ang - angle_deg) % 360
+            if diff > 180:
+                diff = 360 - diff
+
+            # Ring latar: 2 lingkaran + titik-titik luar
+            if dist < 1.8:   base = "○"
+            elif dist < 4.0: base = "·"
+            else:             base = "·"
+
+            # Sweep trail: tip terang → ekor memudar
+            if diff < 5:
+                row.append("▓", style=f"bold {beam_col}")
+            elif diff < 18:
+                row.append("▒", style=beam_col)
+            elif diff < 40:
+                row.append("░", style=f"dim {beam_col}")
+            else:
+                row.append(base, style=f"dim {DG}")
+        radar_lines.append(row)
+
+    content = Align.center(RichGroup(*radar_lines))
+    return Panel(
+        content,
+        title=f"[bold {CC}][ SNIPER.SCOPE ][/]",
+        border_style=beam_col,
+        padding=(0, 0),
+    )
+
+
+def build_ninja_panel(frame, ninja_state: dict) -> Panel:
+    """
+    NINJA.TRADE panel — "Curi-Curi" H4 Cycle Strategy.
+    Kolom independen, tidak ada kaitannya dengan engine utama.
+    """
+    BLINK = frame % 2 == 0
+    MG = "bright_green"; RD = "bright_red"; CC = "bright_cyan"
+    GD = "gold1"; DG = "grey62"; YL = "yellow"
+
+    state    = ninja_state.get("state", "IDLE")
+    status   = ninja_state.get("status_msg", "")
+    sig      = ninja_state.get("signal")
+    stats    = ninja_state.get("stats", {})
+    h4_open  = ninja_state.get("h4_open")
+    h4_end   = ninja_state.get("h4_end")
+    m30_gate = ninja_state.get("m30_gate")
+    m30_dir  = ninja_state.get("m30_dir", "WAIT")
+    vr_ref   = ninja_state.get("vr_sl_ref", 0.0)
+    be_pips  = ninja_state.get("be_pips", 5.0)
+
+    # ── State badge ───────────────────────────────────────────────────────────
+    _state_map = {
+        "IDLE":     (DG,  "  IDLE  "),
+        "WAIT_M30": (GD,  "WAIT M30"),
+        "WAIT_VR":  (CC,  "HUNT VR "),
+        "WAIT_CF":  (CC,  "VR->CF  "),
+        "ARMED":    (MG,  " ARMED! "),
+        "IN_TRADE": (MG,  "IN TRADE"),
+    }
+    sc, slbl = _state_map.get(state, (DG, state))
+    if state == "ARMED":
+        badge = (f"[bold white on dark_green] !! {slbl} !! [/]" if BLINK
+                 else f"[bold {MG}][ {slbl} ][/]")
+    elif state == "IN_TRADE":
+        badge = f"[bold white on green] {slbl} [/]"
+    elif state in ("WAIT_VR", "WAIT_CF"):
+        badge = (f"[bold white on dark_blue] {slbl} [/]" if BLINK
+                 else f"[{CC}][ {slbl} ][/]")
+    else:
+        badge = f"[{sc}][ {slbl} ][/]"
+
+    # ── H4 window display ─────────────────────────────────────────────────────
+    if h4_open and h4_end:
+        h4_str  = f"{h4_open.strftime('%H:%M')} -> {h4_end.strftime('%H:%M')}"
+        gate_str = m30_gate.strftime('%H:%M') if m30_gate else "--:--"
+    else:
+        h4_str = gate_str = "--:-- -> --:--"
+
+    # ── M30 direction cell ────────────────────────────────────────────────────
+    if m30_dir == "BUY":
+        m30_cell = f"[bold white on dark_green] BUY [/]"
+    elif m30_dir == "SELL":
+        m30_cell = f"[bold white on dark_red] SELL[/]"
+    else:
+        m30_cell = f"[{DG}]WAIT[/]"
+
+    # ── VR reference ──────────────────────────────────────────────────────────
+    vr_cell = f"[{CC}]{vr_ref:.2f}[/]" if vr_ref > 0 else f"[{DG}]---[/]"
+
+    # ── Signal block ──────────────────────────────────────────────────────────
+    if sig and state in ("ARMED", "IN_TRADE"):
+        d    = sig["direction"]
+        dc   = MG if d == "BUY" else RD
+        slp  = sig.get("sl_pips", 0)
+        tpp  = sig.get("tp_pips", 0)
+        rr   = round(tpp / slp, 1) if slp else 0
+        sig_lines = (
+            f" [{dc}]{d}[/] ~[white]{sig['entry']:.2f}[/]\n"
+            f" SL [{RD}]{sig['sl']:.2f}[/] [{DG}]({slp:.0f}p)[/]\n"
+            f" TP [{MG}]{sig['tp']:.2f}[/] [{DG}]({tpp:.0f}p)[/]\n"
+            f" BE [{YL}]+{be_pips:.0f}p[/]  RR [{GD}]1:{rr}[/]"
+        )
+    else:
+        sig_lines = f" [{DG}]-- no signal --[/]"
+
+    # ── Trade floating P&L ────────────────────────────────────────────────────
+    if state == "IN_TRADE":
+        pips     = ninja_state.get("trade_pips", 0.0)
+        be_done  = ninja_state.get("trade_be_done", False)
+        p_col    = MG if pips >= 0 else RD
+        pnl_line = f" [{p_col}]{pips:+.1f}p[/]"
+        if be_done:
+            pnl_line += f" [{YL}][BE][/]"
+        else:
+            pnl_line += f" [{DG}](BE:{be_pips:.0f}p)[/]"
+    else:
+        pnl_line = f" [{DG}]--[/]"
+
+    # ── Session stats ─────────────────────────────────────────────────────────
+    t = stats.get("trades", 0)
+    w = stats.get("wins",   0)
+    b = stats.get("be",     0)
+    l = stats.get("losses", 0)
+    p = stats.get("pips",   0.0)
+    p_col = MG if p >= 0 else RD
+    stats_line = (
+        f" T:[white]{t}[/] "
+        f"W:[{MG}]{w}[/] "
+        f"BE:[{YL}]{b}[/] "
+        f"SL:[{RD}]{l}[/]  "
+        f"[{p_col}]{p:+.1f}$[/]"
+    )
+
+    # ── Assemble content ──────────────────────────────────────────────────────
+    sep = f"[{DG}]{'─' * 28}[/]"
+    content = (
+        f" {badge}\n"
+        f" [{DG}]H4[/] {h4_str}  [{DG}]M30@[/]{gate_str}\n"
+        f"{sep}\n"
+        f" [{DG}]M30:[/]  {m30_cell}   [{DG}]VR ref:[/] {vr_cell}\n"
+        f"{sep}\n"
+        f"{sig_lines}\n"
+        f"{sep}\n"
+        f" [{DG}]Float:[/]{pnl_line}\n"
+        f"{sep}\n"
+        f"{stats_line}\n"
+        f" [{DG}]{status[:35]}[/]"
+    )
+
+    border = (MG if state in ("ARMED", "IN_TRADE") else
+              CC if state in ("WAIT_VR", "WAIT_CF") else
+              GD if state == "WAIT_M30" else "grey35")
+    if state == "ARMED" and BLINK:
+        border = "bold bright_green"
+
+    return Panel(
+        Text.from_markup(content),
+        title=f"[bold {CC}]NINJA.TRADE[/] [{DG}]curi-curi[/]",
+        border_style=border,
+        padding=(0, 0),
+    )
+
+
+def update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame,
+                  ninja_state: dict | None = None):
     BLINK = frame % 2 == 0
 
     # ── PALETTE ────────────────────────────────────────────────────────────────
@@ -1077,23 +1275,9 @@ def update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame
         Panel(pos_t, title=_T("POSISI.AKTIF"), border_style=pos_border, padding=(0, 0))
     )
 
-    # ── LIVE STATS  (SYS METRICS) ──────────────────────────────────────────────
-    stats   = get_real_stats(settings.get("magic_number", 2026))
-    pnl_col = MG if stats['pnl'] >= 0 else RD
-    wr_col  = MG if stats['win_rate'] >= 60 else "yellow" if stats['win_rate'] >= 40 else RD
-    st_t    = Table(box=None, expand=True, padding=(0, 1))
-    st_t.add_column("", style=DG, width=7)
-    st_t.add_column("", style=BG, justify="right")
-    st_t.add_row("WIN%",   f"[{wr_col}]{stats['win_rate']:.0f}%[/]")
-    st_t.add_row("TRADES", f"[{CC}]{stats['strikes']}[/]")
-    st_t.add_row("PnL",    f"[{pnl_col}]{'+' if stats['pnl']>=0 else ''}{stats['pnl']:,.2f}[/]")
-    proc_v   = int(math.cos(frame * 0.6) * 4 + 5)
-    proc_bar = _bar(proc_v, 10, fill_color=GD, empty_color="grey19")
-    st_t.add_row("", "")
-    st_t.add_row("CPU",    proc_bar)
-    layout["stats"].update(
-        Panel(st_t, title=_T("SYS.METRICS"), border_style=GD, padding=(0, 0))
-    )
+    # ── SNIPER.SCOPE  (animated radar — SYS.METRICS diganti) ─────────────────
+    stats = get_real_stats(settings.get("magic_number", 2026))
+    layout["stats"].update(build_sniper_scope_panel(frame, analyst, stats))
 
     # ── DELTA.FLOW  (footprint volume) ────────────────────────────────────────
     dlt      = get_delta_info(symbol)
@@ -1596,6 +1780,7 @@ def update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame
     # ── NEW ANIMATED PANELS ────────────────────────────────────────────────────
     layout["heatmap"].update(build_heatmap_panel(frame, analyst, _cs, _h4_dir))
     layout["neural"].update(build_neural_flow_panel(frame, analyst, _cs, _h4_dir))
+    layout["ninja"].update(build_ninja_panel(frame, ninja_state or {}))
     layout["equity"].update(build_equity_curve_panel(frame, acc))
     layout["oscillo"].update(build_oscilloscope_panel(frame, pos_rows))
 
@@ -1658,11 +1843,18 @@ def main():
     analyst    = SacredDoctrineAnalyst(symbol, master_tf=settings.get("master_tf", "H4"))
     dd_analyst = DailyDeployAnalyst(symbol)
     executor   = ChainReactionExecutor(symbol, magic_number=settings.get("magic_number", 2026))
+    ninja      = NinjaTradeAnalyst(
+        symbol,
+        be_pips        = settings.get("ninja_be_pips",     5.0),
+        sl_buffer_pips = settings.get("ninja_sl_buffer",   5.0),
+    )
     layout = make_layout()
     frame = 0
-    last_strike_time_chain = 0
-    last_strike_time_dd    = 0
-    feed.add(f"🔗 OVERLORD ONLINE: Standing by for Market Ignition")
+    last_strike_time_chain  = 0
+    last_strike_time_dd     = 0
+    last_strike_time_ninja  = 0
+    ninja_state: dict       = {}
+    feed.add(f"OVERLORD ONLINE: Standing by for Market Ignition")
     feed.add(f"⚖️ DOCTRINE ARMED: Time Law v4.0 Enforced")
     feed.add(f"🛰️ RADAR ACTIVE: Scanning for {symbol} Liquidity")
     with Live(layout, refresh_per_second=8, screen=True) as live:
@@ -1673,6 +1865,7 @@ def main():
 
                 analyst.update()
                 dd_analyst.update(analyst)
+                ninja_state = ninja.update()   # independent — no analyst dependency
 
                 events = executor.monitor_positions(analyst)
                 for e in events:
@@ -1729,7 +1922,35 @@ def main():
                                 all_positions = mt5.positions_get(symbol=symbol, magic=magic) or []
                                 total_open = len(all_positions)
 
-                update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame)
+                # 3. Ninja Trade — H4 Cycle "Curi-Curi" (kolom sendiri)
+                ninja_sig = ninja.get_signal()
+                if (ninja_sig and settings.get("auto_trade")
+                        and settings.get("ninja_enabled", True)):
+                    if time.time() - last_strike_time_ninja > 240:
+                        ninja_pos = [p for p in all_positions
+                                     if p.comment.startswith("Ninja_")]
+                        if len(ninja_pos) == 0:   # max 1 posisi Ninja sekaligus
+                            success, msg = executor.execute_strike(
+                                ninja_sig["action"], analyst,
+                                comment=f"Ninja_CF_{ninja_sig['action'][:1]}",
+                                tp_price=ninja_sig["tp_price"],
+                                sl_price=ninja_sig["sl_price"],
+                                settings=settings,
+                            )
+                            feed.add(f"[NINJA] {msg}")
+                            if success:
+                                last_strike_time_ninja = time.time()
+                                # Cari ticket yang baru dibuka
+                                new_pos = mt5.positions_get(symbol=symbol, magic=magic) or []
+                                for p in new_pos:
+                                    if p.comment.startswith("Ninja_"):
+                                        ninja.mark_trade_open(
+                                            p.ticket, p.price_open,
+                                            p.sl, p.tp, ninja_sig["action"])
+                                        break
+
+                update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame,
+                              ninja_state=ninja_state)
                 frame += 1
                 time.sleep(0.1)
             except KeyboardInterrupt:

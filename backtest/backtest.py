@@ -318,38 +318,84 @@ class BacktestAnalyst:
 # -- Position Tracker ----------------------------------------------------------
 
 class Trade:
-    def __init__(self, direction, entry, sl, tp, sig_type, open_time):
-        self.direction = direction
-        self.entry     = entry
-        self.sl        = sl
-        self.tp        = tp
-        self.sig_type  = sig_type
-        self.open_time = open_time
+    def __init__(self, direction, entry, sl, tp, sig_type, open_time, be_pips=0.0):
+        self.direction     = direction
+        self.entry         = entry
+        self.sl            = sl
+        self.tp            = tp
+        self.sig_type      = sig_type
+        self.open_time     = open_time
+        self.be_pips       = be_pips       # 0 = disabled
+        self.be_triggered  = False         # True setelah SL digeser ke entry
+        self.original_sl   = sl            # simpan SL awal untuk laporan
+        # MFE tracking: best price reached in profit direction from entry
+        self.max_favorable = entry
 
     def check(self, high, low, current_time):
-        """Return (pips, reason, close_time) jika trade close, else None."""
+        """Return result dict if trade closes, else None.
+        Updates MFE and BE protection every bar.
+
+        Ordering rules (sesuai realitas intrabar):
+          1. BE trigger check -- deteksi dulu apakah harga sentuh be_level
+          2. TP check dulu (asumsi favorable move datang sebelum adverse)
+          3. SL/BE check -- skip pada bar yg sama dengan BE trigger (grace period)
+             sehingga TP di bar berikutnya masih bisa tercapai
+        """
+        be_fired_this_bar = False   # True = BE baru saja trigger di bar ini
+
         if self.direction == "BUY":
-            if low  <= self.sl: return self._result(self.sl,  "SL", current_time)
-            if high >= self.tp: return self._result(self.tp,  "TP", current_time)
-        else:
-            if high >= self.sl: return self._result(self.sl,  "SL", current_time)
-            if low  <= self.tp: return self._result(self.tp,  "TP", current_time)
+            # MFE tracking
+            if high > self.max_favorable:
+                self.max_favorable = high
+            # BE trigger
+            if self.be_pips > 0 and not self.be_triggered:
+                if high >= self.entry + self.be_pips * PIP:
+                    self.sl = self.entry
+                    self.be_triggered  = True
+                    be_fired_this_bar  = True
+            # TP dulu (favorable assumption: high reached before low on same bar)
+            if high >= self.tp:
+                return self._result(self.tp, "TP", current_time)
+            # SL/BE check — lewati bar yg sama saat BE baru trigger (grace period)
+            if not be_fired_this_bar and low <= self.sl:
+                reason = "BE" if self.be_triggered else "SL"
+                return self._result(self.sl, reason, current_time)
+
+        else:  # SELL
+            if low < self.max_favorable:
+                self.max_favorable = low
+            if self.be_pips > 0 and not self.be_triggered:
+                if low <= self.entry - self.be_pips * PIP:
+                    self.sl = self.entry
+                    self.be_triggered  = True
+                    be_fired_this_bar  = True
+            if low <= self.tp:
+                return self._result(self.tp, "TP", current_time)
+            if not be_fired_this_bar and high >= self.sl:
+                reason = "BE" if self.be_triggered else "SL"
+                return self._result(self.sl, reason, current_time)
+
         return None
 
     def _result(self, exit_price, reason, close_time):
         pips = ((exit_price - self.entry) if self.direction == "BUY"
                 else (self.entry - exit_price)) / PIP
+        # MFE = max favorable excursion in pips from entry
+        mfe_pips = ((self.max_favorable - self.entry) if self.direction == "BUY"
+                    else (self.entry - self.max_favorable)) / PIP
         return {
-            "direction":  self.direction,
-            "type":       self.sig_type,
-            "entry":      self.entry,
-            "exit":       exit_price,
-            "sl":         self.sl,
-            "tp":         self.tp,
-            "pips":       pips,
-            "reason":     reason,
-            "open_time":  self.open_time,
-            "close_time": close_time,
+            "direction":    self.direction,
+            "type":         self.sig_type,
+            "entry":        self.entry,
+            "exit":         exit_price,
+            "sl":           self.original_sl,   # SL awal (bukan BE level)
+            "tp":           self.tp,
+            "pips":         pips,
+            "mfe_pips":     round(mfe_pips, 1),
+            "reason":       reason,
+            "be_triggered": self.be_triggered,
+            "open_time":    self.open_time,
+            "close_time":   close_time,
         }
 
 
@@ -608,7 +654,10 @@ def print_report(trades, equity_curve, initial_balance, final_balance,
     for i, tr in enumerate(trades[-30:], max(1, len(trades) - 29)):
         dc = MG if tr["direction"] == "BUY" else RD
         pc = MG if tr["pips"] > 0 else RD
-        rc = MG if tr["reason"] == "TP" else (GD if tr["reason"] == "EOD" else RD)
+        rc = (MG  if tr["reason"] == "TP"
+              else "yellow" if tr["reason"] == "BE"
+              else GD if tr["reason"] in ("EOD", "H4_END")
+              else RD)
         tl.add_row(
             str(i),
             str(tr["open_time"])[:16],

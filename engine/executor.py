@@ -170,6 +170,10 @@ class ChainReactionExecutor:
 
         events = []
         for p in positions:
+            # Paranoia guard: skip posisi yang magic-nya bukan milik engine
+            # (trade manual lo di MT5 magic=0, pasti kelewat)
+            if p.magic != self.magic_number:
+                continue
             curr_price = tick.bid if p.type == mt5.POSITION_TYPE_BUY else tick.ask
             is_buy  = p.type == mt5.POSITION_TYPE_BUY
             direction = "BUY" if is_buy else "SELL"

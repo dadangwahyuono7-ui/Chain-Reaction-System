@@ -27,6 +27,7 @@ SL_BUFFER_PIPS  = 5.0            # buffer pips di luar SNR untuk SL/TP
 RR_RATIO        = 0.0            # 0 = pakai SNR natural, 2.0 = fixed 1:2 RR
 COOLDOWN_BARS   = 12             # jeda setelah close trade (12 M5 = 1 jam)
 MAX_TRADES      = 0              # 0 = unlimited
+BE_PROTECT_PIPS = 5.0            # geser SL ke entry saat profit >= X pip (0=off)
 
 # MODE: pilih salah satu
 #   "sacred"   — Sacred Doctrine engine (Chain signals MINOR_CF/CF_LOW/CF_HIGH)
@@ -51,17 +52,18 @@ if __name__ == "__main__":
 
     try:
         if MODE == "h4_cycle":
-            console.print(f"[grey62]H4 Cycle [{DATA_SOURCE.upper()}] — New H4 → M30 CMP → {CHILD_TF} VR → {CHILD_TF} CF[/]\n")
+            console.print(f"[grey62]H4 Cycle [{DATA_SOURCE.upper()}] -- New H4 -> M30 CMP -> {CHILD_TF} VR -> {CHILD_TF} CF[/]\n")
             results = run_h4_cycle_backtest(
-                symbol          = SYMBOL,
-                start           = START_DATE,
-                end             = END_DATE,
-                initial_balance = INITIAL_BALANCE,
-                sl_buffer_pips  = SL_BUFFER_PIPS,
-                rr_ratio        = RR_RATIO,
-                max_trades      = MAX_TRADES,
-                child_tf        = CHILD_TF,
-                data_source     = DATA_SOURCE,
+                symbol           = SYMBOL,
+                start            = START_DATE,
+                end              = END_DATE,
+                initial_balance  = INITIAL_BALANCE,
+                sl_buffer_pips   = SL_BUFFER_PIPS,
+                rr_ratio         = RR_RATIO,
+                max_trades       = MAX_TRADES,
+                child_tf         = CHILD_TF,
+                data_source      = DATA_SOURCE,
+                be_protect_pips  = BE_PROTECT_PIPS,
             )
         elif MODE == "dd":
             console.print("[grey62]Daily Deploy Analyst — Historical Performance Audit[/]\n")
