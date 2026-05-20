@@ -369,7 +369,7 @@ def make_layout() -> Layout:
     )
     layout["body"].split_column(
         Layout(name="intel",        size=3),
-        Layout(name="heatmap_row",  size=12),
+        Layout(name="heatmap_row",  size=14),
         Layout(name="matrix_row",   ratio=2),
         Layout(name="liquidity",    size=6),   # restored
         Layout(name="anim_row",     size=15),
