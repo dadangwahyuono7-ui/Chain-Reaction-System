@@ -1,3 +1,4 @@
+import time
 import MetaTrader5 as mt5
 import pandas as pd
 from datetime import datetime
@@ -675,7 +676,6 @@ class FundamentalSNR:
 
     def update(self):
         """Fetch PDH/PDL/PWH/PWL dari MT5. Rate-limited 5 menit."""
-        import time
         now = time.time()
         if now - self._last_update < self._UPDATE_INTERVAL:
             return
