@@ -109,9 +109,12 @@ def run_h4_cycle_backtest(
 
     child_tf_minutes = TF_MINUTES.get(child_tf, 5)
 
-    # ── Pre-index child TF for fast slice lookups ──────────────────────────────
-    m5_df = m5_df.reset_index(drop=True)
-    m5_times = m5_df["time"].values   # numpy array for searchsorted
+    # ── Pre-index M30 dan child TF untuk fast O(log N) lookups ────────────────
+    m30_df    = m30_df.reset_index(drop=True)
+    m30_times = m30_df["time"].values          # searchsorted M30
+
+    m5_df    = m5_df.reset_index(drop=True)
+    m5_times = m5_df["time"].values            # searchsorted child TF
 
     # ── H4 candles in test window ─────────────────────────────────────────────
     h4_test = h4_df[
@@ -173,8 +176,23 @@ def run_h4_cycle_backtest(
 
             direction    = m30_state["cmp"]
             m30_dir_time = m30_state["cmp_change_time"]
-            m30_sup      = m30_state["sup"]
-            m30_res      = m30_state["res"]
+
+            # ── TP ref: HIGH/LOW dari bar M30 pertama H4 (bar yang buka di T0) ─
+            # Bar M30 yang buka di T0 = bar yang kasih breakout pertama setelah H4 open.
+            # HIGH bar ini = target natural untuk BUY.
+            # LOW  bar ini = target natural untuk SELL.
+            m30_i = int(np.searchsorted(m30_times, np.datetime64(T0), side="left"))
+            if m30_i < len(m30_df) and m30_df.iloc[m30_i]["time"] == T0:
+                m30_first_high = float(m30_df.iloc[m30_i]["high"])
+                m30_first_low  = float(m30_df.iloc[m30_i]["low"])
+            else:
+                # Fallback: bar terdekat setelah T0
+                if m30_i < len(m30_df):
+                    m30_first_high = float(m30_df.iloc[m30_i]["high"])
+                    m30_first_low  = float(m30_df.iloc[m30_i]["low"])
+                else:
+                    m30_first_high = 0.0
+                    m30_first_low  = 0.0
 
             # ── Step 2: M5 bars — context then VR/CF window ───────────────────
             # Find M5 bar index at T0 (use searchsorted for O(log N) lookup)
@@ -250,25 +268,34 @@ def run_h4_cycle_backtest(
 
                     else:
                         if status == "CF":
-                            # ── ENTRY ──────────────────────────────────────────
+                            # ── ENTRY searah M30 ───────────────────────────────
+                            # M30 breakout BUY → M5 VR (SELL) → M5 CF (BUY) → ENTRY BUY
+                            # M30 breakout SELL → M5 VR (BUY) → M5 CF (SELL) → ENTRY SELL
                             entry = close
 
                             if direction == "BUY":
                                 sl = (vr_sl_ref - sl_buffer_pips * PIP
                                       if vr_sl_ref > 0 else entry - 15 * PIP)
                                 if rr_ratio > 0:
+                                    # Fixed RR
                                     tp = entry + (entry - sl) * rr_ratio
+                                elif m30_first_high > entry:
+                                    # TP = HIGH bar M30 pertama (puncak momentum BUY)
+                                    tp = m30_first_high
                                 else:
-                                    tp = (m30_res + sl_buffer_pips * PIP
-                                          if m30_res > 0 else entry + 30 * PIP)
-                            else:
+                                    # M30 high sudah terlewat — fallback 1:1.5 RR
+                                    tp = entry + (entry - sl) * 1.5
+                            else:  # SELL
                                 sl = (vr_sl_ref + sl_buffer_pips * PIP
                                       if vr_sl_ref > 0 else entry + 15 * PIP)
                                 if rr_ratio > 0:
                                     tp = entry - (sl - entry) * rr_ratio
+                                elif m30_first_low > 0 and m30_first_low < entry:
+                                    # TP = LOW bar M30 pertama (dasar momentum SELL)
+                                    tp = m30_first_low
                                 else:
-                                    tp = (m30_sup - sl_buffer_pips * PIP
-                                          if m30_sup > 0 else entry - 30 * PIP)
+                                    # M30 low sudah terlewat — fallback 1:1.5 RR
+                                    tp = entry - (sl - entry) * 1.5
 
                             valid = (
                                 sl > 0 and tp > 0 and
