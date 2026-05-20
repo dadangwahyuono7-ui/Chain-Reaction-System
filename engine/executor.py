@@ -22,6 +22,10 @@ class ChainReactionExecutor:
         self.max_spread_points = 30
         self.news_blackout_minutes = 15
         self.news_schedule_wib = []
+        # Fundamental SNR guard — diset dari main.py setelah init
+        self.fundamental_snr = None   # FundamentalSNR instance
+        self.snr_block_usd   = 2.0    # Jarak minimum ke PDH/PDL/RN sebelum di-block
+        self.snr_warn_usd    = 5.0    # Jarak warning (tampil di feed, tidak block)
 
     def update_settings(self, settings):
         """Sync all runtime config from chain_settings.json each loop."""
@@ -36,6 +40,8 @@ class ChainReactionExecutor:
         self.max_spread_points = settings.get("max_spread_points", 30)
         self.news_blackout_minutes = settings.get("news_blackout_minutes", 15)
         self.news_schedule_wib = settings.get("news_schedule_wib", [])
+        self.snr_block_usd = settings.get("snr_block_usd", 2.0)
+        self.snr_warn_usd  = settings.get("snr_warn_usd",  5.0)
 
     # ─────────────────────────── GUARD CHECKS ────────────────────────────────
 
@@ -304,6 +310,17 @@ class ChainReactionExecutor:
         ok, msg = self.check_news_blackout()
         if not ok:
             return False, msg
+
+        # 3b. Fundamental SNR Guard
+        # Block jika terlalu dekat PDH/PDL/PWH/PWL/Round Number
+        if self.fundamental_snr is not None:
+            blocked, warned, snr_msg = self.fundamental_snr.get_nearest_warning(
+                price, self.snr_block_usd, self.snr_warn_usd
+            )
+            if blocked:
+                return False, f"VETO: {snr_msg}"
+            if warned:
+                console.print(f"[bold yellow]⚠ {snr_msg}[/bold yellow]")
 
         # 4. TP resolution
         # tp_tf comes from signal: CF_LOW targets TF above VR, CF_HIGH targets VR TF itself

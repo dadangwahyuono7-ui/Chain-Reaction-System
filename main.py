@@ -19,7 +19,7 @@ from rich.progress import Progress, BarColumn, TextColumn, SpinnerColumn
 from rich.console import Group as RichGroup
 from rich import box as rich_box
 from engine.connection import connect_mt5
-from engine.core import SacredDoctrineAnalyst, DailyDeployAnalyst
+from engine.core import SacredDoctrineAnalyst, DailyDeployAnalyst, FundamentalSNR
 from engine.executor import ChainReactionExecutor
 from engine.ninja_trade import NinjaTradeAnalyst
 
@@ -431,7 +431,7 @@ def _rain(width, frame):
 
 # ── PANEL BUILDERS ────────────────────────────────────────────────────────────
 
-def build_heatmap_panel(frame, analyst, _cs, h4_dir):
+def build_heatmap_panel(frame, analyst, _cs, h4_dir, signal=None, fund_snr=None, tick_price=0.0):
     """SIGNAL.HEATMAP — 8 TFs × CMP + ROLE + VR + CF grid."""
     BLINK = frame % 2 == 0
     MG = "bright_green"; CC = "bright_cyan"; RD = "bright_red"; GD = "gold1"
@@ -624,7 +624,7 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
 
         t.add_row(tf_lbl, cmp_cell, role_cell, vr_cell, cf_cell, alg, style=row_style)
 
-    # Summary row
+    # ── Summary row: SYNC count
     sync_col = MG if aligned_count >= 6 else GD if aligned_count >= 4 else RD
     t.add_row(
         f"[{DG}]SYNC[/]",
@@ -634,6 +634,47 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
         f"[{DG}]──────────[/]",
         f"[{sync_col}]{aligned_count}/8[/]",
     )
+
+    # ── Grade badge row (hanya tampil kalau ada signal aktif)
+    if signal:
+        sig_type  = signal.get("type", "")
+        grade     = signal.get("grade") or analyst.get_signal_grade(sig_type)
+        grade_col = {"A+": MG, "A": CC, "B": GD, "C": "yellow"}.get(grade, DG)
+        d         = signal.get("action", "")
+        d_col     = MG if d == "BUY" else RD
+        if BLINK:
+            grade_badge = f"[bold white on {grade_col.replace('bright_', 'dark_')}] GRADE {grade} [/]"
+        else:
+            grade_badge = f"[bold {grade_col}][ GRADE {grade} ][/]"
+        t.add_row(
+            f"[{DG}]GRADE[/]",
+            f"[bold {d_col}]{d}[/]" if d else f"[{DG}]──[/]",
+            grade_badge,
+            f"[{DG}]{sig_type}[/]",
+            f"[{DG}]SL={signal.get('sl_tf','')} TP={signal.get('tp_tf','')}[/]",
+            f"[{grade_col}]★[/]",
+        )
+
+    # ── Fundamental SNR proximity row
+    if fund_snr and tick_price > 0:
+        prox   = fund_snr.check_proximity(tick_price, 8.0)  # tampil dalam 8 USD
+        if prox:
+            near   = prox[0]  # yang paling dekat
+            dist   = near["dist"]
+            n_col  = RD if dist < 2 else GD if dist < 5 else DG
+            pos    = "▲" if near["above"] else "▼"
+            n_name = near["name"]
+            n_px   = near["price"]
+            # Tambah level ke-2 kalau ada dan masih dalam range
+            extra  = f"  [{DG}]{prox[1]['name']}:{prox[1]['price']:.0f}[/]" if len(prox) > 1 and prox[1]["dist"] < 8 else ""
+            t.add_row(
+                f"[{DG}]SNR[/]",
+                f"[{n_col}]{pos}{n_name}[/]",
+                f"[{n_col}]{n_px:.2f}[/]",
+                f"[{n_col}]{dist:.1f}$[/]",
+                Text.from_markup(extra) if extra else Text(""),
+                f"[{n_col}]{'⚠' if dist < 2 else '·'}[/]",
+            )
 
     return Panel(t, title=_T_local("SIGNAL.HEATMAP"), border_style="magenta", padding=(0, 0))
 
@@ -1142,7 +1183,8 @@ def build_ninja_panel(frame, ninja_state: dict) -> Panel:
 
 
 def update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame,
-                  ninja_state: dict | None = None):
+                  ninja_state: dict | None = None,
+                  fund_snr=None):
     BLINK = frame % 2 == 0
 
     # ── PALETTE ────────────────────────────────────────────────────────────────
@@ -1778,7 +1820,12 @@ def update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame
     )
 
     # ── NEW ANIMATED PANELS ────────────────────────────────────────────────────
-    layout["heatmap"].update(build_heatmap_panel(frame, analyst, _cs, _h4_dir))
+    _active_signal = analyst.get_strike_signal()
+    _tick_price    = tick.bid if tick else 0.0
+    layout["heatmap"].update(build_heatmap_panel(
+        frame, analyst, _cs, _h4_dir,
+        signal=_active_signal, fund_snr=fund_snr, tick_price=_tick_price
+    ))
     layout["neural"].update(build_neural_flow_panel(frame, analyst, _cs, _h4_dir))
     layout["ninja"].update(build_ninja_panel(frame, ninja_state or {}))
     layout["equity"].update(build_equity_curve_panel(frame, acc))
@@ -1843,6 +1890,8 @@ def main():
     analyst    = SacredDoctrineAnalyst(symbol, master_tf=settings.get("master_tf", "H4"))
     dd_analyst = DailyDeployAnalyst(symbol)
     executor   = ChainReactionExecutor(symbol, magic_number=settings.get("magic_number", 2026))
+    fund_snr   = FundamentalSNR(symbol)
+    executor.fundamental_snr = fund_snr   # wire SNR guard ke executor
     ninja      = NinjaTradeAnalyst(
         symbol,
         be_pips        = settings.get("ninja_be_pips",     5.0),
@@ -1865,6 +1914,7 @@ def main():
 
                 analyst.update()
                 dd_analyst.update(analyst)
+                fund_snr.update()          # refresh PDH/PDL/PWH/PWL tiap 5 menit
                 ninja_state = ninja.update()   # independent — no analyst dependency
 
                 events = executor.monitor_positions(analyst)
@@ -1950,7 +2000,7 @@ def main():
                                         break
 
                 update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame,
-                              ninja_state=ninja_state)
+                              ninja_state=ninja_state, fund_snr=fund_snr)
                 frame += 1
                 time.sleep(0.1)
             except KeyboardInterrupt:

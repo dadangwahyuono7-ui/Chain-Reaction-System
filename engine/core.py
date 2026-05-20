@@ -81,9 +81,17 @@ class TFState:
 
         # 2. Track Parent CMP change (Reset VR sequence if Master flips)
         if parent_cmp != self.last_parent_cmp:
+            # Arah parent berubah → reset total
             self.parent_cmp_change_time = parent_change_time
             self.vr_occurred = False
             self.last_parent_cmp = parent_cmp
+        elif parent_change_time > self.parent_cmp_change_time:
+            # Arah parent SAMA tapi CMP baru terbentuk di level SNR berbeda
+            # (mis. H4 masih BUY tapi baru break level baru yang lebih tinggi)
+            # → VR dari siklus lama tidak relevan lagi → reset
+            if self.vr_occurred and self.vr_change_time < parent_change_time:
+                self.vr_occurred = False   # ← FIX: stale VR dari siklus lama
+            self.parent_cmp_change_time = parent_change_time
 
         # 3. Update SNR ONLY on the most recent flip
         new_sup, new_res = CMPDetector.get_snr_flip(df)
@@ -121,14 +129,18 @@ class TFState:
             # CASE 2: Confirmation (CF)
             elif self.cmp == parent_cmp:
                 # CF is valid ONLY if:
-                # 1. VR happened before
-                # 2. This current CMP breakout (CF) happened AFTER the VR (Strict Chronological Law)
-                if self.vr_occurred and self.cmp_change_time > getattr(self, 'vr_change_time', 0):
+                # 1. VR sudah terjadi sebelumnya
+                # 2. VR terjadi SETELAH parent CMP saat ini — bukan dari siklus parent lama
+                # 3. CF breakout ini terjadi SETELAH VR (Strict Chronological Law)
+                vr_in_current_cycle = getattr(self, 'vr_change_time', 0) > self.parent_cmp_change_time
+                if (self.vr_occurred and
+                        vr_in_current_cycle and
+                        self.cmp_change_time > getattr(self, 'vr_change_time', 0)):
                     status = "CF"
                 else:
-                    # If it's the same direction as parent but no VR yet, it's just CMP
+                    # Sama arah dengan parent tapi tanpa VR yang valid → CMP biasa
                     status = "CMP"
-                    self.vr_occurred = False # Reset if it just follows parent without reversal
+                    self.vr_occurred = False  # Reset jika langsung ikut parent tanpa reversal
         
         self.status = status
         return status
@@ -258,6 +270,7 @@ class SacredDoctrineAnalyst:
                         "tf":     "M5",
                         "tp_tf":  "M15",
                         "sl_tf":  "M5",
+                        "grade":  self.get_signal_grade("MINOR_CF"),
                         "reason": f"Minor CF: M30+M15 solid | M5 VR→CF"
                     }
                 # M5 belum ready — fall through ke H4_CF_HIGH
@@ -273,6 +286,7 @@ class SacredDoctrineAnalyst:
                         "tf":     "M15",
                         "tp_tf":  "M30",
                         "sl_tf":  "M15",
+                        "grade":  self.get_signal_grade("CF_LOW"),
                         "reason": f"CF Low: M30 solid | M15 VR→CF"
                     }
                 # ③ CF_HIGH: M15 masih VR, M5 sudah CF
@@ -286,6 +300,7 @@ class SacredDoctrineAnalyst:
                         "tf":     "M5",
                         "tp_tf":  "M30",
                         "sl_tf":  "M15",
+                        "grade":  self.get_signal_grade("CF_HIGH"),
                         "reason": f"CF High: M30 solid | M15 VR | M5 CF"
                     }
                 # CF belum ready — fall through ke H4_CF_HIGH
@@ -301,6 +316,7 @@ class SacredDoctrineAnalyst:
                 "tf":     "M30",
                 "tp_tf":  "H4",
                 "sl_tf":  "H1",
+                "grade":  self.get_signal_grade("H4_CF_HIGH"),
                 "reason": f"H4 {direction} | H1 VR | M30 CF HIGH ⚡"
             }
 
@@ -442,6 +458,63 @@ class SacredDoctrineAnalyst:
             "cascade_roles": cascade_roles,
         }
 
+    def get_signal_grade(self, signal_type: str) -> str:
+        """
+        Grade setup A+/A/B/C per doktrin — VR dari TF mana + momentum:
+
+          A+ : CF_LOW dengan H1 sudah balik CF searah H4 + market TRENDING
+               → Full cascade sempurna, level SL jauh, momentum paling kuat
+          A  : CF_LOW dengan H1 masih VR  ATAU  H4_CF_HIGH (H1 VR + M30 CF)
+               → VR dari H1 (TF besar), momentum kuat
+          B  : CF_HIGH (VR dari M15, M5 masuk duluan)  ATAU  CF_LOW di CONTI territory
+               → Entry lebih awal, SL lebih dekat, risk lebih besar
+          C  : MINOR_CF (VR dari M5, TP kecil di M15)
+               → Paling cepat, paling kecil, cocok scalp saja
+
+        Market regime modifier:
+          TRENDING → naik setengah notch (B jadi B+, A jadi A+)
+          SIDEWAYS → turun notch (A jadi B, B jadi C)
+        """
+        h4  = self.states["H4"]
+        h1  = self.states["H1"]
+        direction = h4.cmp
+
+        h1_is_vr = (
+            h1.cmp != direction and h1.cmp != "WAIT" and
+            h1.cmp_change_time > h4.cmp_change_time
+        )
+        h1_is_cf = (
+            h1.vr_occurred and h1.cmp == direction and
+            h1.cmp_change_time > getattr(h1, "vr_change_time", 0)
+        )
+
+        regime, _ = self.get_market_regime()
+        trending  = (regime == "TRENDING")
+        sideways  = (regime == "SIDEWAYS")
+
+        if signal_type == "H4_CF_HIGH":
+            # H1 VR + M30 CF: power signal, VR dari H1
+            return "A+" if trending else "A"
+
+        if signal_type == "CF_LOW":
+            if h1_is_cf:
+                return "A+"                           # Full cascade confirmed
+            elif h1_is_vr:
+                return "B" if sideways else "A"       # H1 sedang VR, momentum besar
+            else:
+                return "C" if sideways else "B"       # CONTI territory, tanpa H1 VR
+
+        if signal_type == "CF_HIGH":
+            if h1_is_cf or h1_is_vr:
+                return "A" if trending else "B"
+            else:
+                return "C" if sideways else "B"
+
+        if signal_type == "MINOR_CF":
+            return "B" if (h1_is_cf and trending) else "C"
+
+        return "C"
+
     def get_strategic_forecast(self):
         """Plain-language narrative aligned with Daily Deploy doctrine (H4→H1→M30→M15→M5)."""
         cs = self.get_chain_status()
@@ -577,6 +650,115 @@ class SacredDoctrineAnalyst:
         # 5. Ranging — ada trend tapi tidak kuat, CF bisa gagal di tengah
         dominant = "BUY" if buy_pct > sell_pct else "SELL"
         return "RANGING", f"Moderate {dominant} ({sentiment_gap:.0f}% gap) — hati-hati sideways lokal"
+
+
+class FundamentalSNR:
+    """
+    Level-level fundamental penting: PDH/PDL, PWH/PWL, Daily Open, Round Numbers.
+    Digunakan sebagai:
+      1. BLOCK entry jika terlalu dekat (< snr_block_usd)
+      2. WARNING di dashboard jika dalam range (< snr_warn_usd)
+
+    Refresh otomatis tiap 5 menit — hemat MT5 API call.
+    """
+    ROUND_STEP = 50.0   # XAUUSD: round number setiap 50 USD (3300, 3350, dll)
+
+    def __init__(self, symbol: str = "XAUUSD"):
+        self.symbol      = symbol
+        self.pdh:   float = 0.0   # Previous Day High
+        self.pdl:   float = 0.0   # Previous Day Low
+        self.pwh:   float = 0.0   # Previous Week High
+        self.pwl:   float = 0.0   # Previous Week Low
+        self.daily_open: float = 0.0
+        self._last_update:    float = 0.0
+        self._UPDATE_INTERVAL: float = 300.0   # refresh tiap 5 menit
+
+    def update(self):
+        """Fetch PDH/PDL/PWH/PWL dari MT5. Rate-limited 5 menit."""
+        import time
+        now = time.time()
+        if now - self._last_update < self._UPDATE_INTERVAL:
+            return
+        self._last_update = now
+
+        # D1: ambil kemarin (index -2) dan hari ini (index -1)
+        d1 = mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_D1, 0, 3)
+        if d1 is not None and len(d1) >= 2:
+            self.daily_open = float(d1[-1]["open"])
+            self.pdh        = float(d1[-2]["high"])
+            self.pdl        = float(d1[-2]["low"])
+
+        # W1: ambil minggu lalu (index -2)
+        w1 = mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_W1, 0, 3)
+        if w1 is not None and len(w1) >= 2:
+            self.pwh = float(w1[-2]["high"])
+            self.pwl = float(w1[-2]["low"])
+
+    def nearest_round(self, price: float) -> float:
+        """Round number XAUUSD terdekat (setiap 50 USD)."""
+        return round(price / self.ROUND_STEP) * self.ROUND_STEP
+
+    def check_proximity(self, price: float, threshold_usd: float = 5.0) -> list:
+        """
+        Cek kedekatan price ke semua level fundamental.
+        Returns list of dict sorted by jarak terdekat.
+        """
+        rn = self.nearest_round(price)
+        levels = [
+            ("PDH",        self.pdh),
+            ("PDL",        self.pdl),
+            ("PWH",        self.pwh),
+            ("PWL",        self.pwl),
+            ("DAILY.OPEN", self.daily_open),
+            (f"RN.{rn:.0f}", rn),
+        ]
+        results = []
+        for name, lv in levels:
+            if lv <= 0:
+                continue
+            dist = abs(price - lv)
+            results.append({
+                "name":    name,
+                "price":   lv,
+                "dist":    round(dist, 2),
+                "is_near": dist <= threshold_usd,
+                "above":   price > lv,   # True = price di atas level
+            })
+        return sorted(results, key=lambda x: x["dist"])
+
+    def get_nearest_warning(self, price: float,
+                            block_usd: float = 2.0,
+                            warn_usd:  float = 5.0) -> tuple:
+        """
+        Returns (blocked, warned, message) untuk executor guard.
+          blocked = True → jangan entry (terlalu dekat)
+          warned  = True → entry boleh tapi tampilkan warning
+        """
+        hits = self.check_proximity(price, warn_usd)
+        if not hits:
+            return False, False, "Fundamental SNR: OK"
+
+        nearest = hits[0]
+        dist    = nearest["dist"]
+        pos     = "atas" if nearest["above"] else "bawah"
+        msg     = (f"SNR {nearest['name']} {nearest['price']:.2f} "
+                   f"({dist:.2f}$ di {pos})")
+
+        if dist <= block_usd:
+            return True, True, f"BLOCK: {msg}"
+        return False, True, f"WARN: {msg}"
+
+    def get_levels_display(self, price: float) -> dict:
+        """Untuk dashboard — semua level + proximity dalam range 10 USD."""
+        return {
+            "pdh":        self.pdh,
+            "pdl":        self.pdl,
+            "pwh":        self.pwh,
+            "pwl":        self.pwl,
+            "daily_open": self.daily_open,
+            "round":      self.nearest_round(price),
+            "proximity":  self.check_proximity(price, 10.0),
+        }
 
 
 class BSTradingAnalyst:
