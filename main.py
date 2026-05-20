@@ -361,7 +361,7 @@ def make_layout() -> Layout:
     layout["main"].split_row(Layout(name="side", ratio=1), Layout(name="body", ratio=3))
     layout["side"].split_column(
         Layout(name="greeting",  size=3),
-        Layout(name="account",   ratio=2),
+        Layout(name="account",   size=8),
         Layout(name="positions", size=6),
         Layout(name="stats",     ratio=2),
         Layout(name="delta",     size=8),   # NEW: DELTA.FLOW panel
