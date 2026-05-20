@@ -1,7 +1,7 @@
 """
-BACKTEST ENGINE — SACRED DOCTRINE
+BACKTEST ENGINE -- SACRED DOCTRINE
 Replay historical MT5 data through the existing engine (engine/core.py).
-Engine core.py TIDAK diubah — hanya data feed-nya yang diganti dari live ke historical.
+Engine core.py TIDAK diubah -- hanya data feed-nya yang diganti dari live ke historical.
 """
 
 import sys, os
@@ -18,12 +18,82 @@ from rich.text import Text
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich import box as rich_box
 
-# Import engine components — TFState/CMPDetector for Sacred Doctrine, DailyDeployAnalyst for DD layers
+# Import engine components -- TFState/CMPDetector for Sacred Doctrine, DailyDeployAnalyst for DD layers
 from engine.core import TFState, CMPDetector, DailyDeployAnalyst
 
 console = Console()
 
-# ── Constants ─────────────────────────────────────────────────────────────────
+# -- CSV Data Loader -----------------------------------------------------------
+
+CSV_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DATACSV")
+
+# Map TF name -> CSV filename (only TFs that have CSV files)
+_CSV_FILES = {
+    "M5":  "XAUUSDM5.csv",
+    "M30": "XAUUSDM30.csv",
+    "H4":  "XAUUSDH4.csv",
+}
+
+
+def load_csv_data(symbol: str, start: datetime, end: datetime,
+                  tfs: list = None) -> dict:
+    """
+    Load historical data from local CSV files in backtest/DATACSV/.
+    Tidak butuh MT5 koneksi. Format: UTF-16, no header,
+    columns: DATE TIME, open, high, low, close, tick_volume, spread.
+
+    Args:
+        symbol: ignored (CSV file sudah per-simbol)
+        start/end: filter ke periode ini
+        tfs: list TF yang diminta, misal ["H4","M30","M5"]. None = semua available.
+    """
+    requested = tfs if tfs else list(_CSV_FILES.keys())
+    result    = {}
+
+    for tf in requested:
+        fname = _CSV_FILES.get(tf)
+        if not fname:
+            result[tf] = pd.DataFrame()
+            continue
+
+        path = os.path.join(CSV_DIR, fname)
+        if not os.path.exists(path):
+            console.print(f"  [red]MISSING:[/] {fname} tidak ada di DATACSV/")
+            result[tf] = pd.DataFrame()
+            continue
+
+        try:
+            df = pd.read_csv(path, header=None, encoding="utf-16", sep=",",
+                             names=["time", "open", "high", "low", "close",
+                                    "tick_volume", "spread"])
+            df["time"] = pd.to_datetime(df["time"], format="%Y.%m.%d %H:%M")
+            df = df.drop(columns=["spread"])
+
+            # Filter ke periode
+            mask = (df["time"] >= pd.Timestamp(start)) & \
+                   (df["time"] <= pd.Timestamp(end))
+            df = df[mask].reset_index(drop=True)
+
+            if len(df) > 0:
+                console.print(
+                    f"  [green]OK[/] {tf:4s} -- {len(df):6,} bars  "
+                    f"[grey62]({df['time'].iloc[0].strftime('%Y-%m-%d')} to "
+                    f"{df['time'].iloc[-1].strftime('%Y-%m-%d')})[/]"
+                )
+            else:
+                console.print(
+                    f"  [yellow]WARN:[/] {tf} -- no data in "
+                    f"{start.date()} to {end.date()}"
+                )
+            result[tf] = df
+        except Exception as e:
+            console.print(f"  [red]ERROR:[/] {tf} CSV read failed -- {e}")
+            result[tf] = pd.DataFrame()
+
+    return result
+
+
+# -- Constants -----------------------------------------------------------------
 TF_ORDER   = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5"]
 MASTER_TF  = "H4"
 MASTER_IDX = TF_ORDER.index(MASTER_TF)
@@ -47,7 +117,7 @@ TF_MINUTES = {
 
 PIP = 0.1   # 1 pip Gold = 0.1 USD
 
-# TP/SL TF mapping untuk DailyDeployAnalyst — matches main.py _DD_TP_SL
+# TP/SL TF mapping untuk DailyDeployAnalyst -- matches main.py _DD_TP_SL
 _DD_TP_SL = {
     ("D1_DEPLOY", "CF_LOW"):  ("D1",  "H4"),
     ("D1_DEPLOY", "CF_HIGH"): ("H4",  "H4"),
@@ -58,15 +128,15 @@ _DD_TP_SL = {
 }
 
 
-# ── Data Loader ───────────────────────────────────────────────────────────────
+# -- Data Loader ---------------------------------------------------------------
 
 def load_historical_data(symbol: str, start: datetime, end: datetime) -> dict:
     """
     Ambil data historical dari MT5 untuk semua TF.
-    Buffer berbeda per TF — TF kecil pakai buffer pendek supaya MT5
+    Buffer berbeda per TF -- TF kecil pakai buffer pendek supaya MT5
     tidak timeout, TF besar butuh context lebih panjang untuk initialize_cmp().
     """
-    # Buffer per TF (hari) — makin kecil TF makin pendek buffernya
+    # Buffer per TF (hari) -- makin kecil TF makin pendek buffernya
     TF_BUFFER = {
         "MN1": 730, "W1": 730, "D1": 365,
         "H4":  180, "H1":  90,
@@ -84,26 +154,26 @@ def load_historical_data(symbol: str, start: datetime, end: datetime) -> dict:
 
         # Fallback: jika gagal, coba tanpa buffer (hanya periode backtest)
         if rates is None or len(rates) == 0:
-            console.print(f"  [yellow]RETRY[/] {tf_name} — coba tanpa buffer...")
+            console.print(f"  [yellow]RETRY[/] {tf_name} -- coba tanpa buffer...")
             rates = mt5.copy_rates_range(symbol, mt5_tf, start, end)
 
         if rates is None or len(rates) == 0:
-            console.print(f"  [red]WARN:[/] {tf_name} — no data "
-                          f"[grey62](load history di MT5: Tools → History Center)[/]")
+            console.print(f"  [red]WARN:[/] {tf_name} -- no data "
+                          f"[grey62](load history di MT5: Tools -> History Center)[/]")
             all_data[tf_name] = pd.DataFrame()
             continue
 
         df = pd.DataFrame(rates)
         df["time"] = pd.to_datetime(df["time"], unit="s")
         all_data[tf_name] = df
-        console.print(f"  [green]✓[/] {tf_name:4s} — {len(df):6,} bars  "
-                      f"[grey62]({df['time'].iloc[0].strftime('%Y-%m-%d')} → "
+        console.print(f"  [green]OK[/] {tf_name:4s} -- {len(df):6,} bars  "
+                      f"[grey62]({df['time'].iloc[0].strftime('%Y-%m-%d')} -> "
                       f"{df['time'].iloc[-1].strftime('%Y-%m-%d')})[/]")
 
     return all_data
 
 
-# ── Backtest Analyst ──────────────────────────────────────────────────────────
+# -- Backtest Analyst ----------------------------------------------------------
 
 class BacktestAnalyst:
     """
@@ -156,14 +226,14 @@ class BacktestAnalyst:
 
     def get_signal(self) -> dict | None:
         """
-        Deteksi signal entry — identik dengan get_strike_signal() di engine.
+        Deteksi signal entry -- identik dengan get_strike_signal() di engine.
         NO BLOCK: VR/CF hanya status CMP tiap TF, tidak ada blocking.
         Sub-chain aktif natural ketika M30 aligned. H4_CF_HIGH hanya
         jika sub-chain belum ready (prioritas terendah).
 
-        Prioritas signal (aman → berisiko):
-          ① MINOR_CF   : M30+M15 solid + M5 VR→CF    SL=M5  TP=M15
-          ② CF_LOW     : M30 solid + M15 VR→CF        SL=M15 TP=M30
+        Prioritas signal (aman -> berisiko):
+          ① MINOR_CF   : M30+M15 solid + M5 VR->CF    SL=M5  TP=M15
+          ② CF_LOW     : M30 solid + M15 VR->CF        SL=M15 TP=M30
           ③ CF_HIGH    : M30 solid + M15 VR + M5 CF   SL=M15 TP=M30
           ④ H4_CF_HIGH : H1 VR + M30 CF               SL=H1  TP=H4
         """
@@ -183,17 +253,17 @@ class BacktestAnalyst:
             h1.cmp_change_time > h4.cmp_change_time
         )
 
-        # ── Sub-chain: aktif natural ketika M30 aligned ───────────────────────────
+        # -- Sub-chain: aktif natural ketika M30 aligned ---------------------------
         if m30.cmp == direction and m30.cmp != "WAIT":
             m15_is_vr = (
                 m15.cmp != direction and m15.cmp != "WAIT" and
                 m15.cmp_change_time > m30.cmp_change_time
             )
             m15_solid = (m15.cmp == direction and m15.cmp != "WAIT" and not m15_is_vr)
-            # Time Law: M30 flip SETELAH M15 VR → M15 berhasil break M30, reset
+            # Time Law: M30 flip SETELAH M15 VR -> M15 berhasil break M30, reset
             m30_stable = not (m15_is_vr and m30.cmp_change_time > m15.cmp_change_time)
 
-            # ① MINOR_CF: M30+M15 solid → M5 VR→CF
+            # ① MINOR_CF: M30+M15 solid -> M5 VR->CF
             if m15_solid:
                 if (m5.vr_occurred and
                     m5.cmp == direction and
@@ -205,10 +275,10 @@ class BacktestAnalyst:
                         "sl_price": m5.sup if direction == "BUY" else m5.res,
                         "tp_price": m15.res if direction == "BUY" else m15.sup,
                     }
-                # M5 belum ready — fall through ke H4_CF_HIGH
+                # M5 belum ready -- fall through ke H4_CF_HIGH
 
             elif m15_is_vr and m30_stable:
-                # ② CF_LOW: M15 VR→CF
+                # ② CF_LOW: M15 VR->CF
                 if (m15.vr_occurred and
                     m15.cmp == direction and
                     m15.cmp_change_time > getattr(m15, "vr_change_time", 0)):
@@ -229,9 +299,9 @@ class BacktestAnalyst:
                         "sl_price": m15.sup if direction == "BUY" else m15.res,
                         "tp_price": m30.res if direction == "BUY" else m30.sup,
                     }
-                # CF belum ready — fall through ke H4_CF_HIGH
+                # CF belum ready -- fall through ke H4_CF_HIGH
 
-        # ④ H4_CF_HIGH — prioritas terendah, hanya ketika sub-chain belum ready
+        # ④ H4_CF_HIGH -- prioritas terendah, hanya ketika sub-chain belum ready
         if (h1_is_vr and
             m30.cmp == direction and m30.cmp != "WAIT" and
             m30.cmp_change_time > h1.cmp_change_time):
@@ -245,7 +315,7 @@ class BacktestAnalyst:
         return None
 
 
-# ── Position Tracker ──────────────────────────────────────────────────────────
+# -- Position Tracker ----------------------------------------------------------
 
 class Trade:
     def __init__(self, direction, entry, sl, tp, sig_type, open_time):
@@ -283,7 +353,7 @@ class Trade:
         }
 
 
-# ── Main Runner ───────────────────────────────────────────────────────────────
+# -- Main Runner ---------------------------------------------------------------
 
 def run_backtest(
     symbol:          str   = "XAUUSD",
@@ -315,7 +385,7 @@ def run_backtest(
 
     total_bars = len(m5_bars)
     console.print(f"\n[cyan]Replaying [bold]{total_bars:,}[/] M5 bars "
-                  f"[grey62]({start} → {end})[/][/]")
+                  f"[grey62]({start} -> {end})[/][/]")
 
     analyst  = BacktestAnalyst(symbol, all_data)
     trades   = []
@@ -340,7 +410,7 @@ def run_backtest(
             low   = bar["low"]
             close = bar["close"]
 
-            # ── 1. Cek exit open trade
+            # -- 1. Cek exit open trade
             if open_trade is not None:
                 result = open_trade.check(high, low, t)
                 if result is not None:
@@ -353,7 +423,7 @@ def run_backtest(
 
             equity_curve.append(balance)
 
-            # ── 2. Cooldown
+            # -- 2. Cooldown
             if cooldown > 0:
                 cooldown -= 1
                 progress.advance(task)
@@ -367,7 +437,7 @@ def run_backtest(
                 progress.advance(task)
                 continue
 
-            # ── 3. Update engine & cek signal
+            # -- 3. Update engine & cek signal
             analyst.update_at(t)
             sig = analyst.get_signal()
 
@@ -413,7 +483,7 @@ def run_backtest(
     return trades, equity_curve
 
 
-# ── Report Printer ────────────────────────────────────────────────────────────
+# -- Report Printer ------------------------------------------------------------
 
 def print_report(trades, equity_curve, initial_balance, final_balance,
                  symbol, start, end, engine="SACRED DOCTRINE"):
@@ -422,9 +492,9 @@ def print_report(trades, equity_curve, initial_balance, final_balance,
 
     console.print()
     console.print(Panel(
-        f"[bold {CC}]BACKTEST RESULT — {engine} ENGINE[/]\n"
+        f"[bold {CC}]BACKTEST RESULT -- {engine} ENGINE[/]\n"
         f"[{DG}]Symbol:[/] [white]{symbol}[/]   "
-        f"[{DG}]Period:[/] [white]{start} → {end}[/]",
+        f"[{DG}]Period:[/] [white]{start} -> {end}[/]",
         border_style="cyan", padding=(0, 2)
     ))
 
@@ -462,7 +532,7 @@ def print_report(trades, equity_curve, initial_balance, final_balance,
     wr_col  = MG if win_rate >= 55 else GD if win_rate >= 45 else RD
     dd_col  = MG if max_dd_pct < 5 else GD if max_dd_pct < 10 else RD
 
-    # ── Summary table
+    # -- Summary table
     summ = Table(box=rich_box.SIMPLE_HEAD, show_edge=False, padding=(0, 3),
                  expand=False)
     summ.add_column("METRIC",       style=DG,  width=22)
@@ -488,7 +558,7 @@ def print_report(trades, equity_curve, initial_balance, final_balance,
         summ.add_row(*r)
     console.print(summ)
 
-    # ── By signal type
+    # -- By signal type
     by_type: dict = {}
     for t in trades:
         tp = t["type"]
@@ -499,7 +569,7 @@ def print_report(trades, equity_curve, initial_balance, final_balance,
         if t["pips"] > 0:
             by_type[tp]["w"] += 1
 
-    console.print(f"\n[{CC}]── BY SIGNAL TYPE ──────────────────────────[/]")
+    console.print(f"\n[{CC}]-- BY SIGNAL TYPE --------------------------[/]")
     tt = Table(box=rich_box.SIMPLE_HEAD, show_edge=False, padding=(0, 2))
     tt.add_column("TYPE",   style=DG, width=12)
     tt.add_column("TRADES", justify="right", width=8)
@@ -521,8 +591,8 @@ def print_report(trades, equity_curve, initial_balance, final_balance,
         )
     console.print(tt)
 
-    # ── Trade list (last 30)
-    console.print(f"\n[{CC}]── TRADE LOG (last 30) ─────────────────────[/]")
+    # -- Trade list (last 30)
+    console.print(f"\n[{CC}]-- TRADE LOG (last 30) ---------------------[/]")
     tl = Table(box=rich_box.SIMPLE_HEAD, show_edge=False, padding=(0, 1))
     tl.add_column("#",      style=DG,  width=4)
     tl.add_column("OPEN",   style=DG,  width=17)
@@ -553,9 +623,9 @@ def print_report(trades, equity_curve, initial_balance, final_balance,
         )
     console.print(tl)
 
-    # ── Equity curve ASCII
+    # -- Equity curve ASCII
     if len(equity_curve) > 2:
-        console.print(f"\n[{CC}]── EQUITY CURVE ────────────────────────────[/]")
+        console.print(f"\n[{CC}]-- EQUITY CURVE ----------------------------[/]")
         W, H = 64, 8
         mn, mx = min(equity_curve), max(equity_curve)
         rng = mx - mn if mx != mn else 1.0
@@ -567,23 +637,23 @@ def print_report(trades, equity_curve, initial_balance, final_balance,
             hi = mn + rng * (row + 1) / H
             line = ""
             for v in sampled:
-                if v >= hi:       line += f"[{MG}]█[/]"
-                elif v >= lo:     line += f"[green]▄[/]"
-                elif row == H//2: line += f"[{DG}]─[/]"
+                if v >= hi:       line += f"[{MG}]#[/]"
+                elif v >= lo:     line += f"[green]#[/]"
+                elif row == H//2: line += f"[{DG}]-[/]"
                 else:             line += " "
             if   row == H-1: yl = f" [{DG}]{mx:,.0f}[/]"
             elif row == H//2:yl = f" [{DG}]{(mn+rng*0.5):,.0f}[/]"
             elif row == 0:   yl = f" [{DG}]{mn:,.0f}[/]"
             else:            yl = ""
             console.print(f"  {line}{yl}")
-        console.print(f"  [{DG}]{'─'*W}[/]")
-        console.print(f"  [{DG}]Start: {equity_curve[0]:,.2f}  →  "
+        console.print(f"  [{DG}]{'-'*W}[/]")
+        console.print(f"  [{DG}]Start: {equity_curve[0]:,.2f}  ->  "
                       f"End: {equity_curve[-1]:,.2f}  "
                       f"({'[bright_green]+' if final_balance>=initial_balance else '[bright_red]'}"
                       f"{final_balance-initial_balance:+,.2f}[/])[/]")
 
 
-# ── Daily Deploy Backtest ─────────────────────────────────────────────────────
+# -- Daily Deploy Backtest -----------------------------------------------------
 
 def run_dd_backtest(
     symbol:          str   = "XAUUSD",
@@ -599,7 +669,7 @@ def run_dd_backtest(
 ):
     """
     Replay historical data melalui DailyDeployAnalyst.
-    CONTI signals difilter default — hanya CF_LOW dan CF_HIGH yang dieksekusi.
+    CONTI signals difilter default -- hanya CF_LOW dan CF_HIGH yang dieksekusi.
     """
     if signal_types is None:
         signal_types = ["CF_LOW", "CF_HIGH"]
@@ -621,8 +691,8 @@ def run_dd_backtest(
 
     total_bars = len(m5_bars)
     layer_label = ", ".join(layers) if layers else "ALL LAYERS"
-    console.print(f"\n[cyan]DD Backtest [{layer_label}] — Replaying [bold]{total_bars:,}[/] M5 bars "
-                  f"[grey62]({start} → {end})[/][/]")
+    console.print(f"\n[cyan]DD Backtest [{layer_label}] -- Replaying [bold]{total_bars:,}[/] M5 bars "
+                  f"[grey62]({start} -> {end})[/][/]")
 
     bt_analyst = BacktestAnalyst(symbol, all_data)
     dd_analyst = DailyDeployAnalyst(symbol)
@@ -649,7 +719,7 @@ def run_dd_backtest(
             low   = bar["low"]
             close = bar["close"]
 
-            # ── 1. Cek exit open trade
+            # -- 1. Cek exit open trade
             if open_trade is not None:
                 result = open_trade.check(high, low, t)
                 if result is not None:
@@ -673,7 +743,7 @@ def run_dd_backtest(
                 progress.advance(task)
                 continue
 
-            # ── 2. Update engine
+            # -- 2. Update engine
             bt_analyst.update_at(t)
             dd_analyst.update(bt_analyst)
 
@@ -721,7 +791,7 @@ def run_dd_backtest(
     return trades, equity_curve
 
 
-# ── Entry point (bisa run langsung: python backtest.py) ───────────────────────
+# -- Entry point (bisa run langsung: python backtest.py) -----------------------
 
 if __name__ == "__main__":
     from engine.connection import connect_mt5
@@ -740,14 +810,14 @@ if __name__ == "__main__":
     DD_LAYERS       = None     # None=all, atau ["H1_DEPLOY", "H4_DEPLOY"]
     # ══════════════════════════════════════════════════════════════
 
-    console.print("[bold cyan]CHAIN REACTION v4.0 — BACKTEST MODE[/]")
+    console.print("[bold cyan]CHAIN REACTION v4.0 -- BACKTEST MODE[/]")
 
     if not connect_mt5():
         console.print("[red]ERROR: MT5 connection failed[/]")
     else:
         try:
             if DD_MODE:
-                console.print("[grey62]Daily Deploy Analyst — Historical Performance Audit[/]\n")
+                console.print("[grey62]Daily Deploy Analyst -- Historical Performance Audit[/]\n")
                 run_dd_backtest(
                     symbol          = SYMBOL,
                     start           = START_DATE,
@@ -759,7 +829,7 @@ if __name__ == "__main__":
                     layers          = DD_LAYERS,
                 )
             else:
-                console.print("[grey62]Sacred Doctrine Engine — Historical Performance Audit[/]\n")
+                console.print("[grey62]Sacred Doctrine Engine -- Historical Performance Audit[/]\n")
                 run_backtest(
                     symbol          = SYMBOL,
                     start           = START_DATE,

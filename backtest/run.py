@@ -37,9 +37,8 @@ MODE            = "h4_cycle"
 DD_LAYERS       = None           # hanya untuk mode "dd": None=all, ["H1_DEPLOY"]
 
 # H4 cycle options
-# CHILD_TF: "M5" (ideal) atau "M15" jika M5 belum di-download di MT5
-# Download M5: MT5 → Tools → History Center → XAUUSD → M5 → Download
-CHILD_TF        = "M15"
+CHILD_TF        = "M5"    # TF VR/CF: "M5" tersedia di DATACSV
+DATA_SOURCE     = "csv"   # "csv" = pakai DATACSV (tidak butuh MT5) | "mt5" = live MT5
 
 # ═══════════════════════════════════════════════════════════
 
@@ -52,7 +51,7 @@ if __name__ == "__main__":
 
     try:
         if MODE == "h4_cycle":
-            console.print(f"[grey62]H4 Cycle — New H4 → M30 CMP → {CHILD_TF} VR → {CHILD_TF} CF[/]\n")
+            console.print(f"[grey62]H4 Cycle [{DATA_SOURCE.upper()}] — New H4 → M30 CMP → {CHILD_TF} VR → {CHILD_TF} CF[/]\n")
             results = run_h4_cycle_backtest(
                 symbol          = SYMBOL,
                 start           = START_DATE,
@@ -62,6 +61,7 @@ if __name__ == "__main__":
                 rr_ratio        = RR_RATIO,
                 max_trades      = MAX_TRADES,
                 child_tf        = CHILD_TF,
+                data_source     = DATA_SOURCE,
             )
         elif MODE == "dd":
             console.print("[grey62]Daily Deploy Analyst — Historical Performance Audit[/]\n")

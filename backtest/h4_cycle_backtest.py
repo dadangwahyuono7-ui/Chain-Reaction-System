@@ -3,10 +3,10 @@ H4 CYCLE BACKTEST — "1 Candle H4" Strategy
 Doctrine: Daily Deploy — M30 sequence dalam 1 window H4
 
 Rules (per user):
-  1. NEW H4 candle opens → tunggu 30 menit (1 M30 bar close)
+  1. NEW H4 candle opens -> tunggu 30 menit (1 M30 bar close)
   2. Baca CMP M30 terbaru setelah M30 pertama close
   3. Tunggu M5 VR: M5 breakout BERLAWANAN dari CMP M30 (minor SNR body break)
-  4. Tunggu M5 CF: M5 breakout SEARAH CMP M30 setelah VR → ENTRY
+  4. Tunggu M5 CF: M5 breakout SEARAH CMP M30 setelah VR -> ENTRY
   5. SL = M5 VR minor SNR level + buffer
   6. TP = M30 SNR level opposite side + buffer (atau fixed RR)
   7. Force close di akhir candle H4 yang sama (4 jam dari open)
@@ -28,7 +28,8 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich import box as rich_box
 
 from engine.core import TFState
-from backtest.backtest import load_historical_data, Trade, PIP, print_report, TF_MINUTES
+from backtest.backtest import (load_historical_data, load_csv_data,
+                               Trade, PIP, print_report, TF_MINUTES)
 
 console = Console()
 
@@ -38,7 +39,7 @@ console = Console()
 def build_m30_timeline(m30_df: pd.DataFrame) -> dict:
     """
     Pre-compute M30 TFState at every bar using rolling 100-bar window.
-    Returns dict: {bar_open_time → {cmp, sup, res, cmp_change_time}}.
+    Returns dict: {bar_open_time -> {cmp, sup, res, cmp_change_time}}.
 
     Timeline entry at time T stores state AFTER bar T closes, which is
     reflected in TFState when the NEXT bar (T+30) becomes iloc[-1].
@@ -73,12 +74,19 @@ def run_h4_cycle_backtest(
     sl_buffer_pips:  float = 5.0,
     rr_ratio:        float = 0.0,   # 0 = M30 SNR natural | >0 = fixed RR
     max_trades:      int   = 0,
-    child_tf:        str   = "M5",  # TF untuk VR/CF — "M5" atau "M15" jika M5 tidak ada
+    child_tf:        str   = "M5",  # TF untuk VR/CF — "M5" atau "M15"
+    data_source:     str   = "csv", # "csv" = dari DATACSV folder | "mt5" = live MT5
 ):
     start_dt = datetime.strptime(start, "%Y-%m-%d")
     end_dt   = datetime.strptime(end,   "%Y-%m-%d")
 
-    all_data = load_historical_data(symbol, start_dt, end_dt)
+    # ── Load data ─────────────────────────────────────────────────────────────
+    needed_tfs = ["H4", "M30", child_tf]
+    if data_source == "csv":
+        console.print(f"\n[bold cyan]Loading CSV data: {symbol}[/]")
+        all_data = load_csv_data(symbol, start_dt, end_dt, tfs=needed_tfs)
+    else:
+        all_data = load_historical_data(symbol, start_dt, end_dt)
 
     h4_df  = all_data.get("H4",      pd.DataFrame())
     m30_df = all_data.get("M30",     pd.DataFrame())
@@ -87,11 +95,11 @@ def run_h4_cycle_backtest(
     for name, df in [("H4", h4_df), ("M30", m30_df), (child_tf, m5_df)]:
         if len(df) == 0:
             console.print(f"[red]ERROR: {name} data kosong[/]")
-            if name == child_tf and child_tf == "M5":
+            if name == child_tf and child_tf == "M5" and data_source == "mt5":
                 console.print(
                     "[yellow]TIP: M5 belum di-download di MT5.\n"
-                    "     MT5 → Tools → History Center → XAUUSD → M5 → Download\n"
-                    "     Atau ganti CHILD_TF = 'M15' di run.py untuk test sementara.[/]"
+                    "     MT5 -> Tools -> History Center -> XAUUSD -> M5 -> Download\n"
+                    "     Atau ganti DATA_SOURCE = 'csv' di run.py (pakai DATACSV folder).[/]"
                 )
             return None
 
@@ -114,7 +122,7 @@ def run_h4_cycle_backtest(
     total_h4 = len(h4_test)
     console.print(
         f"[cyan]H4 Cycle Backtest [{child_tf} VR/CF] — [bold]{total_h4}[/] H4 candles "
-        f"[grey62]({start} → {end})[/][/]\n"
+        f"[grey62]({start} -> {end})[/][/]\n"
     )
 
     trades        = []
@@ -302,7 +310,7 @@ def run_h4_cycle_backtest(
     print_report(
         trades, equity_curve, initial_balance, balance,
         symbol, start, end,
-        engine=f"H4 CYCLE (M30→{child_tf} VR→CF)"
+        engine=f"H4 CYCLE (M30->{child_tf} VR->CF)"
     )
     return trades, equity_curve
 
@@ -315,33 +323,47 @@ if __name__ == "__main__":
     # ═══════════════════════════ CONFIG ═══════════════════════════
     SYMBOL          = "XAUUSD"
     START_DATE      = "2025-01-01"
-    END_DATE        = "2025-12-31"
+    END_DATE        = "2026-05-20"
     INITIAL_BALANCE = 10_000.0
     SL_BUFFER_PIPS  = 5.0      # buffer pips di luar VR SNR level
     RR_RATIO        = 0.0      # 0 = M30 SNR natural, 2.0 = fixed 1:2 RR
 
-    # CHILD_TF: "M5" (ideal) atau "M15" jika M5 belum di-download di MT5
-    # Untuk download M5: MT5 → Tools → History Center → XAUUSD → M5 → Download
-    CHILD_TF        = "M15"
+    # DATA_SOURCE: "csv" = tidak butuh MT5 (pakai DATACSV folder)
+    #              "mt5" = ambil dari MT5 terminal (harus running)
+    DATA_SOURCE     = "csv"
+    CHILD_TF        = "M5"     # TF VR/CF: "M5" tersedia di DATACSV
     # ══════════════════════════════════════════════════════════════
 
     console.print("[bold cyan]H4 CYCLE BACKTEST[/]")
-    console.print(f"[grey62]Rule: New H4 → wait M30 (30min) → {CHILD_TF} VR → {CHILD_TF} CF → ENTRY[/]")
+    console.print(f"[grey62]Data: {DATA_SOURCE.upper()} | Rule: New H4 -> M30 CMP -> {CHILD_TF} VR -> {CHILD_TF} CF -> ENTRY[/]")
     console.print("[grey62]Engine: Minor SNR body breakout sesuai Daily Deploy doctrine[/]\n")
 
-    if not connect_mt5():
-        console.print("[red]ERROR: MT5 connection failed[/]")
+    if DATA_SOURCE == "csv":
+        run_h4_cycle_backtest(
+            symbol          = SYMBOL,
+            start           = START_DATE,
+            end             = END_DATE,
+            initial_balance = INITIAL_BALANCE,
+            sl_buffer_pips  = SL_BUFFER_PIPS,
+            rr_ratio        = RR_RATIO,
+            child_tf        = CHILD_TF,
+            data_source     = "csv",
+        )
     else:
-        try:
-            run_h4_cycle_backtest(
-                symbol          = SYMBOL,
-                start           = START_DATE,
-                end             = END_DATE,
-                initial_balance = INITIAL_BALANCE,
-                sl_buffer_pips  = SL_BUFFER_PIPS,
-                rr_ratio        = RR_RATIO,
-                child_tf        = CHILD_TF,
-            )
-        finally:
-            mt5.shutdown()
-            console.print("\n[grey62]MT5 disconnected.[/]")
+        if not connect_mt5():
+            console.print("[red]ERROR: MT5 connection failed[/]")
+        else:
+            try:
+                run_h4_cycle_backtest(
+                    symbol          = SYMBOL,
+                    start           = START_DATE,
+                    end             = END_DATE,
+                    initial_balance = INITIAL_BALANCE,
+                    sl_buffer_pips  = SL_BUFFER_PIPS,
+                    rr_ratio        = RR_RATIO,
+                    child_tf        = CHILD_TF,
+                    data_source     = "mt5",
+                )
+            finally:
+                mt5.shutdown()
+                console.print("\n[grey62]MT5 disconnected.[/]")
