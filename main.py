@@ -369,7 +369,7 @@ def make_layout() -> Layout:
     )
     layout["body"].split_column(
         Layout(name="intel",        size=3),
-        Layout(name="heatmap_row",  size=14),
+        Layout(name="heatmap_row",  size=12),
         Layout(name="matrix_row",   ratio=2),
         Layout(name="liquidity",    size=6),   # restored
         Layout(name="anim_row",     size=15),
@@ -624,46 +624,34 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir, signal=None, fund_snr=None,
 
         t.add_row(tf_lbl, cmp_cell, role_cell, vr_cell, cf_cell, alg, style=row_style)
 
-    # ── SYNC row: count aligned + SNR proximity inline (no extra rows needed)
-    sync_col = MG if aligned_count >= 6 else GD if aligned_count >= 4 else RD
+    # ── Semua info ringkas masuk ke panel TITLE — zero extra row, layout aman
+    sync_col  = MG if aligned_count >= 6 else GD if aligned_count >= 4 else RD
+    title_ext = f"  [{sync_col}]{aligned_count}/8[/]"
 
-    # Fundamental SNR proximity — masuk ke SYNC row cell ke-4
-    snr_inline = f"[{DG}]──────────[/]"
+    # SNR proximity nearest level
     if fund_snr and tick_price > 0:
         prox = fund_snr.check_proximity(tick_price, 8.0)
         if prox:
-            near   = prox[0]
-            dist   = near["dist"]
-            n_col  = RD if dist < 2 else GD if dist < 5 else DG
-            warn   = "⚠ " if dist < 2 else ""
-            pos    = "▲" if near["above"] else "▼"
-            snr_inline = f"[{n_col}]{warn}{pos}{near['name']} {dist:.1f}$[/]"
+            near  = prox[0]
+            dist  = near["dist"]
+            n_col = RD if dist < 2 else GD if dist < 5 else DG
+            warn  = "⚠" if dist < 2 else "·"
+            pos   = "▲" if near["above"] else "▼"
+            title_ext += f"  [{n_col}]{warn}{pos}{near['name']}:{dist:.1f}$[/]"
 
-    t.add_row(
-        f"[{DG}]SYNC[/]",
-        f"[{DG}]────────[/]",
-        f"[{DG}]───────────[/]",
-        snr_inline,
-        f"[{DG}]──────────[/]",
-        f"[{sync_col}]{aligned_count}/8[/]",
-    )
-
-    # ── Grade badge + signal type → masuk ke panel TITLE (tidak butuh baris baru)
-    grade_title = ""
+    # Grade badge + signal type
     if signal:
         sig_type  = signal.get("type", "")
         grade     = signal.get("grade") or analyst.get_signal_grade(sig_type)
         grade_col = {"A+": MG, "A": CC, "B": GD, "C": "yellow"}.get(grade, DG)
         d         = signal.get("action", "")
         d_col     = MG if d == "BUY" else RD
-        g_badge   = (f"[bold white on dark_green] {grade} [/]" if BLINK and grade in ("A+", "A")
-                     else f"[bold {grade_col}]{grade}[/]")
-        grade_title = (f"  [{d_col}]{d}[/]"
-                       f"[{DG}]·[/]{g_badge}"
-                       f"[{DG}]·{sig_type}[/]")
+        g_badge   = (f"[bold {grade_col}] {grade} [/]" if BLINK
+                     else f"[{grade_col}]{grade}[/]")
+        title_ext += f"  [{d_col}]{d}[/][{DG}]·[/]{g_badge}[{DG}]·{sig_type}[/]"
 
-    panel_title = _T_local("SIGNAL.HEATMAP") + grade_title
-    return Panel(t, title=panel_title, border_style="magenta", padding=(0, 0))
+    return Panel(t, title=_T_local("SIGNAL.HEATMAP") + title_ext,
+                 border_style="magenta", padding=(0, 0))
 
 
 def build_neural_flow_panel(frame, analyst, _cs, h4_dir):
