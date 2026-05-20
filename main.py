@@ -19,7 +19,7 @@ from rich.progress import Progress, BarColumn, TextColumn, SpinnerColumn
 from rich.console import Group as RichGroup
 from rich import box as rich_box
 from engine.connection import connect_mt5
-from engine.core import SacredDoctrineAnalyst
+from engine.core import SacredDoctrineAnalyst, DailyDeployAnalyst
 from engine.executor import ChainReactionExecutor
 
 console = Console()
@@ -944,7 +944,7 @@ def build_oscilloscope_panel(frame, pos_rows):
     return Panel(content, title=_T_local("PnL.OSCILLOSCOPE"), border_style=border, padding=(0, 0))
 
 
-def update_layout(layout, analyst, executor, symbol, settings, frame):
+def update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame):
     BLINK = frame % 2 == 0
 
     # ── PALETTE ────────────────────────────────────────────────────────────────
@@ -1470,6 +1470,28 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     ctx_t.add_row("MACRO",  macro_lbl)
     ctx_t.add_row("REGIME", f"[{reg_c}]{regime_str}[/]")
 
+    # ── DD LAYERS  (Daily Deploy multi-layer signals) ──────────────────────────
+    dd_t = Table(box=None, expand=True, show_header=False, padding=(0, 1))
+    dd_t.add_column("", width=9, style=DG)
+    dd_t.add_column("", ratio=1)
+    dd_t.add_row(f"[{BY}]DD_LAYERS[/]", "")
+    for line in dd_analyst.get_layer_summary():
+        dd_t.add_row("", Text.from_markup(line))
+    dd_best = dd_analyst.get_best_signal()
+    if dd_best:
+        _risk_col = MG if dd_best["risk"] == "LOW" else "yellow" if dd_best["risk"] == "MEDIUM" else RD
+        dd_t.add_row(
+            f"[{MG}]SIGNAL[/]",
+            Text.from_markup(
+                f"[bold {_risk_col}]{dd_best['type']}[/]"
+                f"  [{DG}]{dd_best['layer']}[/]"
+                f"  [{CC}]→ {dd_best['entry_tf']}[/]"
+                f"  [{DG}]{dd_best['reason']}[/]"
+            )
+        )
+    else:
+        dd_t.add_row(f"[{DG}]SIGNAL[/]", Text.from_markup(f"[{DG}]no DD signal[/]"))
+
     # NEXT ACTION — styled as terminal command prompt
     next_blink = BLINK and "──" not in next_txt
     next_display = f"[blink {next_bc}]{next_txt}[/]" if next_blink else f"[{next_bc}]{next_txt}[/]"
@@ -1487,7 +1509,8 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
 
     story_group = RichGroup(
         dir_banner, Text(""), cascade_text, sep,
-        steps_t, sep, ctx_t, Text(""),
+        steps_t, sep, ctx_t, sep,
+        dd_t, Text(""),
         next_panel, Text(""),
         Align.center(cmdr_txt),
     )
@@ -1594,6 +1617,18 @@ def update_layout(layout, analyst, executor, symbol, settings, frame):
     )
 
 
+_DD_TP_SL = {
+    ("D1_DEPLOY", "CF_LOW"):  ("D1",  "H4"),
+    ("D1_DEPLOY", "CF_HIGH"): ("H4",  "H4"),
+    ("D1_DEPLOY", "CONTI"):   ("H4",  "H4"),
+    ("H4_DEPLOY", "CF_LOW"):  ("H4",  "H1"),
+    ("H4_DEPLOY", "CF_HIGH"): ("H1",  "H1"),
+    ("H4_DEPLOY", "CONTI"):   ("H1",  "H1"),
+    ("H1_DEPLOY", "CF_LOW"):  ("H1",  "M30"),
+    ("H1_DEPLOY", "CF_HIGH"): ("M30", "M30"),
+    ("H1_DEPLOY", "CONTI"):   ("M30", "M30"),
+}
+
 def boot_sequence():
     console.clear()
     tasks = ["INITIALIZING OVERLORD KERNEL...", "AUTHENTICATING COMMANDER CLEARANCE...", "SYNCING GLOBAL LIQUIDITY MAP...", "CALIBRATING SENTIMENT RADAR...", "LINKING SACRED DOCTRINE v4.0...", "ARMING CHAIN REACTION SNIPER...", "DECRYPTING INSTITUTIONAL DATA...", "STABILIZING NEURAL WAVEFORM...", "UPLINKING TO MARKAS BESAR...", "OVERLORD SYSTEM ONLINE!"]
@@ -1620,11 +1655,13 @@ def main():
     if not connect_mt5(): return
     boot_sequence()
     settings   = load_settings()
-    analyst  = SacredDoctrineAnalyst(symbol, master_tf=settings.get("master_tf", "H4"))
-    executor = ChainReactionExecutor(symbol, magic_number=settings.get("magic_number", 2026))
+    analyst    = SacredDoctrineAnalyst(symbol, master_tf=settings.get("master_tf", "H4"))
+    dd_analyst = DailyDeployAnalyst(symbol)
+    executor   = ChainReactionExecutor(symbol, magic_number=settings.get("magic_number", 2026))
     layout = make_layout()
     frame = 0
     last_strike_time_chain = 0
+    last_strike_time_dd    = 0
     feed.add(f"🔗 OVERLORD ONLINE: Standing by for Market Ignition")
     feed.add(f"⚖️ DOCTRINE ARMED: Time Law v4.0 Enforced")
     feed.add(f"🛰️ RADAR ACTIVE: Scanning for {symbol} Liquidity")
@@ -1635,6 +1672,7 @@ def main():
                 executor.update_settings(settings)  # sync all magic numbers from config
 
                 analyst.update()
+                dd_analyst.update(analyst)
 
                 events = executor.monitor_positions(analyst)
                 for e in events:
@@ -1664,11 +1702,34 @@ def main():
                             feed.add(msg)
                             if success:
                                 last_strike_time_chain = time.time()
-                                # Refresh positions count so BS engine sees the new order
                                 all_positions = mt5.positions_get(symbol=symbol, magic=magic) or []
                                 total_open = len(all_positions)
 
-                update_layout(layout, analyst, executor, symbol, settings, frame)
+                # 2. Daily Deploy Analyst — H1/H4/D1 DEPLOY layers
+                # Hanya fire CF_LOW dan CF_HIGH — skip CONTI (terlalu berisiko tanpa VR)
+                dd_signal = dd_analyst.get_best_signal()
+                if (dd_signal and settings.get("auto_trade")
+                        and dd_signal.get("type") in ("CF_LOW", "CF_HIGH")):
+                    if time.time() - last_strike_time_dd > 300:
+                        dd_pos = [p for p in all_positions if p.comment.startswith("DD_")]
+                        if len(dd_pos) < max_layers and total_open < max_layers:
+                            _layer    = dd_signal.get("layer", "")
+                            _sig_type = dd_signal.get("type", "")
+                            _tp_tf, _sl_tf = _DD_TP_SL.get((_layer, _sig_type), ("M30", "M30"))
+                            success, msg = executor.execute_strike(
+                                dd_signal["action"], analyst,
+                                comment=f"DD_{_layer}_{_sig_type}",
+                                tp_tf=_tp_tf,
+                                sl_tf=_sl_tf,
+                                settings=settings
+                            )
+                            feed.add(f"[DD] {msg}")
+                            if success:
+                                last_strike_time_dd = time.time()
+                                all_positions = mt5.positions_get(symbol=symbol, magic=magic) or []
+                                total_open = len(all_positions)
+
+                update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame)
                 frame += 1
                 time.sleep(0.1)
             except KeyboardInterrupt:
