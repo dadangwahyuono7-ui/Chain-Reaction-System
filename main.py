@@ -5,6 +5,8 @@ import os
 import random
 import math
 import requests
+import subprocess
+import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import pytz
@@ -127,6 +129,99 @@ def load_settings():
         with open(path, "r") as f:
             return json.load(f)
     return {"auto_trade": False, "lot_size": 0.01, "max_layers": 3, "barrier_limit": 3.5}
+
+def launch_companions():
+    """Auto-launch TradingView (CDP) + scenario_builder + signal_annotator saat main.py start.
+    Semua dibungkus try/except — tidak akan crash main loop jika gagal."""
+    try:
+        base   = os.path.dirname(os.path.abspath(__file__))
+        tv_mcp = os.path.join(base, "tradingview-mcp-jackson")
+
+        # ── 1. Cek apakah CDP sudah aktif ─────────────────────────────
+        cdp_ok = False
+        try:
+            with urllib.request.urlopen("http://localhost:9222/json/version", timeout=2) as r:
+                cdp_ok = (r.status == 200)
+        except Exception:
+            pass
+
+        # ── 2. Launch TradingView jika CDP belum aktif ─────────────────
+        if not cdp_ok:
+            console.print("[cyan]  ◈ TradingView belum aktif — kill & relaunch dengan CDP...[/cyan]")
+            subprocess.run(["taskkill", "/F", "/IM", "TradingView.exe"], capture_output=True)
+            time.sleep(2)
+
+            # Cari TradingView.exe
+            tv_exe = None
+            try:
+                r = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command",
+                     "(Get-AppxPackage -Name '*TradingView*' -ErrorAction SilentlyContinue).InstallLocation"],
+                    capture_output=True, text=True, timeout=10
+                )
+                loc = r.stdout.strip()
+                if loc:
+                    c = os.path.join(loc, "TradingView.exe")
+                    if os.path.exists(c):
+                        tv_exe = c
+            except Exception:
+                pass
+
+            if not tv_exe:
+                for p in [
+                    os.path.join(os.environ.get("LOCALAPPDATA", ""), "TradingView", "TradingView.exe"),
+                    r"C:\Program Files\TradingView\TradingView.exe",
+                ]:
+                    if os.path.exists(p):
+                        tv_exe = p
+                        break
+
+            if tv_exe:
+                console.print(f"[cyan]  ◈ Launching: {os.path.basename(tv_exe)}...[/cyan]")
+                subprocess.Popen(
+                    [tv_exe, "--remote-debugging-port=9222"],
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                )
+                # Tunggu CDP ready (max 90 detik, cek tiap 3 detik)
+                console.print("[cyan]  ◈ Menunggu CDP ready...[/cyan]")
+                for _ in range(30):
+                    time.sleep(3)
+                    try:
+                        with urllib.request.urlopen("http://localhost:9222/json/version", timeout=2) as rr:
+                            if rr.status == 200:
+                                cdp_ok = True
+                                break
+                    except Exception:
+                        pass
+                if cdp_ok:
+                    console.print("[green]  ✓ CDP aktif! Menunggu chart load (15 detik)...[/green]")
+                    time.sleep(15)
+                else:
+                    console.print("[yellow]  ⚠ CDP timeout — lanjut tanpa TradingView[/yellow]")
+            else:
+                console.print("[yellow]  ⚠ TradingView.exe tidak ditemukan — install dulu[/yellow]")
+        else:
+            console.print("[green]  ✓ TradingView CDP sudah aktif di port 9222[/green]")
+
+        # ── 3. Launch scenario_builder + signal_annotator di window baru ──
+        CREATE_NEW_CONSOLE = 0x00000010
+        subprocess.Popen(
+            ["node", "scenario_builder.mjs", "--watch"],
+            cwd=tv_mcp,
+            creationflags=CREATE_NEW_CONSOLE,
+        )
+        time.sleep(1)
+        subprocess.Popen(
+            ["node", "signal_annotator.mjs", "--watch"],
+            cwd=tv_mcp,
+            creationflags=CREATE_NEW_CONSOLE,
+        )
+        console.print("[green]  ✓ Companion scripts launched (scenario + annotator)[/green]")
+        time.sleep(1)
+
+    except Exception as e:
+        console.print(f"[yellow]  ⚠ launch_companions error (non-fatal): {e}[/yellow]")
+
 
 def export_state_snapshot(analyst, dd_analyst, fund_snr, chain_signal=None, dd_signal=None):
     """Export engine state ke state_snapshot.json untuk TV MCP scripts (draw_snr_engine, morning_brief, tv_bridge)."""
@@ -1908,6 +2003,7 @@ def boot_sequence():
 def main():
     symbol = "XAUUSD"
     if not connect_mt5(): return
+    launch_companions()   # auto-launch TV CDP + scenario_builder + signal_annotator
     boot_sequence()
     settings   = load_settings()
     analyst    = SacredDoctrineAnalyst(symbol, master_tf=settings.get("master_tf", "H4"))
