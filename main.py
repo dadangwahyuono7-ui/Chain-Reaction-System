@@ -128,6 +128,52 @@ def load_settings():
             return json.load(f)
     return {"auto_trade": False, "lot_size": 0.01, "max_layers": 3, "barrier_limit": 3.5}
 
+def export_state_snapshot(analyst, dd_analyst, fund_snr, chain_signal=None, dd_signal=None):
+    """Export engine state ke state_snapshot.json untuk TV MCP scripts (draw_snr_engine, morning_brief, tv_bridge)."""
+    try:
+        tick  = mt5.symbol_info_tick("XAUUSD")
+        price = float(tick.bid) if tick else 0.0
+
+        tf_states = {}
+        for name, state in analyst.states.items():
+            tf_states[name] = {
+                "cmp":         state.cmp,
+                "status":      state.status,
+                "sup":         round(state.sup, 2),
+                "res":         round(state.res, 2),
+                "vr_occurred": state.vr_occurred,
+            }
+
+        dd_sigs = []
+        if dd_analyst and hasattr(dd_analyst, "active_signals"):
+            for s in dd_analyst.active_signals:
+                dd_sigs.append({
+                    "layer":  s.get("layer",  ""),
+                    "type":   s.get("type",   ""),
+                    "action": s.get("action", ""),
+                })
+
+        snapshot = {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "symbol":    "XAUUSD",
+            "price":     price,
+            "tf_states": tf_states,
+            "chain_signal": chain_signal,
+            "dd_signals":   dd_sigs,
+            "fund_snr": {
+                "pdh":        round(fund_snr.pdh,        2) if fund_snr else 0,
+                "pdl":        round(fund_snr.pdl,        2) if fund_snr else 0,
+                "pwh":        round(fund_snr.pwh,        2) if fund_snr else 0,
+                "pwl":        round(fund_snr.pwl,        2) if fund_snr else 0,
+                "daily_open": round(fund_snr.daily_open, 2) if fund_snr else 0,
+            },
+        }
+        with open("state_snapshot.json", "w") as f:
+            json.dump(snapshot, f, indent=2)
+    except Exception:
+        pass  # silent — jangan crash main loop
+
+
 def get_session_times():
     now = datetime.now(pytz.utc)
     sessions = {"LONDON": (8, 16), "NEW YORK": (13, 21), "TOKYO": (0, 8), "SYDNEY": (22, 6)}
@@ -1975,6 +2021,11 @@ def main():
                                             p.ticket, p.price_open,
                                             p.sl, p.tp, ninja_sig["action"])
                                         break
+
+                # Export state snapshot setiap 3 detik untuk TV MCP scripts
+                if frame % 30 == 0:
+                    export_state_snapshot(analyst, dd_analyst, fund_snr,
+                                          chain_signal=signal, dd_signal=dd_signal)
 
                 update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame,
                               ninja_state=ninja_state, fund_snr=fund_snr)

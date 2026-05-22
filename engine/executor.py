@@ -1,5 +1,7 @@
 import MetaTrader5 as mt5
 import time
+import json
+import os
 from datetime import datetime
 import pytz
 from rich.console import Console
@@ -386,4 +388,34 @@ class ChainReactionExecutor:
         msg = f"SUCCESS: {direction} {lot}L @ {price:.2f} | SL {sl:.2f} | TP {tp:.2f}"
         if is_adaptive:
             msg += " (Adaptive TP)"
+
+        # Export ke signal_queue.json untuk TV annotator
+        self._export_signal_queue(direction, price, round(sl, 2), round(tp, 2), comment)
+
         return True, msg
+
+    def _export_signal_queue(self, direction, entry, sl, tp, comment):
+        """Append fired signal ke signal_queue.json → dibaca signal_annotator.mjs."""
+        queue_file = "signal_queue.json"
+        try:
+            queue = []
+            if os.path.exists(queue_file):
+                with open(queue_file, "r") as f:
+                    queue = json.load(f)
+            queue.append({
+                "id":        int(datetime.now().timestamp()),
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+                "symbol":    self.symbol,
+                "direction": direction,
+                "entry":     round(entry, 2),
+                "sl":        sl,
+                "tp":        tp,
+                "comment":   comment,
+                "drawn":     False,
+            })
+            if len(queue) > 50:           # keep last 50 signals only
+                queue = queue[-50:]
+            with open(queue_file, "w") as f:
+                json.dump(queue, f, indent=2)
+        except Exception:
+            pass  # silent — jangan crash execute_strike
