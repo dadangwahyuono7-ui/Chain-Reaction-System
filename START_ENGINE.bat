@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 title Sultan Sniper — System Launcher
 color 0A
 chcp 65001 >nul 2>&1
@@ -15,17 +15,18 @@ echo.
 :: ═════════════════════════════════════════════════
 echo   [1/4] Meluncurkan TradingView dengan CDP port 9222...
 
-:: Kill TradingView yang lagi jalan (supaya CDP pasti aktif)
 taskkill /F /IM TradingView.exe >nul 2>&1
 timeout /t 2 /nobreak >nul
 
-:: Cari lokasi TradingView.exe
+:: ─── Cari TradingView.exe ───
 set "TV_EXE="
 
-:: 1. MSIX / Windows Store (paling umum di Windows 11)
-for /f "tokens=*" %%i in ('powershell -NoProfile -Command "(Get-AppxPackage -Name '*TradingView*' -ErrorAction SilentlyContinue).InstallLocation" 2^>nul') do (
+:: 1. MSIX / Windows Store — tulis ke temp file dulu (hindari quote conflict)
+powershell -NoProfile -Command "(Get-AppxPackage -Name '*TradingView*' -ErrorAction SilentlyContinue).InstallLocation" > "%TEMP%\tv_path.txt" 2>nul
+for /f "usebackq tokens=*" %%i in ("%TEMP%\tv_path.txt") do (
     if exist "%%i\TradingView.exe" set "TV_EXE=%%i\TradingView.exe"
 )
+del "%TEMP%\tv_path.txt" >nul 2>&1
 
 :: 2. WindowsApps folder
 if "%TV_EXE%"=="" (
@@ -36,7 +37,6 @@ if "%TV_EXE%"=="" (
 if "%TV_EXE%"=="" if exist "%LOCALAPPDATA%\TradingView\TradingView.exe" set "TV_EXE=%LOCALAPPDATA%\TradingView\TradingView.exe"
 if "%TV_EXE%"=="" if exist "%PROGRAMFILES%\TradingView\TradingView.exe"  set "TV_EXE=%PROGRAMFILES%\TradingView\TradingView.exe"
 
-:: Gagal kalau tidak ketemu
 if "%TV_EXE%"=="" (
     echo.
     echo   [ERROR] TradingView.exe tidak ditemukan!
@@ -50,7 +50,7 @@ echo         Ditemukan: %TV_EXE%
 echo         Meluncurkan...
 start "" "%TV_EXE%" --remote-debugging-port=9222
 
-:: ─── Tunggu CDP siap (cek pakai Node.js, lebih reliable dari curl) ───
+:: ─── Tunggu CDP siap ───
 echo         Menunggu TradingView CDP ready...
 
 :wait_cdp
@@ -59,8 +59,6 @@ node -e "const h=require('http');const r=h.get('http://localhost:9222/json/versi
 if %errorlevel% neq 0 goto wait_cdp
 
 echo         OK  CDP aktif!
-
-:: ─── Tunggu chart load ───
 echo         Menunggu chart load (20 detik)...
 timeout /t 20 /nobreak >nul
 echo         OK  TradingView siap.
@@ -75,20 +73,10 @@ echo.
 where wt.exe >nul 2>&1
 if %errorlevel% equ 0 (
 
-    :: ── Windows Terminal: semua dalam 1 window, 3 tabs ──────────────
-    start "" wt.exe ^
-        new-tab ^
-            --title "SULTAN ENGINE" ^
-            --colorScheme "One Half Dark" ^
-            cmd /k "title [1] SULTAN ENGINE && cd /d %~dp0 && echo. && echo  Starting Sultan Sniper Engine... && echo. && venv\Scripts\python.exe main.py" ^
-        ; new-tab ^
-            --title "SCENARIO BUILDER" ^
-            --colorScheme "Tango Dark" ^
-            cmd /k "title [2] SCENARIO BUILDER && cd /d %~dp0tradingview-mcp-jackson && echo. && echo  Menunggu engine startup... && timeout /t 15 /nobreak >nul && echo. && node scenario_builder.mjs --watch" ^
-        ; new-tab ^
-            --title "SIGNAL ANNOTATOR" ^
-            --colorScheme "Campbell" ^
-            cmd /k "title [3] SIGNAL ANNOTATOR && cd /d %~dp0tradingview-mcp-jackson && echo. && echo  Menunggu engine startup... && timeout /t 18 /nobreak >nul && echo. && node signal_annotator.mjs --watch"
+    :: ── Windows Terminal 3 tabs — pakai helper bat ───────────────
+    start "" wt.exe new-tab --title "SULTAN ENGINE" --colorScheme "One Half Dark" -- "%~dp0_tab1_engine.bat" ^
+        ; new-tab --title "SCENARIO BUILDER" --colorScheme "Tango Dark" -- "%~dp0_tab2_scenario.bat" ^
+        ; new-tab --title "SIGNAL ANNOTATOR" --colorScheme "Campbell" -- "%~dp0_tab3_annotator.bat"
 
     echo   OK  Windows Terminal dibuka (3 tabs)
 
@@ -97,11 +85,11 @@ if %errorlevel% equ 0 (
     :: ── Fallback: CMD window terpisah ───────────────────────────────
     echo   Windows Terminal tidak ada, buka 3 CMD window terpisah...
 
-    start "SULTAN ENGINE"    cmd /k "title [1] SULTAN ENGINE    && cd /d %~dp0 && color 0A && venv\Scripts\python.exe main.py"
+    start "SULTAN ENGINE"    cmd /k "%~dp0_tab1_engine.bat"
     timeout /t 15 /nobreak >nul
-    start "SCENARIO BUILDER" cmd /k "title [2] SCENARIO BUILDER && cd /d %~dp0tradingview-mcp-jackson && color 0B && node scenario_builder.mjs --watch"
+    start "SCENARIO BUILDER" cmd /k "%~dp0_tab2_scenario.bat"
     timeout /t 2  /nobreak >nul
-    start "SIGNAL ANNOTATOR" cmd /k "title [3] SIGNAL ANNOTATOR && cd /d %~dp0tradingview-mcp-jackson && color 0E && node signal_annotator.mjs --watch"
+    start "SIGNAL ANNOTATOR" cmd /k "%~dp0_tab3_annotator.bat"
 
     echo   OK  3 CMD window dibuka
 
