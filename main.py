@@ -24,6 +24,7 @@ from engine.connection import connect_mt5
 from engine.core import SacredDoctrineAnalyst, DailyDeployAnalyst, FundamentalSNR
 from engine.executor import ChainReactionExecutor
 from engine.ninja_trade import NinjaTradeAnalyst
+from engine.pdb_nom_analyst import PDBAnalyst, NOMAnalyst
 
 console = Console()
 
@@ -2016,16 +2017,20 @@ def main():
         be_pips        = settings.get("ninja_be_pips",     5.0),
         sl_buffer_pips = settings.get("ninja_sl_buffer",   5.0),
     )
+    pdb_analyst = PDBAnalyst(symbol)
+    nom_analyst = NOMAnalyst(symbol)
     layout = make_layout()
     frame = 0
     last_strike_time_chain  = 0
     last_strike_time_dd     = 0
     last_strike_time_ninja  = 0
+    last_strike_time_pdb    = 0
+    last_strike_time_nom    = 0
     ninja_state: dict       = {}
     feed.add(f"OVERLORD ONLINE: Standing by for Market Ignition")
     feed.add(f"⚖️ DOCTRINE ARMED: Time Law v4.0 Enforced")
     feed.add(f"🛰️ RADAR ACTIVE: Scanning for {symbol} Liquidity")
-    with Live(layout, refresh_per_second=8, screen=True) as live:
+    with Live(layout, refresh_per_second=2, screen=True, vertical_overflow="visible") as live:
         while True:
             try:
                 settings = load_settings()
@@ -2035,6 +2040,8 @@ def main():
                 dd_analyst.update(analyst)
                 fund_snr.update()          # refresh PDH/PDL/PWH/PWL tiap 5 menit
                 ninja_state = ninja.update()   # independent — no analyst dependency
+                pdb_analyst.update(analyst)    # PDH/PDL breakout + H4 CMP filter
+                nom_analyst.update(analyst)    # NY open momentum + H4 CMP filter
 
                 events = executor.monitor_positions(analyst)
                 for e in events:
@@ -2117,6 +2124,55 @@ def main():
                                             p.ticket, p.price_open,
                                             p.sl, p.tp, ninja_sig["action"])
                                         break
+
+                # 4. PDB — PDH/PDL Breakout (validated +21k pips/6yr, PF 2.33)
+                # Fires in ANY session (Asian is best). bypass_session + bypass_snr
+                # because entry IS the level itself.
+                pdb_sig = pdb_analyst.get_signal()
+                if (pdb_sig and settings.get("auto_trade")
+                        and settings.get("pdb_enabled", True)):
+                    if time.time() - last_strike_time_pdb > 600:
+                        pdb_pos = [p for p in all_positions
+                                   if p.comment.startswith("PDB_")]
+                        if len(pdb_pos) < 2 and total_open < max_layers:
+                            success, msg = executor.execute_strike(
+                                pdb_sig["action"], analyst,
+                                comment=pdb_sig["comment"],
+                                tp_price=pdb_sig["tp"],
+                                sl_price=pdb_sig["sl"],
+                                settings=settings,
+                                bypass_session=True,
+                                bypass_snr=True,
+                            )
+                            feed.add(f"[PDB] {msg}")
+                            if success:
+                                last_strike_time_pdb = time.time()
+                                pdb_analyst.mark_trade_open()
+                                all_positions = mt5.positions_get(symbol=symbol, magic=magic) or []
+                                total_open = len(all_positions)
+
+                # 5. NOM — NY Open Momentum (validated +2.4k pips/6yr, PF 2.22)
+                # Window 14:00-14:29 UTC only. Max 1 trade/day. No session bypass needed.
+                nom_sig = nom_analyst.get_signal()
+                if (nom_sig and settings.get("auto_trade")
+                        and settings.get("nom_enabled", True)):
+                    if time.time() - last_strike_time_nom > 1800:
+                        nom_pos = [p for p in all_positions
+                                   if p.comment.startswith("NOM_")]
+                        if len(nom_pos) == 0 and total_open < max_layers:
+                            success, msg = executor.execute_strike(
+                                nom_sig["action"], analyst,
+                                comment=nom_sig["comment"],
+                                tp_price=nom_sig["tp"],
+                                sl_price=nom_sig["sl"],
+                                settings=settings,
+                            )
+                            feed.add(f"[NOM] {msg}")
+                            if success:
+                                last_strike_time_nom = time.time()
+                                nom_analyst.mark_trade_open()
+                                all_positions = mt5.positions_get(symbol=symbol, magic=magic) or []
+                                total_open = len(all_positions)
 
                 # Export state snapshot setiap 3 detik untuk TV MCP scripts
                 if frame % 30 == 0:

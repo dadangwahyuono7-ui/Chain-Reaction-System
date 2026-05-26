@@ -1235,7 +1235,8 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
       </div>
 
       <div className="flex items-center justify-between pt-1">
-        <span className="text-[9px] text-zinc-800 font-mono">CDP :9222 · CMP Engine v6.3 · Daily Deploy · Chain Reaction v4.0</span>
+        <span className="text-[9px] text-zinc-800 font-mono">CDP :9222 · CMP Engine v6.3 · Daily Deploy · Chain Reaction v4.0 OVERLORD</span>
+        <span className="text-[9px] font-black font-mono text-amber-900/60 tracking-widest">© DADANG WAHYUONO — PRIVATE &amp; CONFIDENTIAL</span>
         {lastSNRSync && <span className="text-[9px] text-zinc-800 font-mono">SNR: {timeAgo(lastSNRSync)}</span>}
       </div>
     </div>

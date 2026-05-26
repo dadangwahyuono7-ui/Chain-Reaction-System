@@ -52,6 +52,18 @@ export default function DashboardPage() {
   return (
     <div className="flex h-screen bg-zinc-950 text-white overflow-hidden">
 
+      {/* ── WATERMARK — Dadang Wahyuono ───────────────────────────────── */}
+      <div
+        className="fixed inset-0 pointer-events-none select-none z-50 overflow-hidden"
+        aria-hidden="true"
+      >
+        <div className="absolute inset-0" style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='200'%3E%3Ctext x='50%25' y='45%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-size='13' font-weight='bold' fill='rgba(245,158,11,0.055)' transform='rotate(-30,170,100)'%3EDADANG WAHYUONO%3C/text%3E%3Ctext x='50%25' y='72%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-size='9' fill='rgba(245,158,11,0.04)' transform='rotate(-30,170,100)'%3ECHAIN REACTION v4.0 · PRIVATE%3C/text%3E%3C/svg%3E")`,
+          backgroundRepeat: "repeat",
+          backgroundSize: "340px 200px",
+        }} />
+      </div>
+
       {/* ── Mobile overlay ────────────────────────────────────────────── */}
       {sidebarOpen && (
         <div
@@ -127,6 +139,13 @@ export default function DashboardPage() {
           <span className="text-[10px] text-zinc-600 uppercase tracking-widest">
             Market Intelligence · XAUUSD Daily Deploy
           </span>
+          <div className="flex-1" />
+          {/* Owner tag — always visible in screenshot */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/8 border border-amber-500/20 shrink-0">
+            <span className="text-[9px] text-amber-600 font-mono">©</span>
+            <span className="text-[10px] font-black font-mono text-amber-500/70 tracking-widest">DADANG WAHYUONO</span>
+            <span className="text-[9px] text-zinc-700 font-mono">· CHAIN REACTION v4.0 · PRIVATE</span>
+          </div>
         </div>
 
         {/* Dashboard scroll area */}
