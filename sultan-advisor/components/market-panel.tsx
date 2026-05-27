@@ -831,6 +831,10 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const m30CfActive  = cfActiveRef.current["M30"]  ?? false;
   const m30CfCount   = cfCountRef.current["M30"]   ?? 0;
 
+  // M5 harus searah scalp (scalpMasterDir) untuk entry valid
+  // Kalau M5 CMP sudah berlawanan → CF untuk M30 sudah selesai/reversed
+  const m5AlignsScalp = !m5cmp || m5cmp === scalpMasterDir;
+
   const chainNodes = ["DAILY","H4","H1","M30","M15","M5"].map(id => ({
     id, label: id === "H4" ? "H4 ★" : id === "DAILY" ? "D1" : id,
     tf: tfData.find(d => d.tf === id),
@@ -1617,17 +1621,21 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                       )}>
                         <div className="text-[9px] font-black font-mono text-cyan-400">M5</div>
                         <div className={cn("text-[11px] font-black font-mono mt-0.5",
-                          m30cf === "YA" && m30CfActive
+                          m30cf === "YA" && m30CfActive && m5AlignsScalp
                             ? blinkFast ? "text-amber-200" : "text-amber-400"
+                            : m30cf === "YA" && m30CfActive && !m5AlignsScalp
+                              ? "text-orange-500"
                             : m30cf === "YA" && !m30CfActive
                               ? "text-zinc-500"
                             : m30vr === "YA" ? "text-amber-700 animate-pulse" : "text-zinc-600"
                         )}>
-                          {m30cf === "YA" && m30CfActive
+                          {m30cf === "YA" && m30CfActive && m5AlignsScalp
                             ? `⚡CF${m30CfCount > 1 ? m30CfCount : ""}✓`
-                            : m30cf === "YA" && !m30CfActive
-                              ? "CF·DONE"
-                              : m30vr === "YA" ? "WAIT" : "BELUM"}
+                            : m30cf === "YA" && m30CfActive && !m5AlignsScalp
+                              ? "⚠FLIP"
+                              : m30cf === "YA" && !m30CfActive
+                                ? "CF·DONE"
+                                : m30vr === "YA" ? "WAIT" : "BELUM"}
                         </div>
                         <div className="text-[8px] font-mono text-zinc-700 mt-0.5">
                           {m5cmp ? (m5cmp === "BULLISH" ? "▲BUY" : "▼SELL") : "—"}
@@ -1682,7 +1690,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                           </div>
                         </>
                       )}
-                      {scalpPhase === 3 && m30CfActive && (
+                      {scalpPhase === 3 && m30CfActive && m5AlignsScalp && (
                         <>
                           <div className={cn("text-[10px] font-black font-mono",
                             blinkFast
@@ -1709,6 +1717,19 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                           </div>
                           <div className="text-[8px] font-mono text-amber-800 pt-0.5">
                             ★ SL kecil (M5 swing) → aman pakai lot lebih besar dari setup biasa
+                          </div>
+                        </>
+                      )}
+                      {scalpPhase === 3 && m30CfActive && !m5AlignsScalp && (
+                        <>
+                          <div className="text-[10px] font-black font-mono text-orange-500">
+                            ⚠ M5 BERLAWANAN — CF sudah flip
+                          </div>
+                          <div className="text-[8px] font-mono text-orange-800">
+                            M5 CMP {m5cmp === "BULLISH" ? "BUY" : "SELL"} ≠ arah scalp {scalpIsBull ? "BUY" : "SELL"} → CF selesai, jangan entry
+                          </div>
+                          <div className="text-[8px] font-mono text-zinc-700 pt-0.5">
+                            Tunggu M5 balik searah dulu sebelum entry
                           </div>
                         </>
                       )}
