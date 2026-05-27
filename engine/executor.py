@@ -60,10 +60,12 @@ class ChainReactionExecutor:
                 return False, f"VETO: Barrier dist {dist:.2f} > {self.barrier_limit} USD"
         return True, "Barrier OK"
 
-    def check_session_and_spread(self):
+    def check_session_and_spread(self, bypass_session=False):
         """
         Session Filter: only allow execution during London (08–16 UTC) or NY (13–21 UTC).
         Spread Guard: veto if spread exceeds max_spread_points.
+        bypass_session=True skips the time check (still enforces spread) — used by PDB
+        which is valid in Asian session.
         """
         tick = mt5.symbol_info_tick(self.symbol)
         info = mt5.symbol_info(self.symbol)
@@ -75,7 +77,7 @@ class ChainReactionExecutor:
                 return False, f"VETO: Spread {spread_pts} pts > {self.max_spread_points} limit"
 
         # Session filter
-        if self.session_filter:
+        if self.session_filter and not bypass_session:
             hour_utc = datetime.now(pytz.utc).hour
             in_london = 8 <= hour_utc < 16
             in_new_york = 13 <= hour_utc < 21
@@ -283,11 +285,15 @@ class ChainReactionExecutor:
     # ─────────────────────────── EXECUTION ───────────────────────────────────
 
     def execute_strike(self, direction, analyst, lot=0.0, comment="Chain Strike",
-                       tp_price=0.0, sl_price=0.0, settings=None, tp_tf=None, sl_tf=None):
+                       tp_price=0.0, sl_price=0.0, settings=None, tp_tf=None, sl_tf=None,
+                       bypass_session=False, bypass_snr=False):
         """
         Execute a trade with the full Chain Reaction rule stack:
         Barrier Guard → Session/Spread → News Blackout → TP → SL →
         Risk Lot → Drawdown Guard → Order Send.
+
+        bypass_session=True  — skip time-of-day filter (PDB fires in Asian session).
+        bypass_snr=True      — skip Fundamental SNR guard (PDB entry IS the PDH/PDL level).
         """
         if settings is None:
             settings = {}
@@ -304,7 +310,7 @@ class ChainReactionExecutor:
             return False, msg
 
         # 2. Session & Spread
-        ok, msg = self.check_session_and_spread()
+        ok, msg = self.check_session_and_spread(bypass_session=bypass_session)
         if not ok:
             return False, msg
 
@@ -315,7 +321,8 @@ class ChainReactionExecutor:
 
         # 3b. Fundamental SNR Guard
         # Block jika terlalu dekat PDH/PDL/PWH/PWL/Round Number
-        if self.fundamental_snr is not None:
+        # bypass_snr=True untuk PDB — entry IS the level, guard tidak relevan
+        if self.fundamental_snr is not None and not bypass_snr:
             blocked, warned, snr_msg = self.fundamental_snr.get_nearest_warning(
                 price, self.snr_block_usd, self.snr_warn_usd
             )

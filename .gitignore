@@ -1,12 +1,57 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-.env
-crash_log.txt
-*.log
-*.lnk
-sultan_live_engine.py
-.gemini/
+*.pyc
 venv/
+.venv/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Logs & runtime state
+*.log
+crash_log.txt
+_launch_err.txt
+_launch_log.txt
+state_snapshot.json
+signal_queue.json
+tv_cmp_state.json
+scenario_shape_ids.json
+safety-check-log.json
+cmp_snr.json
+snr_data.json
+snr_zones.json
+
+# Editor & OS
 .idea/
 .vscode/
+.gemini/
+*.lnk
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Next.js (sultan-advisor sudah punya .gitignore sendiri)
+.next/
+*.tsbuildinfo
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Large binary
+*.pdf
+*.pem
+
+# Cookies & temp
+.test-cookies
+*.tmp
+
+# Old/deprecated
+sultan_live_engine.py
