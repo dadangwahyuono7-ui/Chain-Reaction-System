@@ -1906,7 +1906,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                     </div>
                     {/* Block char sparkline */}
                     <div className="flex items-center gap-1 pt-0.5">
-                      <span className="text-[9px] text-zinc-700 font-mono">TICK</span>
+                      <span className="text-[9px] text-zinc-700 font-mono">M1≈</span>
                       <span className="text-[12px] font-mono leading-none tracking-widest">
                         {barDeltas.map((delta, i) => {
                           const isUp  = delta >= 0;
