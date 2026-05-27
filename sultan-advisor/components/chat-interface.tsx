@@ -88,16 +88,16 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
     );
   }, [input, isLoading, sendMessage]);
 
-  // Auto-fire prompt when TV sync completes
+  // Auto-fire prompt when TV sync detects CF/VR event
   useEffect(() => {
     if (!autoPrompt) return;
     if (autoFiredRef.current === autoPrompt) return; // deduplicate
     if (isLoading) return;
-    autoFiredRef.current = autoPrompt;
-    onAutoPromptConsumed?.();
-    // Small delay so UI settles after sync
-    const t = setTimeout(() => { handleSend(autoPrompt); }, 400);
-    return () => clearTimeout(t);
+    const prompt = autoPrompt;        // capture sebelum parent clear via onAutoPromptConsumed
+    autoFiredRef.current = prompt;
+    onAutoPromptConsumed?.();         // clear parent state — tapi captured prompt aman di closure
+    void handleSend(prompt);          // fire langsung, no setTimeout race condition
+    // (tidak ada cleanup — tidak ada timer yang perlu di-cancel)
   }, [autoPrompt, isLoading, handleSend, onAutoPromptConsumed]);
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
