@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import {
   RefreshCwIcon, WifiIcon, WifiOffIcon,
   ZapIcon, ClockIcon, PencilIcon, CheckIcon, XIcon,
-  BarChart2Icon, ArrowUpIcon, ArrowDownIcon,
+  BarChart2Icon, ArrowUpIcon, ArrowDownIcon, GlobeIcon,
 } from "lucide-react";
 
 type CtxVar = { id: string; variableName: string; label: string; value: string };
@@ -135,6 +135,31 @@ const ANIM_CSS = `
 .anim-price-glow    { animation: price-glow 2s ease-in-out infinite; }
 .anim-price-glow-up { animation: price-glow-up 1.5s ease-in-out infinite; }
 .anim-price-glow-dn { animation: price-glow-dn 1.5s ease-in-out infinite; }
+
+/* ── 27-inch / large screen scaling (≥1536px) ────────────────────────── */
+@media (min-width: 1536px) {
+  .cr-price-display   { font-size: 54px !important; }
+  .cr-panel-header    { padding: 5px 16px !important; }
+  .cr-heatmap-table   { font-size: 12px; }
+  .cr-heatmap-table th,
+  .cr-heatmap-table td { padding-top: 7px !important; padding-bottom: 7px !important; }
+  .cr-cmp-badge       { font-size: 11px !important; padding: 2px 6px !important; }
+  .cr-fase-pill       { font-size: 10px !important; padding: 1px 6px !important; }
+  .cr-neural-node     { min-width: 74px !important; padding: 6px 10px !important; }
+  .cr-label-xs        { font-size: 11px; }
+  .cr-label-sm        { font-size: 12px; }
+  .cr-label-md        { font-size: 14px; }
+  .cr-buybar-track,
+  .cr-sellbar-track   { height: 20px !important; }
+  .cr-minichart       { height: 40px !important; }
+  .cr-snr-row         { font-size: 11px; padding: 4px 0; }
+  .cr-sync-btn        { padding: 8px 0 !important; font-size: 12px; }
+  .cr-sniper-banner   { padding: 7px 16px !important; }
+  .cr-sniper-banner .anim-marquee { font-size: 11px; }
+  .cr-hd-title        { font-size: 13px; }
+  .cr-hd-sub          { font-size: 10px; }
+  .cr-section-label   { font-size: 11px; }
+}
 `;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -244,6 +269,50 @@ function buildAutoPrompt(vars: Record<string, CtxVar>): string {
   return lines.join("\n");
 }
 
+// ── Audio alert + browser notification ───────────────────────────────────────
+
+function playBeep(type: "cf" | "vr") {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    if (type === "cf") {
+      // CF — three rising tones (urgent: VR→CF siklus selesai, entry!)
+      osc.frequency.setValueAtTime(660,  ctx.currentTime);
+      osc.frequency.setValueAtTime(880,  ctx.currentTime + 0.13);
+      osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.26);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.55);
+    } else {
+      // VR — two medium tones (informational: VR terjadi, tunggu CF)
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.setValueAtTime(550, ctx.currentTime + 0.18);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.38);
+    }
+  } catch { /* Audio API not available */ }
+}
+
+async function tryBrowserNotify(title: string, body: string) {
+  try {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "denied") return;
+    if (Notification.permission === "default") {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") return;
+    }
+    new Notification(title, { body, icon: "/favicon.ico" });
+  } catch { /* ignore */ }
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function PanelBox({ title, children, cls = "", extra, scanV = false }: {
@@ -261,7 +330,7 @@ function PanelBox({ title, children, cls = "", extra, scanV = false }: {
           <div className="anim-scan-v w-full h-1/4 bg-gradient-to-b from-transparent via-amber-400/20 to-transparent" />
         </div>
       )}
-      <div className="px-3 py-2 border-b border-zinc-800/80 flex items-center justify-between bg-zinc-900/50">
+      <div className="cr-panel-header px-3 py-1 border-b border-zinc-800/80 flex items-center justify-between bg-zinc-900/50">
         {title}
         {extra}
       </div>
@@ -272,14 +341,14 @@ function PanelBox({ title, children, cls = "", extra, scanV = false }: {
 
 function HexTag() {
   const [hex] = useState(() => Math.random().toString(16).slice(2, 8).toUpperCase());
-  return <span className="text-[9px] text-zinc-700 font-mono tabular-nums">{hex}</span>;
+  return <span className="cr-label-xs text-[9px] text-zinc-700 font-mono tabular-nums">{hex}</span>;
 }
 
 function PanelTitle({ label, live = false }: { label: string; live?: boolean }) {
   return (
     <div className="flex items-center gap-2">
       {live && <span className="anim-pulse-dot w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
-      <span className="text-[10px] font-black font-mono text-cyan-400 tracking-widest">[ {label} ]</span>
+      <span className="cr-label-sm text-[10px] font-black font-mono text-cyan-400 tracking-widest">[ {label} ]</span>
       <HexTag />
     </div>
   );
@@ -290,15 +359,26 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const isDashboard = layout === "dashboard";
 
   const [vars,        setVars]        = useState<CtxVar[]>([]);
-  const [syncing,     setSyncing]     = useState(false);
-  const [syncingSNR,  setSyncingSNR]  = useState(false);
-  const [lastSync,    setLastSync]    = useState<number | null>(null);
-  const [lastSNRSync, setLastSNRSync] = useState<number | null>(null);
-  const [tvStatus,    setTvStatus]    = useState<"unknown" | "connected" | "error">("unknown");
-  const [snrStatus,   setSnrStatus]   = useState<"unknown" | "ok" | "error">("unknown");
-  const [tvError,     setTvError]     = useState<string | null>(null);
-  const [snrError,    setSnrError]    = useState<string | null>(null);
-  const [autoSync,    setAutoSync]    = useState(false);
+  const [syncing,      setSyncing]      = useState(false);
+  const [syncingSNR,   setSyncingSNR]   = useState(false);
+  const [syncingNews,  setSyncingNews]  = useState(false);
+  const [lastSync,     setLastSync]     = useState<number | null>(null);
+  const [lastSNRSync,  setLastSNRSync]  = useState<number | null>(null);
+  const [lastNewsSync, setLastNewsSync] = useState<number | null>(null);
+  const [tvStatus,     setTvStatus]     = useState<"unknown" | "connected" | "error">("unknown");
+  const [snrStatus,    setSnrStatus]    = useState<"unknown" | "ok" | "error">("unknown");
+  const [newsStatus,   setNewsStatus]   = useState<"unknown" | "ok" | "error">("unknown");
+  const [tvError,      setTvError]      = useState<string | null>(null);
+  const [snrError,     setSnrError]     = useState<string | null>(null);
+  const [newsError,    setNewsError]    = useState<string | null>(null);
+  const [autoSync,    setAutoSync]    = useState(true);   // ← ON by default
+
+  // ── CF / VR alert state ────────────────────────────────────────────────────
+  type Alert = { id: string; text: string; level: "vr" | "cf" };
+  const [cfAlerts,        setCfAlerts]    = useState<Alert[]>([]);
+  const prevTFStateRef    = useRef<Record<string, string>>({});  // delta detection
+  const alertDismissRef   = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const hasMountedRef     = useRef(false);
   const [editing,     setEditing]     = useState<string | null>(null);
   const [editVal,     setEditVal]     = useState("");
   const [livePrice,   setLivePrice]   = useState<string>("");
@@ -327,6 +407,22 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   useEffect(() => {
     const t = setInterval(() => setTick(p => p + 1), 10_000);
     return () => clearInterval(t);
+  }, []);
+
+  // ── Alert timer cleanup on unmount ──────────────────────────────────────────
+  useEffect(() => {
+    const ref = alertDismissRef.current;
+    return () => { ref.forEach(t => clearTimeout(t)); };
+  }, []);
+
+  const pushAlert = useCallback((text: string, level: "vr" | "cf") => {
+    const id = `${level}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setCfAlerts(prev => [...prev.slice(-3), { id, text, level }]); // max 4 alerts
+    const timer = setTimeout(() => {
+      setCfAlerts(prev => prev.filter(a => a.id !== id));
+      alertDismissRef.current.delete(id);
+    }, 10_000);
+    alertDismissRef.current.set(id, timer);
   }, []);
 
   const load = useCallback(async () => {
@@ -360,14 +456,58 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
       if (json.success) {
         const freshVars: CtxVar[] = json.data;
         setVars(freshVars); setLastSync(Date.now()); setTvStatus("connected");
-        if (onAutoAnalysis) {
-          const byName = Object.fromEntries(freshVars.map(v => [v.variableName, v]));
-          if (TF_ROWS.some(tf => byName[`${tf}_CMP`]?.value)) onAutoAnalysis(buildAutoPrompt(byName));
+
+        const byName = Object.fromEntries(freshVars.map(v => [v.variableName, v]));
+
+        // ── Delta detection: compare VR/CF state per TF ────────────────────
+        const newState: Record<string, string> = {};
+        for (const tf of TF_ROWS) {
+          const cmp = byName[`${tf}_CMP`]?.value || "";
+          const vr  = byName[`${tf}_VR`]?.value  || "";
+          const cf  = byName[`${tf}_CF`]?.value  || "";
+          if (cmp) newState[tf] = `${cmp}:${vr}:${cf}`;
+        }
+
+        const prev      = prevTFStateRef.current;
+        const wasEmpty  = Object.keys(prev).length === 0;
+        let hasCFChange = false;
+        let hasVRChange = false;
+
+        if (!wasEmpty) {
+          for (const tf of TF_ROWS) {
+            if (!newState[tf] || !prev[tf]) continue;
+            const [, prevVR, prevCF]       = prev[tf].split(":");
+            const [cmpNow,  newVR,  newCF] = newState[tf].split(":");
+            const dir = cmpNow === "BULLISH" ? "BUY" : cmpNow === "BEARISH" ? "SELL" : "";
+
+            if (prevCF !== "YA" && newCF === "YA") {
+              // CF just fired — entry signal!
+              hasCFChange = true;
+              pushAlert(`⚡ CF FIRED — ${tf} ${dir} · PRIME ENTRY`, "cf");
+              playBeep("cf");
+              void tryBrowserNotify(`⚡ Chain Reaction — ${tf} CF`, `${dir} setup active on ${tf}. Check SL/TP.`);
+            } else if (prevVR !== "YA" && newVR === "YA") {
+              // VR just confirmed — waiting for CF
+              hasVRChange = true;
+              pushAlert(`VR CONFIRMED — ${tf} ${dir} · Tunggu CF`, "vr");
+              playBeep("vr");
+              void tryBrowserNotify(`VR Confirmed — ${tf}`, `${dir} VR done on ${tf}. Waiting CF entry.`);
+            }
+          }
+        }
+
+        prevTFStateRef.current = newState;
+
+        // Auto-analysis: fire on first load OR when VR/CF state changes
+        if (onAutoAnalysis && (wasEmpty || hasCFChange || hasVRChange)) {
+          if (TF_ROWS.some(tf => byName[`${tf}_CMP`]?.value)) {
+            onAutoAnalysis(buildAutoPrompt(byName));
+          }
         }
       } else { setTvStatus("error"); setTvError(json.error || "Gagal sync"); }
     } catch (e) { setTvStatus("error"); setTvError(e instanceof Error ? e.message : "Network error"); }
     finally { setSyncing(false); }
-  }, [onAutoAnalysis]);
+  }, [onAutoAnalysis, pushAlert]);
 
   const syncSNR = useCallback(async () => {
     setSyncingSNR(true); setSnrError(null);
@@ -380,12 +520,45 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
     finally { setSyncingSNR(false); }
   }, []);
 
+  const syncNews = useCallback(async () => {
+    setSyncingNews(true); setNewsError(null);
+    try {
+      const r = await fetch("/api/news-sync", { method: "POST" });
+      const json = await r.json();
+      if (json.success) {
+        setVars(json.data); setLastNewsSync(Date.now()); setNewsStatus("ok");
+      } else {
+        // partial success — some sources failed
+        const errors = (json.results as { source: string; status: string; error?: string }[])
+          ?.filter(x => x.status === "error").map(x => x.source).join(", ");
+        setNewsStatus("error");
+        setNewsError(`Gagal: ${errors || json.error || "Unknown"}`);
+        if (json.data) { setVars(json.data); setLastNewsSync(Date.now()); }
+      }
+    } catch (e) { setNewsStatus("error"); setNewsError(e instanceof Error ? e.message : "Network error"); }
+    finally { setSyncingNews(false); }
+  }, []);
+
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (autoRef.current) clearInterval(autoRef.current);
-    if (autoSync) autoRef.current = setInterval(syncTV, 30_000);
-    return () => { if (autoRef.current) clearInterval(autoRef.current); };
+    if (autoRef.current) { clearInterval(autoRef.current); autoRef.current = null; }
+    if (!autoSync) return;
+
+    // First enable: 2s delay so page/load() can settle; subsequent: sync immediately
+    let initTimer: ReturnType<typeof setTimeout> | null = null;
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      initTimer = setTimeout(syncTV, 2000);
+    } else {
+      syncTV();
+    }
+    autoRef.current = setInterval(syncTV, 30_000);
+
+    return () => {
+      if (initTimer) clearTimeout(initTimer);
+      if (autoRef.current) { clearInterval(autoRef.current); autoRef.current = null; }
+    };
   }, [autoSync, syncTV]);
 
   useEffect(() => { onPriceUpdateRef.current = onPriceUpdate; }, [onPriceUpdate]);
@@ -495,7 +668,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   function CmpBadge({ cmp, pulse = false }: { cmp: string; pulse?: boolean }) {
     if (cmp === "BULLISH") return (
       <span className={cn(
-        "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-black font-mono transition-all duration-100",
+        "cr-cmp-badge inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-black font-mono transition-all duration-100",
         pulse
           ? blinkFast
             ? "bg-emerald-400 border border-emerald-300 text-black shadow-[0_0_14px_rgba(52,211,153,0.7)]"
@@ -507,7 +680,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
     );
     if (cmp === "BEARISH") return (
       <span className={cn(
-        "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-black font-mono transition-all duration-100",
+        "cr-cmp-badge inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-black font-mono transition-all duration-100",
         pulse
           ? blinkFast
             ? "bg-red-400 border border-red-300 text-black shadow-[0_0_14px_rgba(248,113,113,0.7)]"
@@ -517,12 +690,12 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         {pulse && blinkFast ? "◉" : "▣"} SELL
       </span>
     );
-    return <span className="text-[10px] font-mono text-zinc-700">────</span>;
+    return <span className="cr-label-sm text-[10px] font-mono text-zinc-700">────</span>;
   }
 
   function FasePill({ fase }: { fase: number }) {
     if (fase === 3) return (
-      <span className={cn("inline-flex px-2 py-0.5 rounded-full text-[9px] font-black font-mono border",
+      <span className={cn("cr-fase-pill inline-flex px-2 py-0.5 rounded-full text-[9px] font-black font-mono border",
         blinkFast
           ? "bg-amber-400 border-amber-300 text-black shadow-[0_0_18px_rgba(245,158,11,0.8)]"
           : "bg-amber-600 border-amber-500 text-black shadow-[0_0_6px_rgba(245,158,11,0.3)]"
@@ -531,23 +704,55 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
       </span>
     );
     if (fase === 2) return (
-      <span className="inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold font-mono border bg-blue-950 border-blue-700 text-blue-300">
+      <span className="cr-fase-pill inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold font-mono border bg-blue-950 border-blue-700 text-blue-300">
         F2
       </span>
     );
     if (fase === 1) return (
-      <span className="inline-flex px-2 py-0.5 rounded-full text-[9px] font-mono border bg-zinc-900 border-zinc-700 text-zinc-500">
+      <span className="cr-fase-pill inline-flex px-2 py-0.5 rounded-full text-[9px] font-mono border bg-zinc-900 border-zinc-700 text-zinc-500">
         F1
       </span>
     );
-    return <span className="text-[9px] text-zinc-800 font-mono">──</span>;
+    return <span className="cr-label-xs text-[9px] text-zinc-800 font-mono">──</span>;
   }
+
+  // ── ALERT TOAST JSX (shared, fixed-position, both modes) ────────────────────
+  const alertToasts = cfAlerts.length > 0 ? (
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+      {cfAlerts.map(alert => (
+        <div key={alert.id} className={cn(
+          "flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl pointer-events-auto",
+          alert.level === "cf"
+            ? "bg-amber-950/95 border-amber-500/80 shadow-[0_0_32px_rgba(245,158,11,0.45)]"
+            : "bg-blue-950/95 border-blue-600/80 shadow-[0_0_24px_rgba(59,130,246,0.3)]"
+        )}>
+          <span className={cn("text-base shrink-0", alert.level === "cf" ? (blinkFast ? "text-amber-300" : "text-amber-500") : "text-blue-400")}>
+            {alert.level === "cf" ? "⚡" : "◉"}
+          </span>
+          <span className={cn("text-[11px] font-black font-mono tracking-wide",
+            alert.level === "cf" ? "text-amber-200" : "text-blue-200"
+          )}>{alert.text}</span>
+          <button
+            onClick={() => {
+              const timer = alertDismissRef.current.get(alert.id);
+              if (timer) { clearTimeout(timer); alertDismissRef.current.delete(alert.id); }
+              setCfAlerts(prev => prev.filter(a => a.id !== alert.id));
+            }}
+            className="shrink-0 ml-1 text-zinc-600 hover:text-zinc-200 transition-colors"
+          >
+            <XIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+    </div>
+  ) : null;
 
   // ── PANEL MODE (narrow right sidebar) ─────────────────────────────────────
   if (!isDashboard) {
     return (
       <div className="px-3 py-3 space-y-3">
         <style>{ANIM_CSS}</style>
+        {alertToasts}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ZapIcon className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
@@ -638,11 +843,12 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   // DASHBOARD MODE
   // ══════════════════════════════════════════════════════════════════════════════
   return (
-    <div className="px-6 py-5 space-y-4 max-w-6xl mx-auto anim-crt">
+    <div className="px-5 py-1.5 xl:px-8 space-y-1.5 w-full anim-crt">
       <style>{ANIM_CSS}</style>
+      {alertToasts}
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between pb-3 border-b border-zinc-800/80">
+      <div className="flex items-center justify-between pb-1 border-b border-zinc-800/80">
         <div className="flex items-center gap-3">
           <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500/20 to-yellow-600/10 border border-amber-500/30 shrink-0">
             <ZapIcon className="w-4 h-4 text-amber-400 animate-pulse" />
@@ -650,11 +856,11 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-black font-mono text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-500 tracking-tight uppercase">CHAIN REACTION</span>
-              <span className="text-[9px] px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono font-bold">CMP ENGINE v6.3</span>
-              {hasAnyF3 && <span className={cn("text-[9px] px-2 py-0.5 rounded-full border font-black font-mono bg-amber-500 border-amber-400 text-black", blink && "shadow-[0_0_10px_rgba(245,158,11,0.7)]")}>⚡ SIGNAL ACTIVE</span>}
+              <span className="cr-hd-title text-sm xl:text-base font-black font-mono text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-500 tracking-tight uppercase">CHAIN REACTION</span>
+              <span className="cr-label-xs text-[9px] px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono font-bold">CMP ENGINE v6.3</span>
+              {hasAnyF3 && <span className={cn("cr-label-xs text-[9px] px-2 py-0.5 rounded-full border font-black font-mono bg-amber-500 border-amber-400 text-black", blink && "shadow-[0_0_10px_rgba(245,158,11,0.7)]")}>⚡ SIGNAL ACTIVE</span>}
             </div>
-            <div className="text-[9px] text-zinc-600 font-mono tracking-widest uppercase">Dadang Wahyuono · XAUUSD CFD · Daily Deploy System</div>
+            <div className="cr-hd-sub text-[9px] text-zinc-600 font-mono tracking-widest uppercase">Dadang Wahyuono · XAUUSD CFD · Daily Deploy System</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -677,7 +883,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
 
       {/* ── PRICE BAR ──────────────────────────────────────────────────────── */}
       <div className={cn(
-        "rounded-xl border px-5 py-3.5 transition-all duration-300",
+        "rounded-xl border px-5 py-2 transition-all duration-300",
         priceFlash === "up" ? "anim-flash-up border-emerald-600/40 bg-zinc-950" :
         priceFlash === "dn" ? "anim-flash-dn border-red-600/40 bg-zinc-950"     :
         "bg-gradient-to-r from-zinc-900/80 via-zinc-950 to-zinc-900/80 border-amber-500/20"
@@ -704,7 +910,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
           </div>
           <div className="text-right">
             <div className={cn(
-              "text-[38px] font-black font-mono tabular-nums tracking-tight transition-all duration-100",
+              "cr-price-display text-[38px] xl:text-[52px] font-black font-mono tabular-nums tracking-tight transition-all duration-100",
               priceFlash === "up" ? "text-emerald-300 anim-price-glow-up" :
               priceFlash === "dn" ? "text-red-300 anim-price-glow-dn"     :
               livePrice           ? "text-amber-300 anim-price-glow"      : "text-zinc-600"
@@ -713,9 +919,9 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         </div>
       </div>
 
-      {/* ── SYNC ROW ───────────────────────────────────────────────────────── */}
+      {/* ── SYNC ROW 1: TradingView + SNR ─────────────────────────────────── */}
       <div className="flex gap-2 items-center">
-        <button onClick={syncTV} disabled={syncing} className={cn("flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black font-mono tracking-widest uppercase border transition-all",
+        <button onClick={syncTV} disabled={syncing} className={cn("cr-sync-btn flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-[10px] xl:text-[13px] font-black font-mono tracking-widest uppercase border transition-all",
           syncing ? "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"
           : tvStatus === "connected" ? "bg-emerald-950/20 border-emerald-700/40 text-emerald-400 hover:bg-emerald-950/40"
           : tvStatus === "error" ? "bg-red-950/20 border-red-700/30 text-red-400"
@@ -724,7 +930,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
           <RefreshCwIcon className={cn("w-3.5 h-3.5", syncing && "animate-spin text-amber-500")} />
           {syncing ? "READING CHARTS..." : "⚡ SYNC TRADINGVIEW"}
         </button>
-        <button onClick={syncSNR} disabled={syncingSNR} className={cn("flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black font-mono tracking-widest uppercase border transition-all",
+        <button onClick={syncSNR} disabled={syncingSNR} className={cn("cr-sync-btn flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-[10px] xl:text-[13px] font-black font-mono tracking-widest uppercase border transition-all",
           syncingSNR ? "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"
           : snrStatus === "ok" ? "bg-blue-950/20 border-blue-700/40 text-blue-400 hover:bg-blue-950/40"
           : "bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-blue-700/40 hover:text-blue-400"
@@ -744,17 +950,52 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         </label>
       </div>
 
+      {/* ── SYNC ROW 2: News (external) ────────────────────────────────────── */}
+      <div className="flex gap-2 items-center">
+        <button onClick={syncNews} disabled={syncingNews} className={cn(
+          "cr-sync-btn flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-[10px] xl:text-[13px] font-black font-mono tracking-widest uppercase border transition-all",
+          syncingNews ? "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"
+          : newsStatus === "ok"    ? "bg-violet-950/20 border-violet-700/40 text-violet-400 hover:bg-violet-950/40"
+          : newsStatus === "error" ? "bg-red-950/20 border-red-700/30 text-red-400"
+          : "bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-violet-700/40 hover:text-violet-400"
+        )}>
+          {syncingNews
+            ? <RefreshCwIcon className="w-3.5 h-3.5 animate-spin text-violet-400" />
+            : <GlobeIcon className="w-3.5 h-3.5" />}
+          {syncingNews ? "FETCHING NEWS..." : "SYNC NEWS + KALENDER"}
+        </button>
+        <div className="flex items-center gap-2 px-2 text-[9px] font-mono text-zinc-700 shrink-0">
+          {newsStatus === "ok" && (
+            <span className="text-violet-700">
+              {lastNewsSync ? `✓ ${timeAgo(lastNewsSync)}` : "✓ synced"}
+            </span>
+          )}
+          {newsStatus === "error" && (
+            <span className="text-red-800">✗ error</span>
+          )}
+          {newsStatus === "unknown" && (
+            <span>ForexFactory · Yahoo Finance</span>
+          )}
+        </div>
+      </div>
+
       {tvError && (
         <div className="bg-red-950/20 border border-red-700/30 rounded-xl px-4 py-2.5">
           <span className="text-[10px] text-red-400 font-black font-mono">SYNC ERROR · </span>
           <span className="text-[10px] text-red-400/70 font-mono">{tvError.slice(0, 140)}</span>
         </div>
       )}
+      {newsError && (
+        <div className="bg-red-950/20 border border-red-700/30 rounded-xl px-4 py-2">
+          <span className="text-[10px] text-red-400 font-black font-mono">NEWS ERROR · </span>
+          <span className="text-[10px] text-red-400/70 font-mono">{newsError.slice(0, 140)}</span>
+        </div>
+      )}
 
       {/* ── SNIPER ACTIVE BANNER ───────────────────────────────────────────── */}
       {hasAnyF3 && (
         <div className={cn(
-          "relative overflow-hidden rounded-xl border px-4 py-2.5 anim-amber-border",
+          "cr-sniper-banner relative overflow-hidden rounded-xl border px-4 py-1.5 anim-amber-border",
           "bg-gradient-to-r from-amber-950/30 via-yellow-950/20 to-amber-950/30"
         )}>
           {/* Scanline sweeper */}
@@ -781,10 +1022,10 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
       )}
 
       {/* ── MAIN GRID ──────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-[1fr_210px] gap-4">
+      <div className="grid grid-cols-[1fr_220px] xl:grid-cols-[1fr_270px] 2xl:grid-cols-[1fr_310px] gap-2">
 
         {/* ─── LEFT COLUMN ─── */}
-        <div className="space-y-4">
+        <div className="space-y-2">
 
           {/* ══ SIGNAL.HEATMAP ══ */}
           <PanelBox
@@ -793,11 +1034,11 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
             scanV={hasAnyF3}
           >
             {hasTFData ? (
-              <table className="w-full text-[10px] font-mono">
+              <table className="cr-heatmap-table w-full text-[10px] font-mono">
                 <thead>
                   <tr className="border-b border-zinc-800/80 bg-zinc-900/60">
                     {["TF","CMP","FASE","VR","CF","ENTRY AT"].map(h => (
-                      <th key={h} className="px-2 py-1.5 text-center text-cyan-500 font-black tracking-widest first:px-3 first:text-left last:text-left last:px-3">{h}</th>
+                      <th key={h} className="px-2 py-0.5 text-center text-cyan-500 font-black tracking-widest first:px-3 first:text-left last:text-left last:px-3">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -814,24 +1055,24 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                         fase === 2 ? "bg-blue-950/15 border-l-2 border-l-blue-600" :
                         "border-l-2 border-l-transparent hover:bg-zinc-900/30"
                       )}>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-1">
                           {isMaster
                             ? <span className={cn("text-[11px] font-black", blinkFast && f3row ? "text-amber-200" : "text-amber-500")}>H4 ★</span>
                             : <span className={cn("text-[11px] font-black", f3row ? (blinkFast ? "text-amber-200" : "text-amber-500") : "text-cyan-400")}>{tf}</span>}
                         </td>
-                        <td className="px-2 py-2 text-center"><CmpBadge cmp={cmp} pulse={f3row} /></td>
-                        <td className="px-2 py-2 text-center"><FasePill fase={fase} /></td>
-                        <td className="px-2 py-2 text-center">
+                        <td className="px-2 py-1 text-center"><CmpBadge cmp={cmp} pulse={f3row} /></td>
+                        <td className="px-2 py-1 text-center"><FasePill fase={fase} /></td>
+                        <td className="px-2 py-1 text-center">
                           {vr === "YA"
                             ? <span className={cn("font-black text-blue-400", blink && "drop-shadow-[0_0_4px_rgba(96,165,250,0.8)]")}>⚡{sl?.vrFrom}✓</span>
                             : <span className="text-zinc-700">BELUM</span>}
                         </td>
-                        <td className="px-2 py-2 text-center">
+                        <td className="px-2 py-1 text-center">
                           {cf === "YA"
                             ? <span className={cn("font-black text-emerald-400", blink && "drop-shadow-[0_0_4px_rgba(52,211,153,0.8)]")}>{blink ? "◉" : "●"}CF✓</span>
                             : <span className="text-zinc-600">{sl?.cfLow || "—"}{sl?.cfHigh ? `/${sl.cfHigh}` : ""}</span>}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-1">
                           {fase === 3
                             ? <span className={cn("font-black text-[11px] transition-all duration-100",
                                 isBull
@@ -879,11 +1120,11 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
             )}
             scanV={h4Fase === 3}
           >
-            <div className="px-4 py-3">
+            <div className="px-4 py-1">
               {hasTFData ? (
-                <div className="space-y-3">
+                <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[9px] text-zinc-600 font-mono uppercase tracking-widest">H4 MASTER BIAS</span>
+                    <span className="cr-label-xs text-[9px] text-zinc-600 font-mono uppercase tracking-widest">H4 MASTER BIAS</span>
                     <div className="flex-1 h-px bg-zinc-800" />
                     {h4Dir === "BULLISH"
                       ? <span className={cn("text-[10px] font-black font-mono px-2 py-0.5 rounded bg-emerald-950 border border-emerald-700 text-emerald-300", blink && "shadow-[0_0_10px_rgba(52,211,153,0.35)]")}>▲ BULLISH</span>
@@ -923,9 +1164,9 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                       const pipeActive = aligned && i < chainNodes.length - 1 && chainNodes[i+1]?.tf?.cmp === h4Dir;
                       return (
                         <div key={node.id} className="flex items-center gap-1 shrink-0">
-                          <div className={cn("rounded-lg border px-2.5 py-1.5 text-center min-w-[58px] transition-all duration-100", nodeBg, extraCls)}>
-                            <div className="text-[9px] font-black font-mono tracking-widest">{node.label}</div>
-                            <div className="text-[9px] font-mono mt-0.5">
+                          <div className={cn("cr-neural-node rounded-lg border px-2.5 py-1.5 xl:px-3 xl:py-2.5 text-center min-w-[58px] xl:min-w-[76px] transition-all duration-100", nodeBg, extraCls)}>
+                            <div className="cr-label-xs text-[9px] xl:text-[11px] font-black font-mono tracking-widest">{node.label}</div>
+                            <div className="cr-label-xs text-[9px] xl:text-[11px] font-mono mt-0.5">
                               {cmp ? (isBull ? "▲BUY" : "▼SELL") : "──"}
                             </div>
                             {tf && cmp && <div className="mt-0.5"><FasePill fase={fase} /></div>}
@@ -943,7 +1184,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                   </div>
 
                   {/* Summary bar */}
-                  <div className="border-t border-zinc-800/60 pt-2 flex items-center gap-4 flex-wrap">
+                  <div className="border-t border-zinc-800/60 pt-0.5 flex items-center gap-3 flex-wrap">
                     {(() => {
                       const alignCount = tfData.filter(d => d.cmp && d.cmp === h4Dir).length;
                       const total      = tfData.filter(d => !!d.cmp).length;
@@ -1013,7 +1254,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
               </div>
             }
           >
-            <div className="px-4 py-3 space-y-3">
+            <div className="px-4 py-1 space-y-1">
               {N_TICKS < 3 ? (
                 <div className="text-center py-4">
                   <div className="text-[10px] text-zinc-700 font-mono animate-pulse">COLLECTING TICK DATA...</div>
@@ -1022,10 +1263,10 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
               ) : (
                 <>
                   {/* Buy / Sell bars */}
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-black font-mono text-emerald-400 w-6">BUY</span>
-                      <div className="flex-1 h-4 bg-zinc-900 rounded border border-zinc-800 overflow-hidden relative">
+                      <span className="cr-label-xs text-[9px] font-black font-mono text-emerald-400 w-6 xl:w-8">BUY</span>
+                      <div className="cr-buybar-track flex-1 h-4 xl:h-6 bg-zinc-900 rounded border border-zinc-800 overflow-hidden relative">
                         <div
                           className="h-full rounded anim-delta-fill transition-all duration-500"
                           style={{
@@ -1036,13 +1277,13 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                             boxShadow: blink && momentum === "BULL" ? "0 0 8px rgba(52,211,153,0.5)" : undefined,
                           }}
                         />
-                        <span className="absolute inset-0 flex items-center px-2 text-[9px] font-black font-mono text-emerald-200">{buyPct}%</span>
+                        <span className="absolute inset-0 flex items-center px-2 text-[9px] xl:text-[11px] font-black font-mono text-emerald-200">{buyPct}%</span>
                       </div>
-                      <span className="text-[9px] font-mono text-emerald-600 w-10 text-right">{buyTicks}t</span>
+                      <span className="cr-label-xs text-[9px] font-mono text-emerald-600 w-10 text-right">{buyTicks}t</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-black font-mono text-red-400 w-6">SEL</span>
-                      <div className="flex-1 h-4 bg-zinc-900 rounded border border-zinc-800 overflow-hidden relative">
+                      <span className="cr-label-xs text-[9px] font-black font-mono text-red-400 w-6 xl:w-8">SEL</span>
+                      <div className="cr-sellbar-track flex-1 h-4 xl:h-6 bg-zinc-900 rounded border border-zinc-800 overflow-hidden relative">
                         <div
                           className="h-full rounded anim-delta-fill transition-all duration-500"
                           style={{
@@ -1053,19 +1294,19 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                             boxShadow: blink && momentum === "BEAR" ? "0 0 8px rgba(248,113,113,0.5)" : undefined,
                           }}
                         />
-                        <span className="absolute inset-0 flex items-center px-2 text-[9px] font-black font-mono text-red-200">{sellPct}%</span>
+                        <span className="absolute inset-0 flex items-center px-2 text-[9px] xl:text-[11px] font-black font-mono text-red-200">{sellPct}%</span>
                       </div>
-                      <span className="text-[9px] font-mono text-red-600 w-10 text-right">{sellTicks}t</span>
+                      <span className="cr-label-xs text-[9px] font-mono text-red-600 w-10 text-right">{sellTicks}t</span>
                     </div>
                   </div>
 
                   {/* Mini bar chart */}
-                  <div className="border-t border-zinc-800/60 pt-2 space-y-1">
+                  <div className="border-t border-zinc-800/60 pt-1 space-y-0.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[9px] text-zinc-600 font-mono uppercase tracking-widest">TICK FLOW CHART (8 bars)</span>
                       <span className={cn("text-[9px] font-black font-mono", momentumCol)}>{momentumStr}</span>
                     </div>
-                    <div className="flex items-end gap-0.5 h-8">
+                    <div className="cr-minichart flex items-end gap-0.5 h-8 xl:h-12">
                       {barDeltas.map((delta, i) => {
                         const isUp     = delta >= 0;
                         const heightPct = Math.max(Math.abs(delta) / maxBarAbs * 100, 8);
@@ -1106,7 +1347,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                   </div>
 
                   {/* Summary row */}
-                  <div className="border-t border-zinc-800/60 pt-2 flex items-center justify-between">
+                  <div className="border-t border-zinc-800/60 pt-1 flex items-center justify-between">
                     <div className="flex items-center gap-3 text-[9px] font-mono">
                       <span className="text-zinc-600">CUM.DELTA</span>
                       <span className={cn("font-black text-[11px]", cumDelta >= 0 ? "text-emerald-400" : "text-red-400")}>
@@ -1141,7 +1382,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         {/* ─── RIGHT COLUMN: SNR.LADDER ─── */}
         <div>
           <PanelBox title={<PanelTitle label="SNR.LADDER" />} cls="border-zinc-800 sticky top-0">
-            <div className="px-3 py-3 space-y-2">
+            <div className="px-3 py-1.5 space-y-1.5">
               {(tp1Up || tp2Up || tp1Dn || tp2Dn) && (
                 <div className="bg-zinc-900/60 rounded-lg border border-zinc-800 px-2 py-2 space-y-1">
                   <div className="text-[8px] font-black font-mono text-zinc-600 tracking-widest uppercase pb-0.5 border-b border-zinc-800">TP SUGGESTION</div>
@@ -1234,7 +1475,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-1">
+      <div className="flex items-center justify-between pt-0">
         <span className="text-[9px] text-zinc-800 font-mono">CDP :9222 · CMP Engine v6.3 · Daily Deploy · Chain Reaction v4.0 OVERLORD</span>
         <span className="text-[9px] font-black font-mono text-amber-900/60 tracking-widest">© DADANG WAHYUONO — PRIVATE &amp; CONFIDENTIAL</span>
         {lastSNRSync && <span className="text-[9px] text-zinc-800 font-mono">SNR: {timeAgo(lastSNRSync)}</span>}

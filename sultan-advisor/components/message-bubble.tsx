@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ShieldCheckIcon, TrendingUpIcon, AlertOctagonIcon } from "lucide-react";
+import { ShieldCheckIcon, TrendingUpIcon, AlertOctagonIcon, SearchIcon, LinkIcon } from "lucide-react";
 
 interface Props {
   message: UIMessage;
@@ -13,11 +13,53 @@ interface Props {
   onInject: (prompt: string) => void;
 }
 
+// ─── Tool badge chip ─────────────────────────────────────────────────────────
+
+type ToolPart = {
+  type: string;
+  toolCallId?: string;
+  state?: string;
+  input?: Record<string, string>;
+  output?: string;
+};
+
+function ToolBadge({ part }: { part: ToolPart }) {
+  const isSearch = part.type === "tool-web_search";
+  const isFetch  = part.type === "tool-fetch_url";
+  if (!isSearch && !isFetch) return null;
+
+  const label  = isSearch
+    ? (part.input?.query ?? "web search")
+    : (part.input?.url   ?? "fetch url");
+  const isDone = part.state === "output-available";
+
+  return (
+    <div className={cn(
+      "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-mono",
+      isDone
+        ? "bg-zinc-800 text-zinc-400 border border-zinc-700"
+        : "bg-zinc-900 text-zinc-500 border border-zinc-800 animate-pulse",
+    )}>
+      {isSearch
+        ? <SearchIcon className="w-2.5 h-2.5 text-blue-400 shrink-0" />
+        : <LinkIcon   className="w-2.5 h-2.5 text-purple-400 shrink-0" />
+      }
+      <span className="max-w-[200px] truncate">{label}</span>
+      {!isDone && <span className="text-zinc-600 ml-1">…</span>}
+    </div>
+  );
+}
+
 export function MessageBubble({ message, isStreaming, onInject }: Props) {
   const textContent = message.parts
     .filter((p) => p.type === "text")
     .map((p) => (p as { type: "text"; text: string }).text)
     .join("");
+
+  // Collect tool calls (web_search / fetch_url)
+  const toolParts = message.parts.filter(
+    (p) => p.type === "tool-web_search" || p.type === "tool-fetch_url"
+  ) as ToolPart[];
 
   if (message.role === "user") {
     return (
@@ -33,6 +75,16 @@ export function MessageBubble({ message, isStreaming, onInject }: Props) {
     <div className="flex justify-start">
       <div className="max-w-[85%] space-y-1">
         <div className="text-xs text-amber-600 px-1 mb-1 font-semibold tracking-wide">CHAIN REACTION</div>
+
+        {/* Tool call chips — shown above the answer bubble */}
+        {toolParts.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-1 mb-1.5">
+            {toolParts.map((tp, i) => (
+              <ToolBadge key={tp.toolCallId ?? i} part={tp} />
+            ))}
+          </div>
+        )}
+
         <div
           className={cn(
             "bg-zinc-900 border border-zinc-800 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-zinc-100",

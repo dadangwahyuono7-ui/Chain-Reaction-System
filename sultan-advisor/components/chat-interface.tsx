@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Textarea } from "@/components/ui/textarea";
-import { SendIcon, MicIcon, SquareIcon, ShieldCheckIcon, TrendingUpIcon, LayoutDashboardIcon, AlertOctagonIcon } from "lucide-react";
+import { SendIcon, MicIcon, SquareIcon, ShieldCheckIcon, TrendingUpIcon, LayoutDashboardIcon, AlertOctagonIcon, CloudIcon, CpuIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageBubble } from "./message-bubble";
 import type { UIMessage } from "ai";
@@ -45,12 +45,17 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
   const bottomRef    = useRef<HTMLDivElement>(null);
   const textareaRef  = useRef<HTMLTextAreaElement>(null);
   const [isListening, setIsListening] = useState(false);
+  const [modelChoice, setModelChoice] = useState<"local" | "cloud">("local");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recognitionRef = useRef<any>(null);
-  const autoFiredRef   = useRef<string | null>(null);
+  const recognitionRef  = useRef<any>(null);
+  const autoFiredRef    = useRef<string | null>(null);
+  // Ref so handleSend always reads current modelChoice without needing it as dependency
+  const modelChoiceRef  = useRef(modelChoice);
+  useEffect(() => { modelChoiceRef.current = modelChoice; }, [modelChoice]);
 
   const { messages, sendMessage, setMessages, status, stop, id, error } = useChat({
     id: sessionId ?? undefined,
+    // body is passed per-message in handleSend so we always use current modelChoice
   });
 
   const isLoading = status === "streaming" || status === "submitted";
@@ -76,7 +81,11 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
     const msg = (text ?? input).trim();
     if (!msg || isLoading) return;
     if (!text) setInput("");
-    await sendMessage({ role: "user", parts: [{ type: "text" as const, text: msg }] });
+    // Pass model choice per-message (AI SDK v4: body in ChatRequestOptions)
+    await sendMessage(
+      { role: "user", parts: [{ type: "text" as const, text: msg }] },
+      { body: { model: modelChoiceRef.current } }
+    );
   }, [input, isLoading, sendMessage]);
 
   // Auto-fire prompt when TV sync completes
@@ -178,7 +187,9 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
                   <p className="text-xs text-red-400 font-medium mb-1">Gagal mendapat respons</p>
                   <p className="text-xs text-red-300/70">
                     {error.message?.includes("401")
-                      ? "Model tidak merespons. Pastikan Qwen3-8B server jalan di port 8080."
+                      ? modelChoice === "cloud"
+                        ? "Bluepack API key error. Cek koneksi internet & API key."
+                        : "Qwen3-8B tidak merespons. Pastikan server jalan di port 8080."
                       : error.message ?? "Cek server log untuk detail."}
                   </p>
                   <button onClick={() => handleSend()} className="mt-2 text-xs text-red-400 hover:text-red-300 underline">
@@ -194,6 +205,37 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
 
       {/* Input bar */}
       <div className="border-t border-zinc-800 px-4 py-4 bg-zinc-950">
+        {/* Model selector */}
+        <div className="flex gap-1.5 mb-2.5 max-w-4xl mx-auto">
+          <button
+            onClick={() => setModelChoice("local")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono font-black tracking-wider border transition-all",
+              modelChoice === "local"
+                ? "bg-zinc-800 border-zinc-600 text-amber-400"
+                : "bg-zinc-950 border-zinc-800 text-zinc-600 hover:text-zinc-400"
+            )}
+          >
+            <CpuIcon className="w-3 h-3" />
+            LOCAL · QWEN3
+          </button>
+          <button
+            onClick={() => setModelChoice("cloud")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono font-black tracking-wider border transition-all",
+              modelChoice === "cloud"
+                ? "bg-blue-950 border-blue-700 text-blue-300"
+                : "bg-zinc-950 border-zinc-800 text-zinc-600 hover:text-zinc-400"
+            )}
+          >
+            <CloudIcon className="w-3 h-3" />
+            CLOUD · CLAUDE
+          </button>
+          <div className="flex-1" />
+          <span className="text-[9px] text-zinc-700 font-mono self-center">
+            {modelChoice === "cloud" ? "🌐 online · bluepack" : "💻 offline · localhost:8080"}
+          </span>
+        </div>
         <div className="flex gap-2 items-end max-w-4xl mx-auto">
           <div className="flex-1">
             <Textarea

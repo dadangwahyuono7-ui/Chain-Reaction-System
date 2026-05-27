@@ -25,6 +25,9 @@ export default function DashboardPage() {
   );
   const [currentPrice,  setCurrentPrice]  = useState<string | undefined>();
   const [autoPrompt,    setAutoPrompt]    = useState<string | null>(null);
+  // Setiap kali "Sesi Baru" diklik, increment ini agar ChatInterface re-mount
+  // sehingga useChat hook benar-benar fresh — tidak ada sisa state dari sesi lama
+  const [newSessionKey, setNewSessionKey] = useState(0);
 
   // currentPrice is now fed by MarketPanel's live SSE tick — no polling needed
 
@@ -78,7 +81,7 @@ export default function DashboardPage() {
       <div className={cn(
         "flex flex-col border-r border-zinc-800/60 bg-zinc-950 transition-all duration-200 shrink-0 z-30",
         "fixed xl:relative h-full",
-        sidebarOpen ? "w-48 left-0" : "w-0 -left-48 xl:left-0 overflow-hidden"
+        sidebarOpen ? "w-48 2xl:w-60 left-0" : "w-0 -left-48 xl:left-0 overflow-hidden"
       )}>
         {/* Logo */}
         <div className="px-3 py-3.5 border-b border-zinc-800/60 shrink-0">
@@ -88,8 +91,8 @@ export default function DashboardPage() {
         {/* New session button */}
         <div className="px-2 pt-2 shrink-0">
           <button
-            onClick={() => { setSelectedId(null); setSelectedTitle(undefined); }}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-400 hover:border-amber-700/60 hover:text-amber-400 transition-all"
+            onClick={() => { setNewSessionKey(k => k + 1); setSelectedId(null); setSelectedTitle(undefined); }}
+            className="w-full flex items-center gap-2 px-3 py-2 xl:py-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] xl:text-[13px] text-zinc-400 hover:border-amber-700/60 hover:text-amber-400 transition-all"
           >
             <PlusIcon className="w-3 h-3 shrink-0" />
             <span>Sesi Baru</span>
@@ -104,7 +107,7 @@ export default function DashboardPage() {
               setSelectedId(id);
               setSelectedTitle(sessions.find(s => s.id === id)?.title);
             }}
-            onNew={() => { setSelectedId(null); setSelectedTitle(undefined); }}
+            onNew={() => { setNewSessionKey(k => k + 1); setSelectedId(null); setSelectedTitle(undefined); }}
           />
         </div>
 
@@ -112,12 +115,12 @@ export default function DashboardPage() {
         <div className="border-t border-zinc-800/60 px-2 py-2.5 shrink-0 space-y-1.5">
           <button
             onClick={() => { signOut(); router.push("/login"); }}
-            className="flex items-center gap-2 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors w-full px-1"
+            className="flex items-center gap-2 text-[11px] xl:text-[13px] text-zinc-500 hover:text-zinc-300 transition-colors w-full px-1"
           >
-            <LogOutIcon className="w-3 h-3 shrink-0" />
+            <LogOutIcon className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0" />
             Keluar
           </button>
-          <div className="text-[9px] text-zinc-700 truncate font-mono px-1">
+          <div className="text-[9px] xl:text-[11px] text-zinc-700 truncate font-mono px-1">
             {session.user.email}
           </div>
         </div>
@@ -136,15 +139,15 @@ export default function DashboardPage() {
           >
             <PanelLeftIcon className="w-4 h-4" />
           </button>
-          <span className="text-[10px] text-zinc-600 uppercase tracking-widest">
+          <span className="text-[10px] xl:text-xs text-zinc-600 uppercase tracking-widest">
             Market Intelligence · XAUUSD Daily Deploy
           </span>
           <div className="flex-1" />
           {/* Owner tag — always visible in screenshot */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/8 border border-amber-500/20 shrink-0">
-            <span className="text-[9px] text-amber-600 font-mono">©</span>
-            <span className="text-[10px] font-black font-mono text-amber-500/70 tracking-widest">DADANG WAHYUONO</span>
-            <span className="text-[9px] text-zinc-700 font-mono">· CHAIN REACTION v4.0 · PRIVATE</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 xl:px-3 xl:py-1.5 rounded-lg bg-amber-500/8 border border-amber-500/20 shrink-0">
+            <span className="text-[9px] xl:text-[11px] text-amber-600 font-mono">©</span>
+            <span className="text-[10px] xl:text-xs font-black font-mono text-amber-500/70 tracking-widest">DADANG WAHYUONO</span>
+            <span className="text-[9px] xl:text-[11px] text-zinc-700 font-mono">· CHAIN REACTION v4.0 · PRIVATE</span>
           </div>
         </div>
 
@@ -161,15 +164,15 @@ export default function DashboardPage() {
       {/* ══════════════════════════════════════════════════════════════
           RIGHT — AI Advisor Chat Panel
       ══════════════════════════════════════════════════════════════ */}
-      <div className="w-[380px] flex flex-col shrink-0">
+      <div className="w-[380px] xl:w-[460px] 2xl:w-[520px] flex flex-col shrink-0">
 
         {/* Chat header */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800/60 shrink-0 bg-zinc-950/90 backdrop-blur-sm">
           <div className="flex items-center gap-2">
-            <ZapIcon className="w-3.5 h-3.5 text-amber-500" />
-            <span className="text-xs font-black text-amber-500 tracking-tighter">AI ADVISOR</span>
+            <ZapIcon className="w-3.5 h-3.5 xl:w-4 xl:h-4 text-amber-500" />
+            <span className="text-xs xl:text-sm font-black text-amber-500 tracking-tighter">AI ADVISOR</span>
             {selectedTitle && selectedTitle !== "Sesi Baru" && (
-              <span className="text-[10px] text-zinc-600 truncate max-w-[140px]">· {selectedTitle}</span>
+              <span className="text-[10px] xl:text-xs text-zinc-600 truncate max-w-[140px] xl:max-w-[200px]">· {selectedTitle}</span>
             )}
           </div>
           <StatusBar price={currentPrice} />
@@ -178,6 +181,7 @@ export default function DashboardPage() {
         {/* Chat interface */}
         <div className="flex-1 overflow-hidden">
           <ChatInterface
+            key={selectedId ?? `new-${newSessionKey}`}
             sessionId={selectedId}
             sessionTitle={selectedTitle}
             onSessionId={(id) => setSelectedId(id)}
