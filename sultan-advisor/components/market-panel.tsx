@@ -706,6 +706,31 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const h4Fase       = h4?.fase || 0;
   const hasAnyF3     = tfData.some(d => d.fase === 3);
 
+  // ── Scalp cycle computations ───────────────────────────────────────────────
+  const h1d         = tfData.find(d => d.tf === "H1");
+  const m30d        = tfData.find(d => d.tf === "M30");
+  const m15d        = tfData.find(d => d.tf === "M15");
+  const m5d         = tfData.find(d => d.tf === "M5");
+  const h1Fase      = h1d?.fase || 0;
+  const h4F3        = h4Fase === 3;
+  const h1F3        = h1Fase === 3;
+  const scalpActive    = h4F3 || h1F3;
+  const scalpMasterTF  = h4F3 ? "H4" : "H1";
+  const scalpMasterDir = h4F3 ? h4Dir : (h1d?.cmp || "");
+  const scalpIsBull    = scalpMasterDir === "BULLISH";
+  const m30cmp      = m30d?.cmp || "";
+  const m30vr       = m30d?.vr  || "";
+  const m30cf       = m30d?.cf  || "";
+  const m15cmp      = m15d?.cmp || "";
+  const m5cmp       = m5d?.cmp  || "";
+  const m30Aligned  = !!m30cmp && !!scalpMasterDir && m30cmp === scalpMasterDir;
+  // scalpPhase: -1=M30 opposite, 0=no M30 CMP, 1=F1 wait VR, 2=F2 wait CF, 3=F3 entry
+  const scalpPhase: -1 | 0 | 1 | 2 | 3 =
+    !m30cmp                          ? 0  :
+    !m30Aligned                      ? -1 :
+    m30vr === "YA" && m30cf === "YA" ? 3  :
+    m30vr === "YA"                   ? 2  : 1;
+
   const chainNodes = ["DAILY","H4","H1","M30","M15","M5"].map(id => ({
     id, label: id === "H4" ? "H4 ★" : id === "DAILY" ? "D1" : id,
     tf: tfData.find(d => d.tf === id),
@@ -1199,6 +1224,270 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
               </div>
             )}
           </PanelBox>
+
+          {/* ══ SCALP.CYCLE ══ */}
+          {hasTFData && (
+            <PanelBox
+              title={
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    "w-1.5 h-1.5 rounded-full shrink-0",
+                    scalpPhase === 3 ? "anim-pulse-dot-fast bg-amber-400" :
+                    scalpActive      ? "anim-pulse-dot bg-emerald-400"    : "bg-zinc-700"
+                  )} />
+                  <span className="cr-label-sm text-[10px] font-black font-mono text-cyan-400 tracking-widest">[ SCALP.CYCLE ]</span>
+                  <span className={cn(
+                    "text-[9px] font-black font-mono px-1.5 py-0.5 rounded border",
+                    scalpPhase === 3
+                      ? blinkFast ? "bg-amber-500 border-amber-400 text-black" : "bg-amber-950 border-amber-700 text-amber-400"
+                      : scalpPhase === 2
+                        ? "bg-blue-950/40 border-blue-700/50 text-blue-400"
+                        : scalpActive
+                          ? "bg-emerald-950/30 border-emerald-800/50 text-emerald-600"
+                          : "bg-zinc-900 border-zinc-800 text-zinc-600"
+                  )}>
+                    {scalpPhase === 3 ? "⚡ ENTRY" : scalpPhase === 2 ? "WAIT CF" : scalpActive ? "ACTIVE" : "STANDBY"}
+                  </span>
+                  <HexTag />
+                </div>
+              }
+              cls={cn(
+                scalpPhase === 3 ? "border-amber-600/60 anim-amber-border" :
+                scalpPhase === 2 ? "border-blue-700/50 anim-glow-blue"     :
+                scalpActive      ? "border-emerald-800/40"                  :
+                "border-zinc-800/50"
+              )}
+              scanV={scalpPhase === 3}
+            >
+              <div className="px-4 py-2 space-y-2">
+
+                {/* ── STANDBY: H4 and H1 not F3 ── */}
+                {!scalpActive && (
+                  <div className="py-2 text-center space-y-1">
+                    <div className="text-[10px] font-mono text-zinc-600 tracking-wider">
+                      Menunggu H4 atau H1 F3 aktif
+                    </div>
+                    <div className="text-[9px] font-mono text-zinc-700">
+                      Scalp aktif saat setup besar sudah prime entry
+                    </div>
+                    {m30cmp && (
+                      <div className="mt-2 flex items-center justify-center gap-3 text-[9px] font-mono">
+                        <span className="text-zinc-600">M30:</span>
+                        <span className={m30cmp === "BULLISH" ? "text-emerald-600" : "text-red-600"}>
+                          {m30cmp === "BULLISH" ? "▲BUY" : "▼SELL"}
+                        </span>
+                        <span className="text-zinc-800">·</span>
+                        <span className="text-zinc-600">VR:&nbsp;
+                          {m30vr === "YA"
+                            ? <span className="text-blue-600">✓</span>
+                            : <span className="text-zinc-700">—</span>}
+                        </span>
+                        <span className="text-zinc-800">·</span>
+                        <span className="text-zinc-600">CF:&nbsp;
+                          {m30cf === "YA"
+                            ? <span className="text-emerald-600">✓</span>
+                            : <span className="text-zinc-700">—</span>}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── ACTIVE: H4 or H1 is F3 ── */}
+                {scalpActive && (
+                  <>
+                    {/* Master direction label */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-zinc-600 font-mono uppercase tracking-widest shrink-0">MASTER</span>
+                      <span className={cn(
+                        "text-[10px] font-black font-mono px-2 py-0.5 rounded border",
+                        scalpIsBull
+                          ? "bg-emerald-950/40 border-emerald-700 text-emerald-300"
+                          : "bg-red-950/40 border-red-700 text-red-300"
+                      )}>
+                        {scalpMasterTF} ★ {scalpIsBull ? "▲ BUY" : "▼ SELL"}
+                      </span>
+                      <span className="text-[9px] text-zinc-600 font-mono">
+                        → scalp {scalpIsBull ? "BUY" : "SELL"} M30
+                      </span>
+                    </div>
+
+                    {/* 3-node chain */}
+                    <div className="flex items-stretch gap-1.5">
+
+                      {/* M30 node */}
+                      <div className={cn(
+                        "flex-1 rounded-lg border px-2 py-2 text-center transition-all duration-100",
+                        m30Aligned
+                          ? "bg-emerald-950/25 border-emerald-800"
+                          : m30cmp
+                            ? "bg-red-950/20 border-red-900"
+                            : "bg-zinc-900/60 border-zinc-700"
+                      )}>
+                        <div className="text-[9px] font-black font-mono text-cyan-400">M30</div>
+                        <div className={cn("text-[11px] font-black font-mono mt-0.5",
+                          m30cmp === "BULLISH" ? "text-emerald-400" :
+                          m30cmp === "BEARISH" ? "text-red-400"     : "text-zinc-600"
+                        )}>
+                          {m30cmp ? (m30cmp === "BULLISH" ? "▲BUY" : "▼SELL") : "──"}
+                        </div>
+                        <div className={cn("text-[8px] font-mono mt-0.5",
+                          m30Aligned ? "text-emerald-700" : m30cmp ? "text-red-800" : "text-zinc-700"
+                        )}>
+                          {m30Aligned ? "✓ searah" : m30cmp ? "✗ balik" : "belum"}
+                        </div>
+                      </div>
+
+                      {/* Connector + VR label */}
+                      <div className="flex flex-col items-center justify-center gap-0.5 shrink-0">
+                        <span className={cn("font-mono text-base leading-none transition-all",
+                          m30vr === "YA"
+                            ? blink ? "text-blue-300 drop-shadow-[0_0_6px_rgba(96,165,250,0.7)]" : "text-blue-600"
+                            : "text-zinc-700"
+                        )}>►</span>
+                        <span className="text-[7px] font-mono text-zinc-700 tracking-widest">VR</span>
+                      </div>
+
+                      {/* M15 node */}
+                      <div className={cn(
+                        "flex-1 rounded-lg border px-2 py-2 text-center transition-all duration-100",
+                        m30vr === "YA"
+                          ? "bg-blue-950/40 border-blue-600"
+                          : "bg-zinc-900/60 border-zinc-700"
+                      )}>
+                        <div className="text-[9px] font-black font-mono text-cyan-400">M15</div>
+                        <div className={cn("text-[11px] font-black font-mono mt-0.5",
+                          m30vr === "YA" ? (blink ? "text-blue-200" : "text-blue-400") : "text-zinc-600"
+                        )}>
+                          {m30vr === "YA" ? "⚡VR✓" : "BELUM"}
+                        </div>
+                        <div className="text-[8px] font-mono text-zinc-700 mt-0.5">
+                          {m15cmp ? (m15cmp === "BULLISH" ? "▲BUY" : "▼SELL") : "—"}
+                        </div>
+                      </div>
+
+                      {/* Connector + CF label */}
+                      <div className="flex flex-col items-center justify-center gap-0.5 shrink-0">
+                        <span className={cn("font-mono text-base leading-none transition-all",
+                          m30cf === "YA"
+                            ? blinkFast ? "text-amber-300 drop-shadow-[0_0_6px_rgba(245,158,11,0.8)]" : "text-amber-600"
+                            : m30vr === "YA" ? "text-amber-900" : "text-zinc-700"
+                        )}>►</span>
+                        <span className="text-[7px] font-mono text-zinc-700 tracking-widest">CF</span>
+                      </div>
+
+                      {/* M5 node */}
+                      <div className={cn(
+                        "flex-1 rounded-lg border px-2 py-2 text-center transition-all duration-100",
+                        m30cf === "YA"
+                          ? blinkFast
+                            ? "bg-amber-500/20 border-amber-400 shadow-[0_0_14px_rgba(245,158,11,0.4)]"
+                            : "bg-amber-950/40 border-amber-600"
+                          : m30vr === "YA"
+                            ? "bg-zinc-900/80 border-amber-900/50"
+                            : "bg-zinc-900/60 border-zinc-700"
+                      )}>
+                        <div className="text-[9px] font-black font-mono text-cyan-400">M5</div>
+                        <div className={cn("text-[11px] font-black font-mono mt-0.5",
+                          m30cf === "YA"
+                            ? blinkFast ? "text-amber-200" : "text-amber-400"
+                            : m30vr === "YA" ? "text-amber-700 animate-pulse" : "text-zinc-600"
+                        )}>
+                          {m30cf === "YA" ? "⚡CF✓" : m30vr === "YA" ? "WAIT" : "BELUM"}
+                        </div>
+                        <div className="text-[8px] font-mono text-zinc-700 mt-0.5">
+                          {m5cmp ? (m5cmp === "BULLISH" ? "▲BUY" : "▼SELL") : "—"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Phase recommendation */}
+                    <div className={cn(
+                      "rounded-lg border px-3 py-2 space-y-1",
+                      scalpPhase === 3  ? "bg-amber-950/20 border-amber-700/50"  :
+                      scalpPhase === 2  ? "bg-blue-950/20 border-blue-800/50"    :
+                      scalpPhase === -1 ? "bg-red-950/20 border-red-900/50"      :
+                      "bg-zinc-900/60 border-zinc-800"
+                    )}>
+                      {scalpPhase === 0 && (
+                        <>
+                          <div className="text-[9px] font-black font-mono text-zinc-500">M30 belum ada CMP</div>
+                          <div className="text-[8px] font-mono text-zinc-700">
+                            Tunggu M30 CMP terbentuk searah {scalpIsBull ? "BUY" : "SELL"} (master {scalpMasterTF})
+                          </div>
+                        </>
+                      )}
+                      {scalpPhase === -1 && (
+                        <>
+                          <div className="text-[9px] font-black font-mono text-red-400">M30 BERLAWANAN — SKIP SCALP</div>
+                          <div className="text-[8px] font-mono text-red-800">
+                            M30 {m30cmp === "BULLISH" ? "BUY" : "SELL"} ≠ master {scalpIsBull ? "BUY" : "SELL"} → tunggu M30 CMP flip
+                          </div>
+                        </>
+                      )}
+                      {scalpPhase === 1 && (
+                        <>
+                          <div className="text-[9px] font-black font-mono text-zinc-300">F1 · Tunggu M15 VR</div>
+                          <div className="text-[8px] font-mono text-zinc-600">M15 break berlawanan M30 = VR confirmed</div>
+                          <div className="text-[8px] font-mono text-zinc-700">Jangan entry — masih CONTI territory</div>
+                        </>
+                      )}
+                      {scalpPhase === 2 && (
+                        <>
+                          <div className={cn("text-[10px] font-black font-mono text-blue-300", blink && "drop-shadow-[0_0_6px_rgba(96,165,250,0.5)]")}>
+                            F2 · VR ✓ — Tunggu M5 CF untuk entry
+                          </div>
+                          <div className="text-[8px] font-mono text-blue-700">
+                            M5 break {scalpIsBull ? "▲ BULLISH" : "▼ BEARISH"} = CF = MASUK SCALP
+                          </div>
+                          <div className="flex gap-4 pt-1 border-t border-blue-900/40 text-[8px] font-mono text-zinc-600">
+                            <span>Entry: M5 CF</span>
+                            <span>SL: swing M5 (~5-10 pts)</span>
+                            <span>TP: M15 barrier</span>
+                          </div>
+                        </>
+                      )}
+                      {scalpPhase === 3 && (
+                        <>
+                          <div className={cn("text-[10px] font-black font-mono",
+                            blinkFast
+                              ? scalpIsBull ? "text-emerald-200 drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]"
+                                            : "text-red-200 drop-shadow-[0_0_8px_rgba(248,113,113,0.8)]"
+                              : scalpIsBull ? "text-emerald-400" : "text-red-400"
+                          )}>
+                            {blinkFast ? "⚡" : "●"} F3 SCALP ENTRY — {scalpIsBull ? "BUY" : "SELL"} NOW
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 pt-1 border-t border-amber-800/40 text-center">
+                            <div>
+                              <div className="text-[7px] font-mono text-zinc-600 uppercase">Entry</div>
+                              <div className="text-[10px] font-black font-mono text-amber-300">M5 CF</div>
+                            </div>
+                            <div>
+                              <div className="text-[7px] font-mono text-zinc-600 uppercase">SL</div>
+                              <div className="text-[10px] font-black font-mono text-red-400">Swing M5</div>
+                            </div>
+                            <div>
+                              <div className="text-[7px] font-mono text-zinc-600 uppercase">TP</div>
+                              <div className="text-[10px] font-black font-mono text-emerald-400">M15 barrier</div>
+                            </div>
+                          </div>
+                          <div className="text-[8px] font-mono text-amber-800 pt-0.5">
+                            ★ SL kecil (M5 swing) → aman pakai lot lebih besar dari setup biasa
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Cycle repeat note */}
+                    <div className="flex items-center gap-1.5 text-[8px] font-mono text-zinc-700">
+                      <span>⟳</span>
+                      <span>Repeat cycle selama {scalpMasterTF} F3 aktif · Stop saat {scalpMasterTF} CMP flip</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </PanelBox>
+          )}
 
           {/* ══ NEURAL.FLOW ══ */}
           <PanelBox
