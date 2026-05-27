@@ -170,11 +170,11 @@ const STORYLINE_MAP: Record<string, { vrFrom: string; cfLow: string; cfHigh: str
   H4:    { vrFrom: "H1",  cfLow: "H1",  cfHigh: "M30", tradeTF: "M30/M15" },
   H1:    { vrFrom: "M30", cfLow: "M30", cfHigh: "M15", tradeTF: "M15/M5"  },
   M30:   { vrFrom: "M15", cfLow: "M15", cfHigh: "M5",  tradeTF: "M5"      },
-  M15:   { vrFrom: "M5",  cfLow: "M5",  cfHigh: "M1",  tradeTF: "M1"      },
-  M5:    { vrFrom: "M1",  cfLow: "M1",  cfHigh: null,  tradeTF: "M1"      },
+  M15:   { vrFrom: "M5",  cfLow: "M5",  cfHigh: null,  tradeTF: "M5"      },
+  // M5 removed — no M1 CF; M5 is terkecil
 };
 
-const TF_ROWS = ["DAILY", "H4", "H1", "M30", "M15", "M5", "M1"];
+const TF_ROWS = ["DAILY", "H4", "H1", "M30", "M15", "M5"];
 
 const SNR_AUTO_GROUPS = [
   { label: "Daily",   keys: [{ key: "PDH", short: "PDH", stars: 5 }, { key: "PDL", short: "PDL", stars: 5 }, { key: "DAILY_OPEN", short: "DOpen", stars: 4 }] },
@@ -1906,7 +1906,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                     </div>
                     {/* Block char sparkline */}
                     <div className="flex items-center gap-1 pt-0.5">
-                      <span className="text-[9px] text-zinc-700 font-mono">M1≈</span>
+                      <span className="text-[9px] text-zinc-700 font-mono">TICK</span>
                       <span className="text-[12px] font-mono leading-none tracking-widest">
                         {barDeltas.map((delta, i) => {
                           const isUp  = delta >= 0;

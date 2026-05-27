@@ -72,7 +72,7 @@ export function buildSystemPrompt(ctx: MarketContext): string {
   const get = (k: string) => ctx[k]?.value?.trim() || "";
 
   // ── TF state table ────────────────────────────────────────────────────────
-  const TF_KEYS = ["DAILY","H4","H1","M30","M15","M5","M1"] as const;
+  const TF_KEYS = ["DAILY","H4","H1","M30","M15","M5"] as const;
   const tfRows = TF_KEYS.map(tf => {
     const cmp = get(`${tf}_CMP`);
     const vr  = get(`${tf}_VR`);
@@ -189,10 +189,9 @@ Urutan: Daily → H4 → H1 → M30 → M15 → M5 → M1
 | H4       | H1      | H1         | M30         | M30 / M15   |
 | H1       | M30     | M30        | M15         | M15 / M5    |
 | M30      | M15     | M15        | M5          | M5          |
-| M15      | M5      | M5         | M1          | M1          |
-| M5       | M1      | M1         | —           | M1          |
+| M15      | M5      | M5         | —           | M5          |
 
-Daily = bias arah, MONITOR ONLY. M30 = TF entry utama sistem ini.
+Daily = bias arah, MONITOR ONLY. M30 = TF entry utama. M5 = CF terkecil yang digunakan — M1 TIDAK dipakai.
 
 CF LowRisk = TF sama dengan yang bagi VR (lebih aman, SL lebih besar).
 CF HighRisk = TF satu level lebih kecil dari VR (lebih awal, SL kecil, risiko lebih tinggi).
@@ -228,6 +227,7 @@ VR untuk suatu TF HANYA bisa datang dari TF satu level di bawahnya saja.
 - H4 VR   = dari H1 (BUKAN M30)
 - H1 VR   = dari M30 (BUKAN M15)
 - M30 VR  = dari M15
+- M15 VR  = dari M5 (M5 = CF TERKECIL — M1 TIDAK digunakan, terlalu noise)
 
 JANGAN PERNAH bilang "H1 VR ke Daily" atau "M30 VR ke H4" — itu SALAH DOKTRIN.
 Yang benar: kalau H1 naik kuat menembus H1 barrier → itu bukan VR ke Daily, itu CMP H1 FLIP atau H4 mulai terancam.
