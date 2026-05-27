@@ -199,7 +199,9 @@ function timeAgo(ts: number | null) {
   return `${Math.floor(s / 60)}m ago`;
 }
 
-function buildAutoPrompt(vars: Record<string, CtxVar>): string {
+type FiredEvent = { tf: string; type: "CF" | "VR"; dir: string };
+
+function buildAutoPrompt(vars: Record<string, CtxVar>, events?: FiredEvent[]): string {
   const get  = (k: string) => vars[k]?.value?.trim() || "";
   const harga   = get("HARGA");
   const session = get("SESSION");
@@ -243,7 +245,25 @@ function buildAutoPrompt(vars: Record<string, CtxVar>): string {
     .filter(k => get(k)).map(k => `  ${k}: ${get(k)}`);
 
   const lines: string[] = [];
-  lines.push(`[AUTO-SYNC] Data market baru dari TradingView. Baca tabel berikut SECARA LITERAL.`);
+
+  // ── Event-specific header ─────────────────────────────────────────────────
+  const cfEvents = events?.filter(e => e.type === "CF") ?? [];
+  const vrEvents = events?.filter(e => e.type === "VR") ?? [];
+
+  if (cfEvents.length > 0) {
+    cfEvents.forEach(e =>
+      lines.push(`[AUTO-CF] ⚡ CF FIRED — ${e.tf} ${e.dir}`)
+    );
+    lines.push(`State market terbaru dari TradingView. Baca tabel berikut SECARA LITERAL.`);
+  } else if (vrEvents.length > 0) {
+    vrEvents.forEach(e =>
+      lines.push(`[AUTO-VR] 📡 VR CONFIRMED — ${e.tf} ${e.dir}`)
+    );
+    lines.push(`State market terbaru dari TradingView. Baca tabel berikut SECARA LITERAL.`);
+  } else {
+    lines.push(`[AUTO-SYNC] Data market baru dari TradingView. Baca tabel berikut SECARA LITERAL.`);
+  }
+
   lines.push(`Harga sekarang: ${harga || "—"} | Session: ${session || "—"} | Spread: ${spread || "—"}`);
   lines.push("");
   lines.push("═══ STATE PER TF (BACA LITERAL — JANGAN UBAH ATAU ASUMSI) ═══");
@@ -263,9 +283,27 @@ function buildAutoPrompt(vars: Record<string, CtxVar>): string {
     lines.push(...tpLines);
   }
   lines.push("");
-  lines.push("INSTRUKSI: Mulai dengan KONFIRMASI STATE (tulis ulang H4, M30, Daily dari tabel).");
-  lines.push("Lalu berikan analisis STORYLINE + GRADE + TRADE PLAN lengkap.");
-  lines.push("INGAT: SL = puncak VR (bukan round number). Entry berlawanan Daily = Grade C SKIP.");
+  if (cfEvents.length > 0) {
+    // CF fired — minta trade plan lengkap langsung
+    lines.push("INSTRUKSI: CF baru saja FIRE. LANGSUNG berikan TRADE PLAN lengkap tanpa basa-basi:");
+    lines.push("1. KONFIRMASI STATE (tulis ulang H4, M30, Daily dari tabel)");
+    lines.push("2. GRADE setup (A+/A/B/C) + alasan singkat");
+    lines.push("3. TRADE PLAN: Arah | Entry zone | SL (puncak VR) | TP1 | TP2 | Size");
+    lines.push("4. GUARD CHECK cepat: spread / news blackout / barrier");
+    lines.push("INGAT: Entry berlawanan Daily = Grade C SKIP. SL = puncak VR, bukan round number.");
+  } else if (vrEvents.length > 0) {
+    // VR fired — minta watchlist & scenario CF
+    lines.push("INSTRUKSI: VR baru saja TERKONFIRMASI. Berikan WATCHLIST & SCENARIO:");
+    lines.push("1. KONFIRMASI STATE + VR yang baru fire (TF mana, arah mana)");
+    lines.push("2. Entry zone CF berikutnya: area harga berapa, TF entry mana (LowRisk / HighRisk)");
+    lines.push("3. Level kritis yang harus DIJAGA: barrier VR, SNR yang tidak boleh ditembus");
+    lines.push("4. Perkiraan kekuatan momentum: VR dari TF apa? → berapa kuat gerakan CF expected?");
+    lines.push("JANGAN entry sekarang — ini fase nunggu CF. Analisis kapan dan di mana CF akan muncul.");
+  } else {
+    lines.push("INSTRUKSI: Mulai dengan KONFIRMASI STATE (tulis ulang H4, M30, Daily dari tabel).");
+    lines.push("Lalu berikan analisis STORYLINE + GRADE + TRADE PLAN lengkap.");
+    lines.push("INGAT: SL = puncak VR (bukan round number). Entry berlawanan Daily = Grade C SKIP.");
+  }
   return lines.join("\n");
 }
 
@@ -472,6 +510,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         const wasEmpty  = Object.keys(prev).length === 0;
         let hasCFChange = false;
         let hasVRChange = false;
+        const firedEvents: FiredEvent[] = [];
 
         if (!wasEmpty) {
           for (const tf of TF_ROWS) {
@@ -483,12 +522,14 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
             if (prevCF !== "YA" && newCF === "YA") {
               // CF just fired — entry signal!
               hasCFChange = true;
+              firedEvents.push({ tf, type: "CF", dir });
               pushAlert(`⚡ CF FIRED — ${tf} ${dir} · PRIME ENTRY`, "cf");
               playBeep("cf");
               void tryBrowserNotify(`⚡ Chain Reaction — ${tf} CF`, `${dir} setup active on ${tf}. Check SL/TP.`);
             } else if (prevVR !== "YA" && newVR === "YA") {
               // VR just confirmed — waiting for CF
               hasVRChange = true;
+              firedEvents.push({ tf, type: "VR", dir });
               pushAlert(`VR CONFIRMED — ${tf} ${dir} · Tunggu CF`, "vr");
               playBeep("vr");
               void tryBrowserNotify(`VR Confirmed — ${tf}`, `${dir} VR done on ${tf}. Waiting CF entry.`);
@@ -501,7 +542,8 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         // Auto-analysis: fire on first load OR when VR/CF state changes
         if (onAutoAnalysis && (wasEmpty || hasCFChange || hasVRChange)) {
           if (TF_ROWS.some(tf => byName[`${tf}_CMP`]?.value)) {
-            onAutoAnalysis(buildAutoPrompt(byName));
+            // Pass fired events so AI gets event-specific prompt (CF→trade plan, VR→watchlist)
+            onAutoAnalysis(buildAutoPrompt(byName, wasEmpty ? [] : firedEvents));
           }
         }
       } else { setTvStatus("error"); setTvError(json.error || "Gagal sync"); }
