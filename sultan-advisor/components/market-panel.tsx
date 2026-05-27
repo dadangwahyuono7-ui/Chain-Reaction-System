@@ -809,16 +809,19 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const h4F3        = h4Fase === 3;
   const h1F3        = h1Fase === 3;
   const scalpActive    = h4F3 || h1F3;
-  const scalpMasterTF  = h4F3 ? "H4" : "H1";
-  const scalpMasterDir = h4F3 ? h4Dir : (h1d?.cmp || "");
-  const scalpIsBull    = scalpMasterDir === "BULLISH";
+  const scalpMasterTF  = h4F3 ? "H4" : "H1";   // hanya untuk label aktivasi panel
+  const scalpMasterDir = h4F3 ? h4Dir : (h1d?.cmp || ""); // arah H4/H1 — hanya untuk guard cek m30Aligned
+  const scalpIsBull    = scalpMasterDir === "BULLISH"; // H4/H1 direction — untuk header panel & phase 0/-1 label
   const m30cmp      = m30d?.cmp || "";
   const m30vr       = m30d?.vr  || "";
   const m30cf       = m30d?.cf  || "";
   const m15cmp      = m15d?.cmp || "";
   const m5cmp       = m5d?.cmp  || "";
+  // Arah entry scalp = M30 CMP (bukan H4/H1)
+  const m30IsBull   = m30cmp === "BULLISH";
+  // Guard: M30 searah H4/H1 master (kalau tidak → phase -1 warning)
   const m30Aligned  = !!m30cmp && !!scalpMasterDir && m30cmp === scalpMasterDir;
-  // scalpPhase: -1=M30 opposite, 0=no M30 CMP, 1=F1 wait VR, 2=F2 wait CF, 3=F3 entry
+  // scalpPhase: -1=M30 berlawanan H4/H1, 0=no M30 CMP, 1=F1 wait VR, 2=F2 wait CF, 3=F3 entry
   const scalpPhase: -1 | 0 | 1 | 2 | 3 =
     !m30cmp                          ? 0  :
     !m30Aligned                      ? -1 :
@@ -831,9 +834,9 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const m30CfActive  = cfActiveRef.current["M30"]  ?? false;
   const m30CfCount   = cfCountRef.current["M30"]   ?? 0;
 
-  // M5 harus searah scalp (scalpMasterDir) untuk entry valid
-  // Kalau M5 CMP sudah berlawanan → CF untuk M30 sudah selesai/reversed
-  const m5AlignsScalp = !m5cmp || m5cmp === scalpMasterDir;
+  // M5 harus searah M30 CMP untuk entry valid (bukan H4/H1)
+  // Kalau M5 CMP sudah berlawanan M30 → CF untuk M30 sudah selesai/reversed
+  const m5AlignsScalp = !m5cmp || m5cmp === m30cmp;
 
   const chainNodes = ["DAILY","H4","H1","M30","M15","M5"].map(id => ({
     id, label: id === "H4" ? "H4 ★" : id === "DAILY" ? "D1" : id,
@@ -1681,7 +1684,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                             F2 · VR ✓ — Tunggu M5 CF untuk entry
                           </div>
                           <div className="text-[8px] font-mono text-blue-700">
-                            M5 break {scalpIsBull ? "▲ BULLISH" : "▼ BEARISH"} = CF = MASUK SCALP
+                            M5 break {m30IsBull ? "▲ BULLISH" : "▼ BEARISH"} = CF = MASUK SCALP
                           </div>
                           <div className="flex gap-4 pt-1 border-t border-blue-900/40 text-[8px] font-mono text-zinc-600">
                             <span>Entry: M5 CF</span>
@@ -1694,11 +1697,11 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                         <>
                           <div className={cn("text-[10px] font-black font-mono",
                             blinkFast
-                              ? scalpIsBull ? "text-emerald-200 drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]"
-                                            : "text-red-200 drop-shadow-[0_0_8px_rgba(248,113,113,0.8)]"
-                              : scalpIsBull ? "text-emerald-400" : "text-red-400"
+                              ? m30IsBull ? "text-emerald-200 drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]"
+                                          : "text-red-200 drop-shadow-[0_0_8px_rgba(248,113,113,0.8)]"
+                              : m30IsBull ? "text-emerald-400" : "text-red-400"
                           )}>
-                            {blinkFast ? "⚡" : "●"} {scalpIsBull ? "BUY" : "SELL"} ENTRY
+                            {blinkFast ? "⚡" : "●"} {m30IsBull ? "BUY" : "SELL"} ENTRY
                             {m30CfCount > 0 && <span className="text-[8px] ml-1 opacity-70">CF{m30CfCount}</span>}
                           </div>
                           <div className="grid grid-cols-3 gap-2 pt-1 border-t border-amber-800/40 text-center">
@@ -1726,7 +1729,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                             ⚠ M5 BERLAWANAN — CF sudah flip
                           </div>
                           <div className="text-[8px] font-mono text-orange-800">
-                            M5 CMP {m5cmp === "BULLISH" ? "BUY" : "SELL"} ≠ arah scalp {scalpIsBull ? "BUY" : "SELL"} → CF selesai, jangan entry
+                            M5 CMP {m5cmp === "BULLISH" ? "BUY" : "SELL"} ≠ arah M30 {m30IsBull ? "BUY" : "SELL"} → CF selesai, jangan entry
                           </div>
                           <div className="text-[8px] font-mono text-zinc-700 pt-0.5">
                             Tunggu M5 balik searah dulu sebelum entry
