@@ -307,6 +307,60 @@ function buildAutoPrompt(vars: Record<string, CtxVar>, events?: FiredEvent[]): s
   return lines.join("\n");
 }
 
+// ── Auto-grade calculator (doctrine: Daily+H4 aligned → M30/M15 F3 → A+/A) ──
+type GradeResult = { grade: "A+" | "A" | "B" | "C" | "SKIP" | "—"; reason: string };
+function computeAutoGrade(
+  tfData: { tf: string; cmp: string; vr: string; cf: string; fase: number }[],
+  byName: Record<string, { value: string }>
+): GradeResult {
+  const get  = (k: string) => byName[k]?.value?.trim() || "";
+  const daily = tfData.find(d => d.tf === "DAILY");
+  const h4    = tfData.find(d => d.tf === "H4");
+  const h1    = tfData.find(d => d.tf === "H1");
+  const m30   = tfData.find(d => d.tf === "M30");
+  const m15   = tfData.find(d => d.tf === "M15");
+
+  if (!h4?.cmp) return { grade: "—", reason: "H4 belum sync" };
+
+  const h4Dir    = h4.cmp;
+  const dailyDir = daily?.cmp || "";
+
+  // Daily vs H4 conflict → C
+  if (dailyDir && dailyDir !== h4Dir)
+    return { grade: "C", reason: `Daily ${dailyDir} ≠ H4 ${h4Dir} — entry searah Daily saja` };
+
+  const masterDir = h4Dir; // H4 is master TF
+
+  // M30 or M15 F3 SAME direction as master?
+  const m30F3 = m30?.fase === 3 && m30.cmp === masterDir;
+  const m15F3 = m15?.fase === 3 && m15.cmp === masterDir;
+
+  // SNR proximity check — any fundamental level within 5 pts of current price
+  const price = parseFloat(get("HARGA").replace(",", ".")) || 0;
+  const SNR_KEYS = ["PDH","PDL","DAILY_OPEN","PWH","PWL","ROUND_ABOVE","ROUND_BELOW","ASIA_H","ASIA_L","LONDON_H","LONDON_L"];
+  const snrNear = price > 0 && SNR_KEYS.some(k => {
+    const v = parseFloat(get(k));
+    return v > 0 && Math.abs(v - price) <= 5;
+  });
+
+  if (m30F3 || m15F3) {
+    const label = m30F3 ? "M30" : "M15";
+    if (snrNear)
+      return { grade: "A+", reason: `${label} F3 searah H4 + SNR ≤5 pts` };
+    return { grade: "A", reason: `${label} F3 searah H4 — SNR tidak dekat` };
+  }
+
+  // H4 or H1 F3 but M30/M15 not F3 same dir → B
+  if (h4?.fase === 3 || (h1?.fase === 3 && h1.cmp === masterDir))
+    return { grade: "B", reason: `${h4?.fase === 3 ? "H4" : "H1"} F3 — tunggu M30/M15 F3 searah` };
+
+  // Any F3 in opposite direction → SKIP
+  if (tfData.some(d => d.fase === 3 && d.cmp && d.cmp !== masterDir))
+    return { grade: "SKIP", reason: "Setup berlawanan H4 master — SKIP" };
+
+  return { grade: "C", reason: "Belum ada F3 TF kecil searah master" };
+}
+
 // ── Audio alert + browser notification ───────────────────────────────────────
 
 function playBeep(type: "cf" | "vr") {
@@ -537,23 +591,46 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
               playBeep("cf");
               void tryBrowserNotify(`⚡ Chain Reaction — ${tf} CF`, `${dir} setup active on ${tf}. Check SL/TP.`);
               {
-                const price  = byName["HARGA"]?.value || "—";
-                const h4cmp  = byName["H4_CMP"]?.value  || "—";
-                const m30cmp = byName["M30_CMP"]?.value || "—";
-                const sl     = STORYLINE_MAP[tf];
-                const tpKey  = dir === "BUY" ? "TP_ABOVE_1" : "TP_BELOW_1";
-                const tp1    = byName[tpKey]?.value || "—";
-                const tgMsg  = [
-                  `⚡ <b>CF FIRED — ${tf} ${dir}</b>`,
-                  `🏆 PRIME ENTRY SIGNAL`,
-                  ``,
-                  `💰 Harga: <b>${price}</b>`,
-                  `📊 H4: ${h4cmp} · M30: ${m30cmp}`,
-                  sl ? `🎯 Entry di ${sl.tradeTF} · TP: ${tp1}` : `🎯 TP: ${tp1}`,
-                  `⚠️ SL = puncak VR, bukan round number`,
-                  ``,
-                  `<i>Chain Reaction v4.0 OVERLORD</i>`,
-                ].join("\n");
+                const price   = byName["HARGA"]?.value  || "—";
+                const h4cmp   = byName["H4_CMP"]?.value || "—";
+                const m30cmp  = byName["M30_CMP"]?.value || "—";
+                const m30vrNow = byName["M30_VR"]?.value || "";
+                const m30cfNow = byName["M30_CF"]?.value || "";
+                const sl      = STORYLINE_MAP[tf];
+                const tpKey   = dir === "BUY" ? "TP_ABOVE_1" : "TP_BELOW_1";
+                const tp1     = byName[tpKey]?.value || "—";
+
+                // Scalp-specific Telegram: M5 CF + M30 F2 (VR done, CF not yet done) same dir
+                const isScalpSignal = tf === "M5" && m30vrNow === "YA" && m30cfNow !== "YA" && m30cmp === (dir === "BUY" ? "BULLISH" : "BEARISH");
+
+                const tgMsg = isScalpSignal
+                  ? [
+                      `⚡ <b>SCALP ENTRY — M5 CF FIRED</b>`,
+                      `🎯 M30 F2 AKTIF → Siklus scalp terpenuhi`,
+                      ``,
+                      `💰 Harga: <b>${price}</b>`,
+                      `📊 M30: ${m30cmp} F2 ✓ → M5 CF ✓`,
+                      `📊 H4 master: ${h4cmp}`,
+                      ``,
+                      `▸ Arah: <b>${dir}</b>`,
+                      `▸ Entry: SEKARANG di M5 CF`,
+                      `▸ SL: swing M5 (~5-10 pts)`,
+                      `▸ TP: M15 barrier (scalp cepat)`,
+                      `▸ ★ SL kecil → lot lebih besar aman`,
+                      ``,
+                      `<i>Chain Reaction v4.0 OVERLORD</i>`,
+                    ].join("\n")
+                  : [
+                      `⚡ <b>CF FIRED — ${tf} ${dir}</b>`,
+                      `🏆 PRIME ENTRY SIGNAL`,
+                      ``,
+                      `💰 Harga: <b>${price}</b>`,
+                      `📊 H4: ${h4cmp} · M30: ${m30cmp}`,
+                      sl ? `🎯 Entry di ${sl.tradeTF} · TP: ${tp1}` : `🎯 TP: ${tp1}`,
+                      `⚠️ SL = puncak VR, bukan round number`,
+                      ``,
+                      `<i>Chain Reaction v4.0 OVERLORD</i>`,
+                    ].join("\n");
                 void sendTelegramAlert(tgMsg);
               }
             } else if (prevVR !== "YA" && newVR === "YA") {
@@ -761,6 +838,38 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const recentBuyPct  = tickDeltas.slice(-8).filter(d => d > 0).length / Math.max(Math.min(8, N_TICKS), 1) * 100;
   const earlyBuyPct   = tickDeltas.slice(0, 8).filter(d => d > 0).length  / Math.max(Math.min(8, N_TICKS), 1) * 100;
   const divergence    = N_TICKS >= 16 && Math.abs(recentBuyPct - earlyBuyPct) > 40;
+
+  // ── Auto-grade ────────────────────────────────────────────────────────────
+  const autoGrade   = hasTFData ? computeAutoGrade(tfData, byName) : { grade: "—" as const, reason: "" };
+
+  // ── News blackout countdown ────────────────────────────────────────────────
+  const nextEpoch         = parseInt(byName["NEXT_EVENT_EPOCH"]?.value || "0");
+  const nextEventName     = byName["NEXT_EVENT_NAME"]?.value     || "";
+  const nextEventTimeWIB  = byName["NEXT_EVENT_TIME_WIB"]?.value || "";
+  const minutesUntilNews  = nextEpoch > 0 ? Math.floor((nextEpoch - Date.now()) / 60_000) : null;
+  const newsBlackout      = minutesUntilNews !== null && minutesUntilNews >= 0 && minutesUntilNews <= 30;
+  const newsApproaching   = minutesUntilNews !== null && minutesUntilNews > 30 && minutesUntilNews <= 60;
+
+  // ── SITREP computation ─────────────────────────────────────────────────────
+  const sitrep = (() => {
+    if (!hasTFData) return null;
+    const biasDir   = h4Dir || "";
+    const biasLabel = biasDir === "BULLISH" ? "▲ BUY" : biasDir === "BEARISH" ? "▼ SELL" : "─";
+    const f3List    = tfData.filter(d => d.fase === 3 && d.cmp).map(d => d.tf);
+    const primeLabel = f3List.length ? `${f3List[0]}${f3List.length > 1 ? `+${f3List.length - 1}` : ""} F3` : tfData.some(d => d.fase === 2) ? `${tfData.find(d => d.fase === 2)!.tf} F2` : "F1";
+    const scalpLabel  = !scalpActive ? "—"
+      : scalpPhase === 3 ? "⚡ ENTRY"
+      : scalpPhase === 2 ? "WAIT M5 CF"
+      : scalpPhase === 1 ? "WAIT M15 VR"
+      : scalpPhase === -1 ? "SKIP DIR"
+      : "NO M30";
+    const newsLabel   = newsBlackout    ? `🚨 ${minutesUntilNews}m`
+      : newsApproaching ? `⚠ ${minutesUntilNews}m`
+      : minutesUntilNews !== null && minutesUntilNews < 0 ? "PASSED"
+      : nextEventName ? "CLEAR" : "NO DATA";
+    const gradeLabel  = autoGrade.grade;
+    return { biasLabel, primeLabel, scalpLabel, newsLabel, gradeLabel, biasDir };
+  })();
 
   // ── SNR data ─────────────────────────────────────────────────────────────
   const cmpFloat = parseFloat(displayPrice.replace(",", ".")) || 0;
@@ -1032,6 +1141,98 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
           </div>
         </div>
       </div>
+
+      {/* ── NEWS BLACKOUT BANNER ──────────────────────────────────────────── */}
+      {(newsBlackout || newsApproaching) && (
+        <div className={cn(
+          "rounded-xl border px-4 py-2.5 flex items-center gap-3 relative overflow-hidden",
+          newsBlackout
+            ? "bg-red-950/40 border-red-500/70 anim-glow-red"
+            : "bg-amber-950/30 border-amber-500/50 anim-amber-border"
+        )}>
+          <span className={cn("text-lg shrink-0", newsBlackout ? (blinkFast ? "text-red-300" : "text-red-600") : "text-amber-400")}>
+            {newsBlackout ? "🚨" : "⚠"}
+          </span>
+          <div className="flex-1">
+            <div className={cn("text-[11px] font-black font-mono tracking-wider", newsBlackout ? "text-red-300" : "text-amber-300")}>
+              {newsBlackout
+                ? `BLACKOUT — ${nextEventName} dalam ${minutesUntilNews} menit (${nextEventTimeWIB}) · TAHAN SEMUA ENTRY BARU`
+                : `NEWS APPROACHING — ${nextEventName} dalam ${minutesUntilNews} menit (${nextEventTimeWIB}) · Pertimbangkan exit posisi`}
+            </div>
+            {newsBlackout && (
+              <div className="text-[9px] font-mono text-red-600 mt-0.5">
+                Tunggu sampai berita rilis + 5 menit spread normal sebelum entry baru
+              </div>
+            )}
+          </div>
+          {newsBlackout && (
+            <span className={cn(
+              "shrink-0 text-[13px] font-black font-mono px-2.5 py-1 rounded border tabular-nums",
+              blinkFast ? "bg-red-500 border-red-400 text-white" : "bg-red-950 border-red-700 text-red-400"
+            )}>
+              {minutesUntilNews}m
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ── SITREP BAR ────────────────────────────────────────────────────── */}
+      {sitrep && (
+        <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/40 px-4 py-2 flex items-center gap-0 overflow-hidden">
+          <span className="text-[8px] font-black font-mono text-zinc-600 tracking-[0.2em] uppercase mr-3 shrink-0">SITREP</span>
+          {/* BIAS */}
+          <div className="flex items-center gap-1.5 pr-3 border-r border-zinc-800 shrink-0">
+            <span className="text-[8px] text-zinc-600 font-mono uppercase">BIAS</span>
+            <span className={cn("text-[11px] font-black font-mono",
+              sitrep.biasDir === "BULLISH" ? "text-emerald-400" :
+              sitrep.biasDir === "BEARISH" ? "text-red-400"     : "text-zinc-500"
+            )}>{sitrep.biasLabel}</span>
+          </div>
+          {/* PRIME */}
+          <div className="flex items-center gap-1.5 px-3 border-r border-zinc-800 shrink-0">
+            <span className="text-[8px] text-zinc-600 font-mono uppercase">PRIME</span>
+            <span className={cn("text-[10px] font-black font-mono",
+              sitrep.primeLabel.includes("F3") ? (blinkFast ? "text-amber-300" : "text-amber-500") :
+              sitrep.primeLabel.includes("F2") ? "text-blue-400" : "text-zinc-500"
+            )}>{sitrep.primeLabel}</span>
+          </div>
+          {/* SCALP */}
+          <div className="flex items-center gap-1.5 px-3 border-r border-zinc-800 shrink-0">
+            <span className="text-[8px] text-zinc-600 font-mono uppercase">SCALP</span>
+            <span className={cn("text-[10px] font-black font-mono",
+              sitrep.scalpLabel === "⚡ ENTRY"   ? (blinkFast ? "text-amber-200" : "text-amber-400") :
+              sitrep.scalpLabel === "WAIT M5 CF" ? "text-blue-400" :
+              sitrep.scalpLabel === "SKIP DIR"   ? "text-red-600"  : "text-zinc-500"
+            )}>{sitrep.scalpLabel}</span>
+          </div>
+          {/* NEWS */}
+          <div className="flex items-center gap-1.5 px-3 border-r border-zinc-800 shrink-0">
+            <span className="text-[8px] text-zinc-600 font-mono uppercase">NEWS</span>
+            <span className={cn("text-[10px] font-black font-mono",
+              sitrep.newsLabel.startsWith("🚨") ? (blinkFast ? "text-red-300"   : "text-red-500")   :
+              sitrep.newsLabel.startsWith("⚠")  ? "text-amber-400" : "text-emerald-600"
+            )}>{sitrep.newsLabel}</span>
+          </div>
+          {/* GRADE */}
+          <div className="flex items-center gap-1.5 pl-3 shrink-0">
+            <span className="text-[8px] text-zinc-600 font-mono uppercase">GRADE</span>
+            <span className={cn(
+              "text-[11px] font-black font-mono px-2 py-0.5 rounded border",
+              sitrep.gradeLabel === "A+"   ? (blinkFast ? "bg-amber-500 border-amber-400 text-black" : "bg-amber-950 border-amber-600 text-amber-300")   :
+              sitrep.gradeLabel === "A"    ? "bg-emerald-950 border-emerald-700 text-emerald-300" :
+              sitrep.gradeLabel === "B"    ? "bg-blue-950 border-blue-700 text-blue-300"          :
+              sitrep.gradeLabel === "C"    ? "bg-zinc-900 border-zinc-700 text-zinc-400"          :
+              sitrep.gradeLabel === "SKIP" ? "bg-red-950 border-red-800 text-red-500"             :
+              "bg-zinc-950 border-zinc-800 text-zinc-600"
+            )}>
+              {sitrep.gradeLabel}
+            </span>
+            {sitrep.gradeLabel !== "—" && (
+              <span className="text-[8px] font-mono text-zinc-600 max-w-[140px] truncate hidden xl:block">{autoGrade.reason}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── SYNC ROW 1: TradingView + SNR ─────────────────────────────────── */}
       <div className="flex gap-2 items-center">

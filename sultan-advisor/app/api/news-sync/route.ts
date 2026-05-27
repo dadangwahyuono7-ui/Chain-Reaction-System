@@ -48,8 +48,11 @@ interface YFMeta {
 
 // ─── Fetchers ────────────────────────────────────────────────────────────────
 
+interface NextEvent { name: string; epoch: number; timeWIB: string }
+interface CalendarResult { text: string; nextEvent: NextEvent | null }
+
 /** ForexFactory economic calendar — official CDN, no key */
-async function fetchEconCalendar(): Promise<string> {
+async function fetchEconCalendar(): Promise<CalendarResult> {
   // Try multiple FF CDN endpoints
   const FF_URLS = [
     "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
@@ -71,21 +74,36 @@ async function fetchEconCalendar(): Promise<string> {
   if (!res || !res.ok) throw new Error(`FF calendar gagal di semua endpoint`);
 
   const events: FFEvent[] = await res.json();
-  const lines = events
-    .filter(e => e.impact === "High" && (e.country === "USD" || e.country === "ALL"))
-    .map(e => {
-      // Parse ISO date → readable WIB (UTC+7)
-      const dt  = new Date(e.date);
-      const wib = dt.toLocaleString("id-ID", { timeZone: "Asia/Jakarta", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit", hour12:false });
-      const fc  = e.forecast ? ` | Est: ${e.forecast}` : "";
-      const prv = e.previous ? ` | Prev: ${e.previous}` : "";
-      const act = e.actual   ? ` | Aktual: ${e.actual}` : "";
-      return `${wib} WIB — ${e.title}${fc}${prv}${act}`;
-    });
+  const highImpact = events.filter(e => e.impact === "High" && (e.country === "USD" || e.country === "ALL"));
 
-  return lines.length > 0
-    ? lines.join("\n")
-    : "Tidak ada high-impact USD event minggu ini.";
+  // ── Next upcoming event for news blackout countdown ───────────────────────
+  const nowMs = Date.now();
+  const upcoming = highImpact
+    .filter(e => { try { return new Date(e.date).getTime() > nowMs; } catch { return false; } })
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const nextRaw = upcoming[0] ?? null;
+  const nextEvent: NextEvent | null = nextRaw ? {
+    name:    nextRaw.title,
+    epoch:   new Date(nextRaw.date).getTime(),
+    timeWIB: new Date(nextRaw.date).toLocaleString("id-ID", {
+      timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hour12: false,
+    }) + " WIB",
+  } : null;
+
+  const lines = highImpact.map(e => {
+    // Parse ISO date → readable WIB (UTC+7)
+    const dt  = new Date(e.date);
+    const wib = dt.toLocaleString("id-ID", { timeZone: "Asia/Jakarta", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit", hour12:false });
+    const fc  = e.forecast ? ` | Est: ${e.forecast}` : "";
+    const prv = e.previous ? ` | Prev: ${e.previous}` : "";
+    const act = e.actual   ? ` | Aktual: ${e.actual}` : "";
+    return `${wib} WIB — ${e.title}${fc}${prv}${act}`;
+  });
+
+  return {
+    text: lines.length > 0 ? lines.join("\n") : "Tidak ada high-impact USD event minggu ini.",
+    nextEvent,
+  };
 }
 
 /** CFTC COT — COMEX Gold large speculator net position. No key needed. */
@@ -327,9 +345,24 @@ export async function POST() {
     }
   }
 
-  // Run all fetchers (in parallel where safe)
+  // ── ForexFactory calendar first (need structured result for next-event) ────
+  let calResult: CalendarResult | null = null;
+  try {
+    calResult = await fetchEconCalendar();
+    await upsert("ECON_CALENDAR", "Economic Calendar High Impact USD", calResult.text);
+    results.push({ source: "ForexFactory Calendar", status: "ok" });
+  } catch (e) {
+    results.push({ source: "ForexFactory Calendar", status: "error", error: e instanceof Error ? e.message : String(e) });
+  }
+
+  // ── Store next event data for news blackout countdown ────────────────────
+  const evt = calResult?.nextEvent ?? null;
+  await upsert("NEXT_EVENT_EPOCH",    "Next High-Impact Event Epoch",   evt ? String(evt.epoch) : "");
+  await upsert("NEXT_EVENT_NAME",     "Next High-Impact Event Name",    evt?.name    ?? "");
+  await upsert("NEXT_EVENT_TIME_WIB", "Next Event Time WIB",           evt?.timeWIB ?? "");
+
+  // ── Other fetchers in parallel ────────────────────────────────────────────
   await Promise.allSettled([
-    run("ForexFactory Calendar",  fetchEconCalendar,  "ECON_CALENDAR", "Economic Calendar High Impact USD"),
     run("CFTC COT Gold",          fetchCOTGold,       "COT_GOLD",      "COT Gold COMEX Large Speculator"),
     run("COMEX GC=F Futures",     fetchCOMEXGold,     "COMEX_GOLD",    "COMEX Gold Futures Price"),
     run("Yahoo Finance DXY",      fetchDXY,           "DXY",           "US Dollar Index (DXY)"),

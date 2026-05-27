@@ -62,6 +62,10 @@ export const DEFAULT_MARKET_CONTEXT: MarketContext = {
   REAL_YIELD:    { label: "Real 10Y TIPS Yield (FRED)",          value: "" },
   NEWS_GOLD:     { label: "Gold/XAUUSD News Headlines",          value: "" },
   NEWS_UPDATED:  { label: "News Last Updated",                   value: "" },
+  // ── News blackout countdown (set by /api/news-sync) ──────────────────────
+  NEXT_EVENT_EPOCH:    { label: "Next High-Impact Event Epoch",   value: "" },
+  NEXT_EVENT_NAME:     { label: "Next High-Impact Event Name",    value: "" },
+  NEXT_EVENT_TIME_WIB: { label: "Next Event Time WIB",           value: "" },
 };
 
 export function buildSystemPrompt(ctx: MarketContext): string {
