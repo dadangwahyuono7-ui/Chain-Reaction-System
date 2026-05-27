@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ShieldCheckIcon, TrendingUpIcon, AlertOctagonIcon, SearchIcon, LinkIcon } from "lucide-react";
+import { ShieldCheckIcon, TrendingUpIcon, AlertOctagonIcon, SearchIcon, LinkIcon, BarChart2Icon } from "lucide-react";
 
 interface Props {
   message: UIMessage;
@@ -26,11 +26,14 @@ type ToolPart = {
 function ToolBadge({ part }: { part: ToolPart }) {
   const isSearch = part.type === "tool-web_search";
   const isFetch  = part.type === "tool-fetch_url";
-  if (!isSearch && !isFetch) return null;
+  const isOHLC   = part.type === "tool-get_ohlc";
+  if (!isSearch && !isFetch && !isOHLC) return null;
 
-  const label  = isSearch
+  const label = isSearch
     ? (part.input?.query ?? "web search")
-    : (part.input?.url   ?? "fetch url");
+    : isFetch
+      ? (part.input?.url ?? "fetch url")
+      : `OHLC ${part.input?.tf ?? ""}${part.input?.bars ? ` ×${part.input.bars}` : ""}`;
   const isDone = part.state === "output-available";
 
   return (
@@ -41,8 +44,10 @@ function ToolBadge({ part }: { part: ToolPart }) {
         : "bg-zinc-900 text-zinc-500 border border-zinc-800 animate-pulse",
     )}>
       {isSearch
-        ? <SearchIcon className="w-2.5 h-2.5 text-blue-400 shrink-0" />
-        : <LinkIcon   className="w-2.5 h-2.5 text-purple-400 shrink-0" />
+        ? <SearchIcon    className="w-2.5 h-2.5 text-blue-400 shrink-0" />
+        : isFetch
+          ? <LinkIcon    className="w-2.5 h-2.5 text-purple-400 shrink-0" />
+          : <BarChart2Icon className="w-2.5 h-2.5 text-amber-400 shrink-0" />
       }
       <span className="max-w-[200px] truncate">{label}</span>
       {!isDone && <span className="text-zinc-600 ml-1">…</span>}
@@ -56,9 +61,9 @@ export function MessageBubble({ message, isStreaming, onInject }: Props) {
     .map((p) => (p as { type: "text"; text: string }).text)
     .join("");
 
-  // Collect tool calls (web_search / fetch_url)
+  // Collect tool calls (web_search / fetch_url / get_ohlc)
   const toolParts = message.parts.filter(
-    (p) => p.type === "tool-web_search" || p.type === "tool-fetch_url"
+    (p) => p.type === "tool-web_search" || p.type === "tool-fetch_url" || p.type === "tool-get_ohlc"
   ) as ToolPart[];
 
   if (message.role === "user") {

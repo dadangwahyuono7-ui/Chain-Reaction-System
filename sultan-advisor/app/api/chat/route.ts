@@ -121,6 +121,101 @@ async function webSearch(query: string): Promise<string> {
   return `Tidak ada hasil untuk "${query}". Coba kata kunci lebih spesifik, atau info sudah ada di context market.`;
 }
 
+async function fetchOHLC(tf: string, bars: number): Promise<string> {
+  const intervalMap: Record<string, string> = {
+    H4: "4h", H1: "1h", M30: "30m", M15: "15m", M5: "5m",
+  };
+  const rangeMap: Record<string, string> = {
+    H4: "5d", H1: "2d", M30: "1d", M15: "1d", M5: "1d",
+  };
+
+  const interval = intervalMap[tf] ?? "1h";
+  const range    = rangeMap[tf]    ?? "2d";
+  const apiUrl   = `https://query2.finance.yahoo.com/v8/finance/chart/GC%3DF?interval=${interval}&range=${range}&includePrePost=false`;
+
+  const res = await fetch(apiUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 SultanAdvisor/1.0",
+      "Accept": "application/json",
+    },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) throw new Error(`Yahoo Finance HTTP ${res.status}`);
+
+  const data = await res.json() as {
+    chart: {
+      result: Array<{
+        timestamp: number[];
+        indicators: {
+          quote: Array<{
+            open:  (number | null)[];
+            high:  (number | null)[];
+            low:   (number | null)[];
+            close: (number | null)[];
+          }>;
+        };
+      }> | null;
+    };
+  };
+
+  const result = data.chart?.result?.[0];
+  if (!result) throw new Error("Tidak ada data chart dari Yahoo Finance");
+
+  const timestamps = result.timestamp ?? [];
+  const quote      = result.indicators?.quote?.[0] ?? { open: [], high: [], low: [], close: [] };
+  const opens      = quote.open  ?? [];
+  const highs      = quote.high  ?? [];
+  const lows       = quote.low   ?? [];
+  const closes     = quote.close ?? [];
+
+  // Filter indeks candle valid (tidak null)
+  const validIdx = timestamps
+    .map((_, i) => i)
+    .filter(i => opens[i] != null && closes[i] != null);
+
+  const n = Math.min(bars, validIdx.length);
+  const sliceIdx = validIdx.slice(-n);
+
+  if (sliceIdx.length === 0) throw new Error("Tidak ada candle valid di data yang dikembalikan");
+
+  const lines: string[] = [
+    `📊 OHLC ${tf} — GC=F COMEX Gold Futures — ${sliceIdx.length} candle terakhir`,
+    `(Referensi presisi untuk SL/TP placement sesuai doktrin)`,
+    ``,
+    `No | Waktu WIB            | Open      | High      | Low       | Close    `,
+    `---|----------------------|-----------|-----------|-----------|----------`,
+  ];
+
+  sliceIdx.forEach((i, idx) => {
+    const wibStr = new Date(timestamps[i] * 1000).toLocaleString("id-ID", {
+      timeZone: "Asia/Jakarta",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit",
+    });
+    const o = ((opens[i]  ?? 0) as number).toFixed(2).padStart(9);
+    const h = ((highs[i]  ?? 0) as number).toFixed(2).padStart(9);
+    const l = ((lows[i]   ?? 0) as number).toFixed(2).padStart(9);
+    const c = ((closes[i] ?? 0) as number).toFixed(2).padStart(9);
+    const flag = idx === sliceIdx.length - 1 ? " ← CANDLE AKTIF" : "";
+    lines.push(`${String(idx + 1).padStart(2)} | ${wibStr.padEnd(20)} | ${o} | ${h} | ${l} | ${c}${flag}`);
+  });
+
+  // Ringkasan referensi SL berdasarkan doktrin VR high/low
+  if (sliceIdx.length >= 2) {
+    const prevI = sliceIdx[sliceIdx.length - 2];
+    const prevH = ((highs[prevI] ?? 0) as number).toFixed(2);
+    const prevL = ((lows[prevI]  ?? 0) as number).toFixed(2);
+    lines.push(``);
+    lines.push(`💡 REFERENSI SL (doktrin: SL di high/low candle VR + buffer 3-5 pts):`);
+    lines.push(`   Candle [-1] High : ${prevH} → SL SELL jika ${tf} adalah TF VR naik`);
+    lines.push(`   Candle [-1] Low  : ${prevL} → SL BUY  jika ${tf} adalah TF VR turun`);
+    lines.push(`   Candle aktif High: ${((highs[sliceIdx[sliceIdx.length - 1]] ?? 0) as number).toFixed(2)}`);
+    lines.push(`   Candle aktif Low : ${((lows[sliceIdx[sliceIdx.length - 1]]  ?? 0) as number).toFixed(2)}`);
+  }
+
+  return lines.join("\n");
+}
+
 async function fetchUrl(url: string): Promise<string> {
   try {
     const res = await fetch(url, {
@@ -182,6 +277,25 @@ const searchTools = {
       url: z.string().url().describe("URL lengkap halaman yang ingin dibaca (harus https://)"),
     }),
     execute: async ({ url }: { url: string }) => fetchUrl(url),
+  }),
+  get_ohlc: tool({
+    description: [
+      "Ambil data OHLC (Open, High, Low, Close) beberapa candle terakhir dari GC=F (COMEX Gold Futures) via Yahoo Finance.",
+      "WAJIB dipanggil sebelum menulis trade plan untuk SL/TP presisi berdasarkan high/low candle VR.",
+      "Gunakan untuk: (1) menentukan SL di puncak/bawah candle VR, bukan angka bulat, (2) cek struktur swing terkini, (3) validasi apakah entry area sudah di zona CF atau masih mid-range.",
+      "Contoh pemakaian: setup SELL H1 → fetch get_ohlc M30 5 bars → SL = High candle VR M30 tertinggi + buffer 3-5 pts.",
+    ].join(" "),
+    inputSchema: z.object({
+      tf:   z.enum(["H4", "H1", "M30", "M15", "M5"]).describe("Timeframe candle yang ingin dilihat"),
+      bars: z.number().min(1).max(20).optional().describe("Jumlah candle terakhir (default 5, max 20)"),
+    }),
+    execute: async ({ tf, bars = 5 }: { tf: string; bars?: number }) => {
+      try {
+        return await fetchOHLC(tf, bars);
+      } catch (e) {
+        return `Gagal fetch OHLC ${tf}: ${e instanceof Error ? e.message : String(e)}. Coba lagi atau gunakan level fundamental SNR dari context sebagai referensi SL sementara.`;
+      }
+    },
   }),
 };
 

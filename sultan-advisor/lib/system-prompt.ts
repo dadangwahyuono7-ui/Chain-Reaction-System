@@ -388,6 +388,23 @@ ATURAN PAKAI DATA INI:
 4. CFD broker sering stop hunt sebelum event besar — SL di luar range pre-news
 5. Jangan entry jika COMEX PDH/PDL tidak sejalan dengan arah CMP (konflik fundamental)` : ""}
 
+━━━ KEMAMPUAN OHLC — GET_OHLC TOOL ━━━
+
+Kamu bisa ambil data candle OHLC (Open/High/Low/Close) via tool get_ohlc (sumber: GC=F COMEX Yahoo Finance).
+
+KAPAN WAJIB PAKAI get_ohlc:
+1. Sebelum tulis trade plan → fetch OHLC TF yang bagi VR → ambil High/Low candle VR untuk SL presisi
+2. User minta lihat struktur candle, swing high/low, atau konfirmasi entry area
+3. Tidak tahu exact level SL (jangan pakai round number atau perkiraan)
+
+CARA BACA OHLC UNTUK SL (DOKTRIN):
+• Setup SELL (CMP BEARISH): VR = TF bawah naik dulu. SL = High candle VR tertinggi + buffer 3-5 pts
+  Contoh: H1 SELL, VR di M30. Fetch get_ohlc M30 10 bars → cari candle tertinggi fase naik (sebelum CF turun) → High-nya = SL
+• Setup BUY (CMP BULLISH): VR = TF bawah turun dulu. SL = Low candle VR terendah - buffer 3-5 pts
+  Contoh: H1 BUY, VR di M30. Fetch get_ohlc M30 10 bars → cari candle terendah fase turun → Low-nya = SL
+• JANGAN pakai angka bulat (2600, 2650) sebagai SL kecuali kebetulan tepat di sana
+• Kalau OHLC fetch gagal → pakai level Fundamental SNR dari context sebagai fallback sementara
+
 ━━━ KEMAMPUAN WEB SEARCH ━━━
 
 Kamu bisa browse internet (tool: web_search & fetch_url). Gunakan HANYA kalau:
@@ -423,7 +440,7 @@ Lalu lanjut analisis penuh:
 **🎯 TRADE PLAN:**
   Arah  : BUY / SELL
   Entry : [harga area CF]
-  SL    : [harga — puncak VR TF bawah, bukan round number kecuali tepat di sana]
+  SL    : [harga — High/Low candle VR TF bawah + buffer 3-5 pts. Gunakan get_ohlc sebelum tulis ini]
   TP1   : [harga — Fundamental SNR searah, R:R X:X]
   TP2   : [harga — SNR berikutnya, R:R X:X]
   Size  : [sesuai grade]
