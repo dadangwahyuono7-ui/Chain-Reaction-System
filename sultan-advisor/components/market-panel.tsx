@@ -479,7 +479,8 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   type Alert = { id: string; text: string; level: "vr" | "cf" };
   const [cfAlerts,        setCfAlerts]    = useState<Alert[]>([]);
   const prevTFStateRef    = useRef<Record<string, string>>({});  // delta detection
-  const cfFiredAtRef      = useRef<Record<string, number>>({});  // kapan CF terakhir transisi ke YA (0 = unknown/stale)
+  const cfActiveRef       = useRef<Record<string, boolean>>({});  // apakah CF sedang dalam window entry (BELUM→YA terdeteksi session ini)
+  const cfCountRef        = useRef<Record<string, number>>({});   // berapa kali CF sudah fire per TF (CF1, CF2, CF3...)
   const alertDismissRef   = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const hasMountedRef     = useRef(false);
   const [editing,     setEditing]     = useState<string | null>(null);
@@ -577,12 +578,12 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         let hasVRChange = false;
         const firedEvents: FiredEvent[] = [];
 
-        // First load: TF yang sudah CF=YA dari awal → tandai stale (0 = unknown age)
+        // First load: TF yang sudah CF=YA dari awal → cfActive=false (tidak tahu kapan fire-nya, anggap sudah lewat)
         if (wasEmpty) {
           for (const tf of TF_ROWS) {
             if (!newState[tf]) continue;
             const [, , cf] = newState[tf].split(":");
-            if (cf === "YA") cfFiredAtRef.current[tf] = 0; // stale — tidak tahu kapan fire-nya
+            if (cf === "YA") cfActiveRef.current[tf] = false; // stale — entry window tidak diketahui
           }
         }
 
@@ -594,7 +595,9 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
             const dir = cmpNow === "BULLISH" ? "BUY" : cmpNow === "BEARISH" ? "SELL" : "";
 
             if (prevCF !== "YA" && newCF === "YA") {
-              cfFiredAtRef.current[tf] = Date.now(); // CF baru fire → catat timestamp
+              // CF baru fire: buka entry window + increment counter
+              cfActiveRef.current[tf] = true;
+              cfCountRef.current[tf]  = (cfCountRef.current[tf] ?? 0) + 1;
               // CF just fired — entry signal!
               hasCFChange = true;
               firedEvents.push({ tf, type: "CF", dir });
@@ -645,8 +648,8 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                 void sendTelegramAlert(tgMsg);
               }
             } else if (newCF !== "YA" && prevCF === "YA") {
-              // CF reset (CMP flip atau siklus baru) → hapus timestamp agar tidak muncul stale
-              delete cfFiredAtRef.current[tf];
+              // CF flip balik ke BELUM → tutup entry window (entry hilang, tunggu CF berikutnya)
+              cfActiveRef.current[tf] = false;
             } else if (prevVR !== "YA" && newVR === "YA") {
               // VR just confirmed — waiting for CF
               hasVRChange = true;
@@ -822,15 +825,11 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
     m30vr === "YA" && m30cf === "YA" ? 3  :
     m30vr === "YA"                   ? 2  : 1;
 
-  // CF freshness — M30 CF (= M5 CF di siklus scalp ini)
-  // Stale kalau: timestamp=0 (sudah CF sebelum sync pertama) ATAU lebih dari 20 menit lalu
-  const CF_STALE_MINUTES = 20;
-  const m30CfFiredAt  = cfFiredAtRef.current["M30"] ?? null;
-  const m30CfAgeMin   = m30CfFiredAt !== null && m30CfFiredAt > 0
-    ? Math.floor((Date.now() - m30CfFiredAt) / 60_000)
-    : null;
-  // fresh = baru fire dalam 20 menit terakhir
-  const m30CfFresh    = m30CfFiredAt !== null && m30CfFiredAt > 0 && (m30CfAgeMin ?? 999) < CF_STALE_MINUTES;
+  // CF entry window — state-based (bukan time-based)
+  // cfActive = true HANYA kalau terdeteksi transisi BELUM→YA di session ini
+  // cfActive = false kalau: CF sudah YA sebelum session, atau CF sudah flip balik ke BELUM
+  const m30CfActive  = cfActiveRef.current["M30"]  ?? false;
+  const m30CfCount   = cfCountRef.current["M30"]   ?? 0;
 
   const chainNodes = ["DAILY","H4","H1","M30","M15","M5"].map(id => ({
     id, label: id === "H4" ? "H4 ★" : id === "DAILY" ? "D1" : id,
@@ -1594,9 +1593,9 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                       {/* Connector + CF label */}
                       <div className="flex flex-col items-center justify-center gap-0.5 shrink-0">
                         <span className={cn("font-mono text-base leading-none transition-all",
-                          m30cf === "YA" && m30CfFresh
+                          m30cf === "YA" && m30CfActive
                             ? blinkFast ? "text-amber-300 drop-shadow-[0_0_6px_rgba(245,158,11,0.8)]" : "text-amber-600"
-                            : m30cf === "YA" && !m30CfFresh
+                            : m30cf === "YA" && !m30CfActive
                               ? "text-zinc-600"
                             : m30vr === "YA" ? "text-amber-900" : "text-zinc-700"
                         )}>►</span>
@@ -1606,11 +1605,11 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                       {/* M5 node */}
                       <div className={cn(
                         "flex-1 rounded-lg border px-2 py-2 text-center transition-all duration-100",
-                        m30cf === "YA" && m30CfFresh
+                        m30cf === "YA" && m30CfActive
                           ? blinkFast
                             ? "bg-amber-500/20 border-amber-400 shadow-[0_0_14px_rgba(245,158,11,0.4)]"
                             : "bg-amber-950/40 border-amber-600"
-                          : m30cf === "YA" && !m30CfFresh
+                          : m30cf === "YA" && !m30CfActive
                             ? "bg-zinc-900/60 border-zinc-600"
                           : m30vr === "YA"
                             ? "bg-zinc-900/80 border-amber-900/50"
@@ -1618,15 +1617,17 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                       )}>
                         <div className="text-[9px] font-black font-mono text-cyan-400">M5</div>
                         <div className={cn("text-[11px] font-black font-mono mt-0.5",
-                          m30cf === "YA" && m30CfFresh
+                          m30cf === "YA" && m30CfActive
                             ? blinkFast ? "text-amber-200" : "text-amber-400"
-                            : m30cf === "YA" && !m30CfFresh
+                            : m30cf === "YA" && !m30CfActive
                               ? "text-zinc-500"
                             : m30vr === "YA" ? "text-amber-700 animate-pulse" : "text-zinc-600"
                         )}>
-                          {m30cf === "YA" && m30CfFresh  ? "⚡CF✓"
-                          : m30cf === "YA" && !m30CfFresh ? "CF·STALE"
-                          : m30vr === "YA" ? "WAIT" : "BELUM"}
+                          {m30cf === "YA" && m30CfActive
+                            ? `⚡CF${m30CfCount > 1 ? m30CfCount : ""}✓`
+                            : m30cf === "YA" && !m30CfActive
+                              ? "CF·DONE"
+                              : m30vr === "YA" ? "WAIT" : "BELUM"}
                         </div>
                         <div className="text-[8px] font-mono text-zinc-700 mt-0.5">
                           {m5cmp ? (m5cmp === "BULLISH" ? "▲BUY" : "▼SELL") : "—"}
@@ -1637,8 +1638,8 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                     {/* Phase recommendation */}
                     <div className={cn(
                       "rounded-lg border px-3 py-2 space-y-1",
-                      scalpPhase === 3 && m30CfFresh  ? "bg-amber-950/20 border-amber-700/50"  :
-                      scalpPhase === 3 && !m30CfFresh ? "bg-zinc-900/60 border-zinc-700"        :
+                      scalpPhase === 3 && m30CfActive  ? "bg-amber-950/20 border-amber-700/50"  :
+                      scalpPhase === 3 && !m30CfActive ? "bg-zinc-900/60 border-zinc-700"        :
                       scalpPhase === 2  ? "bg-blue-950/20 border-blue-800/50"    :
                       scalpPhase === -1 ? "bg-red-950/20 border-red-900/50"      :
                       "bg-zinc-900/60 border-zinc-800"
@@ -1681,7 +1682,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                           </div>
                         </>
                       )}
-                      {scalpPhase === 3 && m30CfFresh && (
+                      {scalpPhase === 3 && m30CfActive && (
                         <>
                           <div className={cn("text-[10px] font-black font-mono",
                             blinkFast
@@ -1689,7 +1690,8 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                                             : "text-red-200 drop-shadow-[0_0_8px_rgba(248,113,113,0.8)]"
                               : scalpIsBull ? "text-emerald-400" : "text-red-400"
                           )}>
-                            {blinkFast ? "⚡" : "●"} F3 SCALP ENTRY — {scalpIsBull ? "BUY" : "SELL"} NOW
+                            {blinkFast ? "⚡" : "●"} {scalpIsBull ? "BUY" : "SELL"} ENTRY
+                            {m30CfCount > 0 && <span className="text-[8px] ml-1 opacity-70">CF{m30CfCount}</span>}
                           </div>
                           <div className="grid grid-cols-3 gap-2 pt-1 border-t border-amber-800/40 text-center">
                             <div>
@@ -1708,21 +1710,18 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                           <div className="text-[8px] font-mono text-amber-800 pt-0.5">
                             ★ SL kecil (M5 swing) → aman pakai lot lebih besar dari setup biasa
                           </div>
-                          {m30CfAgeMin !== null && (
-                            <div className="text-[7px] font-mono text-amber-900">CF {m30CfAgeMin}m lalu</div>
-                          )}
                         </>
                       )}
-                      {scalpPhase === 3 && !m30CfFresh && (
+                      {scalpPhase === 3 && !m30CfActive && (
                         <>
                           <div className="text-[10px] font-black font-mono text-zinc-500">
-                            F3 AKTIF · CF STALE
+                            F3 AKTIF · Tunggu CF{m30CfCount > 0 ? ` re-entry (CF${m30CfCount + 1})` : " re-entry"}
                           </div>
                           <div className="text-[8px] font-mono text-zinc-600">
-                            CF lama{m30CfAgeMin !== null ? ` (~${m30CfAgeMin}m lalu)` : " (waktu tidak diketahui)"} — sinyal sudah tidak fresh
+                            CF sebelumnya sudah selesai / flip — CMP masih valid, siklus belum reset
                           </div>
                           <div className="text-[8px] font-mono text-zinc-700 pt-0.5">
-                            Tunggu M5 fresh CF baru untuk re-entry. State F3 tetap valid, siklus belum reset.
+                            Tunggu M5 fresh CF baru untuk entry berikutnya
                           </div>
                         </>
                       )}
