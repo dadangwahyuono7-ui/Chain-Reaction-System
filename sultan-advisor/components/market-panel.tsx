@@ -351,6 +351,16 @@ async function tryBrowserNotify(title: string, body: string) {
   } catch { /* ignore */ }
 }
 
+async function sendTelegramAlert(message: string) {
+  try {
+    await fetch("/api/telegram-alert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+  } catch { /* Telegram offline — non-fatal */ }
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function PanelBox({ title, children, cls = "", extra, scanV = false }: {
@@ -526,6 +536,26 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
               pushAlert(`⚡ CF FIRED — ${tf} ${dir} · PRIME ENTRY`, "cf");
               playBeep("cf");
               void tryBrowserNotify(`⚡ Chain Reaction — ${tf} CF`, `${dir} setup active on ${tf}. Check SL/TP.`);
+              {
+                const price  = byName["HARGA"]?.value || "—";
+                const h4cmp  = byName["H4_CMP"]?.value  || "—";
+                const m30cmp = byName["M30_CMP"]?.value || "—";
+                const sl     = STORYLINE_MAP[tf];
+                const tpKey  = dir === "BUY" ? "TP_ABOVE_1" : "TP_BELOW_1";
+                const tp1    = byName[tpKey]?.value || "—";
+                const tgMsg  = [
+                  `⚡ <b>CF FIRED — ${tf} ${dir}</b>`,
+                  `🏆 PRIME ENTRY SIGNAL`,
+                  ``,
+                  `💰 Harga: <b>${price}</b>`,
+                  `📊 H4: ${h4cmp} · M30: ${m30cmp}`,
+                  sl ? `🎯 Entry di ${sl.tradeTF} · TP: ${tp1}` : `🎯 TP: ${tp1}`,
+                  `⚠️ SL = puncak VR, bukan round number`,
+                  ``,
+                  `<i>Chain Reaction v4.0 OVERLORD</i>`,
+                ].join("\n");
+                void sendTelegramAlert(tgMsg);
+              }
             } else if (prevVR !== "YA" && newVR === "YA") {
               // VR just confirmed — waiting for CF
               hasVRChange = true;
@@ -533,6 +563,23 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
               pushAlert(`VR CONFIRMED — ${tf} ${dir} · Tunggu CF`, "vr");
               playBeep("vr");
               void tryBrowserNotify(`VR Confirmed — ${tf}`, `${dir} VR done on ${tf}. Waiting CF entry.`);
+              {
+                const price  = byName["HARGA"]?.value || "—";
+                const h4cmp  = byName["H4_CMP"]?.value  || "—";
+                const sl     = STORYLINE_MAP[tf];
+                const tgMsg  = [
+                  `📡 <b>VR CONFIRMED — ${tf} ${dir}</b>`,
+                  `⏳ TUNGGU CF ENTRY`,
+                  ``,
+                  `💰 Harga: <b>${price}</b>`,
+                  `📊 H4: ${h4cmp}`,
+                  sl ? `⚡ Tunggu CF di ${sl.cfLow}` : `⚡ Tunggu CF`,
+                  `🚫 JANGAN entry sekarang — ini fase menunggu`,
+                  ``,
+                  `<i>Chain Reaction v4.0 OVERLORD</i>`,
+                ].join("\n");
+                void sendTelegramAlert(tgMsg);
+              }
             }
           }
         }
