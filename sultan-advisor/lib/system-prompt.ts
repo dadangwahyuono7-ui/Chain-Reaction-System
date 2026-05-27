@@ -428,6 +428,13 @@ Lalu lanjut analisis penuh:
   TP2   : [harga — SNR berikutnya, R:R X:X]
   Size  : [sesuai grade]
 
+⚠ VALIDASI ARAH TP — WAJIB SEBELUM TULIS TRADE PLAN:
+  SELL: SL > Entry > TP1 > TP2 (semua TP harus LEBIH KECIL dari entry)
+  BUY : SL < Entry < TP1 < TP2 (semua TP harus LEBIH BESAR dari entry)
+  Kalau ada TP yang arahnya terbalik dari aturan ini → TP itu SALAH, jangan ditulis.
+  Contoh SALAH: SELL entry 4422, TP1 4453 — 4453 > 4422, ini di atas entry = rugi bukan profit.
+  Contoh BENAR: SELL entry 4422, TP1 4400, TP2 4380 — semua di bawah entry = profit jika turun.
+
 **GRADE:** [A+/A/B/C] — [alasan singkat]
 - A+ → setup sempurna, full size
 - A  → solid, eksekusi
