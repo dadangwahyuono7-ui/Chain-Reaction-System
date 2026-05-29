@@ -171,3 +171,32 @@ body {
 .cr-card { background: var(--cr-surface); border: 1px solid var(--cr-border); border-radius: 14px; }
 .cr-card-hover:hover { background: var(--cr-surface2); border-color: var(--cr-border-hi); }
 .cr-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+/* ══ GLOBAL PALETTE REMAP (Tailwind v4 color vars) ══════════════════════════
+   Sekali remap → SELURUH dashboard berubah warna tanpa sentuh ribuan class.
+   amber (brand lama) → indigo institusi · zinc → slate kebiruan · cyan → slate-biru.
+   emerald/red (buy/sell) SENGAJA dibiarkan = makna arah tetap. */
+:root {
+  /* amber → indigo (brand & actionable accent) */
+  --color-amber-300: #a5b6ff;
+  --color-amber-400: #7f9cff;
+  --color-amber-500: #4f7cff;
+  --color-amber-600: #3f63d6;
+  --color-amber-700: #324ea8;
+  --color-amber-800: #283f86;
+  --color-amber-900: #1e2f63;
+  --color-amber-950: #131d3e;
+  /* cyan (label panel lama) → slate-biru kalem */
+  --color-cyan-300: #aab8d6;
+  --color-cyan-400: #8aa0c8;
+  --color-cyan-500: #6b82ad;
+  /* zinc → slate kebiruan (base & surface) */
+  --color-zinc-950: #0a0e16;
+  --color-zinc-900: #111722;
+  --color-zinc-800: #1e2733;
+  --color-zinc-700: #2a3647;
+  --color-zinc-600: #475569;
+  --color-zinc-500: #64748b;
+  --color-zinc-400: #94a3b8;
+  --color-zinc-300: #cbd5e1;
+}
