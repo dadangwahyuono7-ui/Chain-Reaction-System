@@ -222,6 +222,92 @@ function ChainRail({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
   );
 }
 
+// ── SEQUENCE per CMP (CMP → VR → CF) — eksplisit tiap timeframe ───────────────
+function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
+  const rows = TF_ORDER.map(tf => tfData.find(d => d.tf === tf)).filter(d => d && d.cmp) as TFRow[];
+  if (rows.length === 0)
+    return <div className="px-4 pb-4 text-[11px] text-slate-500">Belum ada CMP aktif. Sync TradingView.</div>;
+
+  const Step = ({ label, done, active, tone, sub }: {
+    label: string; done: boolean; active?: boolean; tone: string; sub?: string;
+  }) => (
+    <div className="flex flex-col items-center gap-1 shrink-0">
+      <div className={cn(
+        "w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition-all",
+        active
+          ? "border-amber-400 bg-amber-400/15 text-amber-300"
+          : done
+            ? tone === "emerald" ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
+              : tone === "rose" ? "border-rose-500 bg-rose-500/15 text-rose-300"
+              : "border-indigo-500 bg-indigo-500/15 text-indigo-300"
+            : "border-slate-700 bg-slate-800/40 text-slate-600"
+      )}>
+        {done || active ? "✓" : "○"}
+      </div>
+      <span className={cn("text-[8.5px] font-semibold tracking-wide",
+        done || active ? "text-slate-300" : "text-slate-600")}>{label}</span>
+      {sub && <span className="text-[8px] text-slate-500 tabular-nums leading-none">{sub}</span>}
+    </div>
+  );
+
+  const Conn = ({ on, tone }: { on: boolean; tone: string }) => (
+    <div className="flex-1 h-[2px] mx-1 mt-[-14px] rounded-full"
+      style={{ background: on ? (tone === "emerald" ? "#10b981" : tone === "rose" ? "#f43f5e" : "#4f7cff") : "#1e293b" }} />
+  );
+
+  return (
+    <div className="px-3 pb-3 space-y-1.5">
+      {rows.map(d => {
+        const tone = dirColor(d.cmp);
+        const vrDone = d.vr === "YA";
+        const cfDone = d.cf === "YA";
+        const aligned = d.cmp === h4Dir;
+        const isMaster = d.tf === "H4";
+        const faseLabel = d.fase === 3 ? "ENTRY" : d.fase === 2 ? "tunggu CF" : "tunggu VR";
+        return (
+          <div key={d.tf} className={cn(
+            "rounded-xl border px-3 py-2.5 flex items-center gap-3",
+            d.fase === 3 && aligned ? "border-amber-500/40 bg-amber-500/[0.04]"
+              : isMaster ? "border-indigo-500/30 bg-slate-900/40"
+              : "border-slate-800/70 bg-slate-900/40"
+          )}>
+            {/* TF + arah */}
+            <div className="w-16 shrink-0">
+              <div className="flex items-center gap-1">
+                <span className={cn("text-[12px] font-bold", isMaster ? "text-indigo-300" : "text-slate-200")}>{TF_SHORT[d.tf]}</span>
+                {isMaster && <span className="text-[8px] text-indigo-400">★</span>}
+              </div>
+              <div className={cn("text-[11px] font-bold",
+                tone === "emerald" ? "text-emerald-400" : tone === "rose" ? "text-rose-400" : "text-slate-500")}>
+                {dirWord(d.cmp)}
+              </div>
+            </div>
+            {/* sequence stepper */}
+            <div className="flex-1 flex items-start min-w-0">
+              <Step label="CMP" done tone={tone} />
+              <Conn on={vrDone || cfDone} tone={tone} />
+              <Step label="VR" done={vrDone} tone={tone} />
+              <Conn on={cfDone} tone={tone} />
+              <Step label="CF" done={cfDone && d.fase !== 3} active={cfDone && d.fase === 3} tone={tone}
+                sub={d.cfCount > 0 ? `×${d.cfCount}${d.cfType ? " " + d.cfType : ""}` : undefined} />
+            </div>
+            {/* status */}
+            <div className="w-20 shrink-0 text-right">
+              <div className={cn("text-[10px] font-semibold",
+                d.fase === 3 ? "text-amber-300" : d.fase === 2 ? "text-indigo-300" : "text-slate-400")}>
+                {faseLabel}
+              </div>
+              <div className={cn("text-[8.5px]", aligned ? "text-emerald-500/80" : "text-amber-500/80")}>
+                {aligned ? "selaras H4" : "lawan H4"}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── SNR PRICE LADDER ─────────────────────────────────────────────────────────
 function SnrLadder({ aboveLevels, belowLevels, atLevel, cmpFloat, displayPrice, livePrice }: {
   aboveLevels: Lvl[]; belowLevels: Lvl[]; atLevel: Lvl[]; cmpFloat: number;
@@ -505,6 +591,12 @@ export function DashboardPro(p: DashboardProProps) {
       {/* ══ CHAIN RAIL ═════════════════════════════════════════════════════ */}
       <Card title="Chain Reaction" icon={<LayersIcon className="w-3.5 h-3.5" />}>
         <ChainRail tfData={p.tfData} h4Dir={p.h4Dir} />
+      </Card>
+
+      {/* ══ SEQUENCE per CMP (CMP → VR → CF) ═══════════════════════════════ */}
+      <Card title="Sequence per CMP — CMP → VR → CF" icon={<ZapIcon className="w-3.5 h-3.5" />}
+        right={<span className="text-[9.5px] text-slate-500">tiap timeframe</span>}>
+        <SequenceList tfData={p.tfData} h4Dir={p.h4Dir} />
       </Card>
 
       {/* ══ 3-UP GRID ══════════════════════════════════════════════════════ */}
