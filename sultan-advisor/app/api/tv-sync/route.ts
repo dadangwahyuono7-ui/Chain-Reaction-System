@@ -49,7 +49,8 @@ export async function POST() {
     return Response.json({ success: false, error: result.error });
   }
 
-  // Upsert each context variable
+  // Upsert each context variable — auto-insert kalau key belum ada di DB
+  // (untuk v4 vars seperti M30_CF_COUNT, M30_CF_TYPE yang baru)
   const existing = await db.select().from(marketContext);
   const byName = new Map(existing.map(r => [r.variableName, r]));
 
@@ -61,8 +62,18 @@ export async function POST() {
         .update(marketContext)
         .set({ value: String(value) })
         .where(eq(marketContext.variableName, key));
+    } else {
+      // Auto-derive label dari key untuk vars baru
+      const label = key.endsWith('_CF_COUNT') ? `${key.replace('_CF_COUNT','')} CF Count`
+                  : key.endsWith('_CF_TYPE')  ? `${key.replace('_CF_TYPE','')} CF Type`
+                  : key;
+      await db.insert(marketContext).values({
+        id: crypto.randomUUID(),
+        variableName: key,
+        label,
+        value: String(value),
+      });
     }
-    // Skip unknown keys — panel only shows seeded vars
   }
 
   // Return updated context

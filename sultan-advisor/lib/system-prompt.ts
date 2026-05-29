@@ -14,21 +14,30 @@ export const DEFAULT_MARKET_CONTEXT: MarketContext = {
   H4_CMP:  { label: "H4 CMP",  value: "" },
   H4_VR:   { label: "H4 VR",   value: "" },
   H4_CF:   { label: "H4 CF",   value: "" },
+  H4_CF_COUNT: { label: "H4 CF Count", value: "" },
+  H4_CF_TYPE:  { label: "H4 CF Type",  value: "" },
   H1_CMP:  { label: "H1 CMP",  value: "" },
   H1_VR:   { label: "H1 VR",   value: "" },
   H1_CF:   { label: "H1 CF",   value: "" },
+  H1_CF_COUNT: { label: "H1 CF Count", value: "" },
+  H1_CF_TYPE:  { label: "H1 CF Type",  value: "" },
   M30_CMP: { label: "M30 CMP", value: "" },
   M30_VR:  { label: "M30 VR",  value: "" },
   M30_CF:  { label: "M30 CF",  value: "" },
+  M30_CF_COUNT: { label: "M30 CF Count", value: "" },
+  M30_CF_TYPE:  { label: "M30 CF Type",  value: "" },
   M15_CMP: { label: "M15 CMP", value: "" },
   M15_VR:  { label: "M15 VR",  value: "" },
   M15_CF:  { label: "M15 CF",  value: "" },
+  M15_CF_COUNT: { label: "M15 CF Count", value: "" },
+  M15_CF_TYPE:  { label: "M15 CF Type",  value: "" },
   M5_CMP:  { label: "M5 CMP",  value: "" },
   M5_VR:   { label: "M5 VR",   value: "" },
   M5_CF:   { label: "M5 CF",   value: "" },
-  M1_CMP:  { label: "M1 CMP",  value: "" },
-  M1_VR:   { label: "M1 VR",   value: "" },
-  M1_CF:   { label: "M1 CF",   value: "" },
+  M5_CF_COUNT: { label: "M5 CF Count", value: "" },
+  M5_CF_TYPE:  { label: "M5 CF Type",  value: "" },
+  DAILY_CF_COUNT: { label: "Daily CF Count", value: "" },
+  DAILY_CF_TYPE:  { label: "Daily CF Type",  value: "" },
   // ── Harga & Market ────────────────────────────────────────────────────────
   HARGA:        { label: "Harga Sekarang",        value: "" },
   SPREAD:       { label: "Spread",                value: "" },
@@ -77,15 +86,20 @@ export function buildSystemPrompt(ctx: MarketContext): string {
     const cmp = get(`${tf}_CMP`);
     const vr  = get(`${tf}_VR`);
     const cf  = get(`${tf}_CF`);
+    const cfCount = parseInt(get(`${tf}_CF_COUNT`) || "0", 10) || 0;
+    const cfType  = get(`${tf}_CF_TYPE`);
     if (!cmp) return null;
     const fase = (vr === "YA" && cf === "YA") ? "F3⚡PRIME"
                : vr === "YA"                  ? "F2"
                :                                "F1";
     const dir  = cmp === "BULLISH" ? "BUY ▲" : cmp === "BEARISH" ? "SELL ▼" : cmp;
     const vrS  = vr  || "—";
-    const cfS  = cf  || "—";
+    // CF: kalau aktif tampil "CF#2 LOW", kalau flip tapi pernah CF tampil "flip(2)", kalau belum "—"
+    const cfS  = cf === "YA"
+      ? `CF#${cfCount}${cfType ? " " + cfType : ""}`
+      : cfCount > 0 ? `flip(${cfCount})` : "—";
     const mark = tf === "H4" ? "★" : " ";
-    return `${tf.padEnd(6)}${mark}| ${dir.padEnd(8)}| VR:${vrS.padEnd(6)}| CF:${cfS.padEnd(6)}| ${fase}`;
+    return `${tf.padEnd(6)}${mark}| ${dir.padEnd(8)}| VR:${vrS.padEnd(6)}| CF:${cfS.padEnd(11)}| ${fase}`;
   }).filter(Boolean);
 
   // ── SNR / price section ───────────────────────────────────────────────────
@@ -124,6 +138,13 @@ ATURAN WAJIB BACA STATE DI ATAS:
 • CMP=BEARISH → arah trade SAAT INI di TF tersebut adalah SELL.
 • Setiap TF bisa berbeda arah. Baca per-baris, jangan asumsi semua sama.
 • F3 = siklus lengkap (VR+CF sudah) = PRIME ENTRY. F2 = nunggu CF. F1 = nunggu VR.
+
+CARA BACA KOLOM CF (indikator v4 — CF bisa berkali-kali):
+• "CF#2 LOW" = CF sedang AKTIF, ini CF ke-2 di siklus CMP ini, tipe LOW (aman). ENTRY VALID sekarang.
+• "CF#1 HIGH" = CF aktif, CF pertama, tipe HIGH (lebih awal, lebih risiko).
+• "flip(2)" = CF udah pernah fire 2x tapi SEKARANG sudah flip balik (sub-TF reverse). JANGAN entry — tunggu CF#3 fire lagi. CMP masih valid.
+• "—" = belum ada CF sama sekali (masih F1/F2).
+DOKTRIN: 1 CMP = 1 VR (sekali), tapi CF bisa berkali-kali. Angka #N = sudah berapa kali CF fire. Kalau status "flip", entry HILANG sampai CF baru muncul. M5 = CF terkecil (M1 tidak dipakai).
 ${hasSNR ? `\nFUNDAMENTAL SNR & HARGA:\n${snrLines.join("\n")}` : ""}`
     : "Belum ada data market. Minta Commander Dadang sync dari TradingView.";
 

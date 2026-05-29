@@ -479,8 +479,6 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   type Alert = { id: string; text: string; level: "vr" | "cf" };
   const [cfAlerts,        setCfAlerts]    = useState<Alert[]>([]);
   const prevTFStateRef    = useRef<Record<string, string>>({});  // delta detection
-  const cfActiveRef       = useRef<Record<string, boolean>>({});  // apakah CF sedang dalam window entry (BELUM→YA terdeteksi session ini)
-  const cfCountRef        = useRef<Record<string, number>>({});   // berapa kali CF sudah fire per TF (CF1, CF2, CF3...)
   const alertDismissRef   = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const hasMountedRef     = useRef(false);
   const [editing,     setEditing]     = useState<string | null>(null);
@@ -578,15 +576,6 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         let hasVRChange = false;
         const firedEvents: FiredEvent[] = [];
 
-        // First load: TF yang sudah CF=YA dari awal → cfActive=false (tidak tahu kapan fire-nya, anggap sudah lewat)
-        if (wasEmpty) {
-          for (const tf of TF_ROWS) {
-            if (!newState[tf]) continue;
-            const [, , cf] = newState[tf].split(":");
-            if (cf === "YA") cfActiveRef.current[tf] = false; // stale — entry window tidak diketahui
-          }
-        }
-
         if (!wasEmpty) {
           for (const tf of TF_ROWS) {
             if (!newState[tf] || !prev[tf]) continue;
@@ -595,10 +584,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
             const dir = cmpNow === "BULLISH" ? "BUY" : cmpNow === "BEARISH" ? "SELL" : "";
 
             if (prevCF !== "YA" && newCF === "YA") {
-              // CF baru fire: buka entry window + increment counter
-              cfActiveRef.current[tf] = true;
-              cfCountRef.current[tf]  = (cfCountRef.current[tf] ?? 0) + 1;
-              // CF just fired — entry signal!
+              // CF just fired — entry signal! (count diambil dari indikator v4)
               hasCFChange = true;
               firedEvents.push({ tf, type: "CF", dir });
               pushAlert(`⚡ CF FIRED — ${tf} ${dir} · PRIME ENTRY`, "cf");
@@ -647,9 +633,6 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                     ].join("\n");
                 void sendTelegramAlert(tgMsg);
               }
-            } else if (newCF !== "YA" && prevCF === "YA") {
-              // CF flip balik ke BELUM → tutup entry window (entry hilang, tunggu CF berikutnya)
-              cfActiveRef.current[tf] = false;
             } else if (prevVR !== "YA" && newVR === "YA") {
               // VR just confirmed — waiting for CF
               hasVRChange = true;
@@ -791,6 +774,8 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
     tf, cmp: byName[`${tf}_CMP`]?.value || "",
     vr: byName[`${tf}_VR`]?.value  || "",
     cf: byName[`${tf}_CF`]?.value  || "",
+    cfCount: parseInt(byName[`${tf}_CF_COUNT`]?.value || "0", 10) || 0,
+    cfType:  byName[`${tf}_CF_TYPE`]?.value || "",
     get fase() { return this.cmp ? getFase(this.vr, this.cf) : 0 as 0|1|2|3; },
     sl: STORYLINE_MAP[tf],
   }));
@@ -828,15 +813,12 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
     m30vr === "YA" && m30cf === "YA" ? 3  :
     m30vr === "YA"                   ? 2  : 1;
 
-  // CF entry window — state-based (bukan time-based)
-  // cfActive = true HANYA kalau terdeteksi transisi BELUM→YA di session ini
-  // cfActive = false kalau: CF sudah YA sebelum session, atau CF sudah flip balik ke BELUM
-  const m30CfActive  = cfActiveRef.current["M30"]  ?? false;
-  const m30CfCount   = cfCountRef.current["M30"]   ?? 0;
-
-  // M5 harus searah M30 CMP untuk entry valid (bukan H4/H1)
-  // Kalau M5 CMP sudah berlawanan M30 → CF untuk M30 sudah selesai/reversed
-  const m5AlignsScalp = !m5cmp || m5cmp === m30cmp;
+  // CF status — AUTORITATIF dari indikator v4 (bukan tracking sendiri di dashboard)
+  // Indikator v4 sudah handle: CF flip → M30_CF jadi BELUM otomatis, CF count naik per siklus
+  // m30CfActive cuma cerminan langsung M30_CF dari TV
+  const m30CfActive  = m30cf === "YA";
+  const m30CfCount   = m30d?.cfCount || 0;
+  const m30CfType    = m30d?.cfType  || "";
 
   const chainNodes = ["DAILY","H4","H1","M30","M15","M5"].map(id => ({
     id, label: id === "H4" ? "H4 ★" : id === "DAILY" ? "D1" : id,
@@ -1388,7 +1370,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                   </tr>
                 </thead>
                 <tbody>
-                  {tfData.filter(d => !!d.cmp).map(({ tf, cmp, vr, cf, fase, sl }) => {
+                  {tfData.filter(d => !!d.cmp).map(({ tf, cmp, vr, cf, cfCount, cfType, fase, sl }) => {
                     const isMaster = tf === "H4";
                     const isBull   = cmp === "BULLISH";
                     const isBear   = cmp === "BEARISH";
@@ -1414,8 +1396,8 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                         </td>
                         <td className="px-2 py-1 text-center">
                           {cf === "YA"
-                            ? <span className={cn("font-black text-emerald-400", blink && "drop-shadow-[0_0_4px_rgba(52,211,153,0.8)]")}>{blink ? "◉" : "●"}CF✓</span>
-                            : <span className="text-zinc-600">{sl?.cfLow || "—"}{sl?.cfHigh ? `/${sl.cfHigh}` : ""}</span>}
+                            ? <span className={cn("font-black text-emerald-400", blink && "drop-shadow-[0_0_4px_rgba(52,211,153,0.8)]")}>{blink ? "◉" : "●"}CF{cfCount > 0 ? ` #${cfCount}` : "✓"}{cfType ? <span className="text-[8px] text-emerald-600 ml-0.5">{cfType}</span> : null}</span>
+                            : <span className="text-zinc-600">{cfCount > 0 ? <span className="text-amber-700">flip · tunggu #{cfCount + 1}</span> : <>{sl?.cfLow || "—"}{sl?.cfHigh ? `/${sl.cfHigh}` : ""}</>}</span>}
                         </td>
                         <td className="px-3 py-1">
                           {fase === 3
@@ -1600,45 +1582,33 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                       {/* Connector + CF label */}
                       <div className="flex flex-col items-center justify-center gap-0.5 shrink-0">
                         <span className={cn("font-mono text-base leading-none transition-all",
-                          m30cf === "YA" && m30CfActive
+                          m30CfActive
                             ? blinkFast ? "text-amber-300 drop-shadow-[0_0_6px_rgba(245,158,11,0.8)]" : "text-amber-600"
-                            : m30cf === "YA" && !m30CfActive
-                              ? "text-zinc-600"
                             : m30vr === "YA" ? "text-amber-900" : "text-zinc-700"
                         )}>►</span>
                         <span className="text-[7px] font-mono text-zinc-700 tracking-widest">CF</span>
                       </div>
 
-                      {/* M5 node */}
+                      {/* M5 node — CF status autoritatif dari indikator (flip → M30_CF jadi BELUM otomatis) */}
                       <div className={cn(
                         "flex-1 rounded-lg border px-2 py-2 text-center transition-all duration-100",
-                        m30cf === "YA" && m30CfActive
+                        m30CfActive
                           ? blinkFast
                             ? "bg-amber-500/20 border-amber-400 shadow-[0_0_14px_rgba(245,158,11,0.4)]"
                             : "bg-amber-950/40 border-amber-600"
-                          : m30cf === "YA" && !m30CfActive
-                            ? "bg-zinc-900/60 border-zinc-600"
                           : m30vr === "YA"
                             ? "bg-zinc-900/80 border-amber-900/50"
                             : "bg-zinc-900/60 border-zinc-700"
                       )}>
                         <div className="text-[9px] font-black font-mono text-cyan-400">M5</div>
                         <div className={cn("text-[11px] font-black font-mono mt-0.5",
-                          m30cf === "YA" && m30CfActive && m5AlignsScalp
+                          m30CfActive
                             ? blinkFast ? "text-amber-200" : "text-amber-400"
-                            : m30cf === "YA" && m30CfActive && !m5AlignsScalp
-                              ? "text-orange-500"
-                            : m30cf === "YA" && !m30CfActive
-                              ? "text-zinc-500"
                             : m30vr === "YA" ? "text-amber-700 animate-pulse" : "text-zinc-600"
                         )}>
-                          {m30cf === "YA" && m30CfActive && m5AlignsScalp
-                            ? `⚡CF${m30CfCount > 1 ? m30CfCount : ""}✓`
-                            : m30cf === "YA" && m30CfActive && !m5AlignsScalp
-                              ? "⚠FLIP"
-                              : m30cf === "YA" && !m30CfActive
-                                ? "CF·DONE"
-                                : m30vr === "YA" ? "WAIT" : "BELUM"}
+                          {m30CfActive
+                            ? `⚡CF${m30CfCount > 0 ? m30CfCount : ""}✓`
+                            : m30vr === "YA" ? "WAIT" : "BELUM"}
                         </div>
                         <div className="text-[8px] font-mono text-zinc-700 mt-0.5">
                           {m5cmp ? (m5cmp === "BULLISH" ? "▲BUY" : "▼SELL") : "—"}
@@ -1649,8 +1619,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                     {/* Phase recommendation */}
                     <div className={cn(
                       "rounded-lg border px-3 py-2 space-y-1",
-                      scalpPhase === 3 && m30CfActive  ? "bg-amber-950/20 border-amber-700/50"  :
-                      scalpPhase === 3 && !m30CfActive ? "bg-zinc-900/60 border-zinc-700"        :
+                      scalpPhase === 3  ? "bg-amber-950/20 border-amber-700/50"  :
                       scalpPhase === 2  ? "bg-blue-950/20 border-blue-800/50"    :
                       scalpPhase === -1 ? "bg-red-950/20 border-red-900/50"      :
                       "bg-zinc-900/60 border-zinc-800"
@@ -1681,10 +1650,14 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                       {scalpPhase === 2 && (
                         <>
                           <div className={cn("text-[10px] font-black font-mono text-blue-300", blink && "drop-shadow-[0_0_6px_rgba(96,165,250,0.5)]")}>
-                            F2 · VR ✓ — Tunggu M5 CF untuk entry
+                            {m30CfCount > 0
+                              ? `F2 · CF #${m30CfCount} flip — Tunggu CF #${m30CfCount + 1}`
+                              : "F2 · VR ✓ — Tunggu M5 CF untuk entry"}
                           </div>
                           <div className="text-[8px] font-mono text-blue-700">
-                            M5 break {m30IsBull ? "▲ BULLISH" : "▼ BEARISH"} = CF = MASUK SCALP
+                            {m30CfCount > 0
+                              ? `CF #${m30CfCount} sudah selesai/flip — CMP masih valid, tunggu M5 balik searah`
+                              : `M5 break ${m30IsBull ? "▲ BULLISH" : "▼ BEARISH"} = CF = MASUK SCALP`}
                           </div>
                           <div className="flex gap-4 pt-1 border-t border-blue-900/40 text-[8px] font-mono text-zinc-600">
                             <span>Entry: M5 CF</span>
@@ -1693,7 +1666,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                           </div>
                         </>
                       )}
-                      {scalpPhase === 3 && m30CfActive && m5AlignsScalp && (
+                      {scalpPhase === 3 && m30CfActive && (
                         <>
                           <div className={cn("text-[10px] font-black font-mono",
                             blinkFast
@@ -1702,7 +1675,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                               : m30IsBull ? "text-emerald-400" : "text-red-400"
                           )}>
                             {blinkFast ? "⚡" : "●"} {m30IsBull ? "BUY" : "SELL"} ENTRY
-                            {m30CfCount > 0 && <span className="text-[8px] ml-1 opacity-70">CF{m30CfCount}</span>}
+                            {m30CfCount > 0 && <span className="text-[8px] ml-1 opacity-70">CF #{m30CfCount}{m30CfType ? ` ${m30CfType}` : ""}</span>}
                           </div>
                           <div className="grid grid-cols-3 gap-2 pt-1 border-t border-amber-800/40 text-center">
                             <div>
@@ -1720,32 +1693,6 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                           </div>
                           <div className="text-[8px] font-mono text-amber-800 pt-0.5">
                             ★ SL kecil (M5 swing) → aman pakai lot lebih besar dari setup biasa
-                          </div>
-                        </>
-                      )}
-                      {scalpPhase === 3 && m30CfActive && !m5AlignsScalp && (
-                        <>
-                          <div className="text-[10px] font-black font-mono text-orange-500">
-                            ⚠ M5 BERLAWANAN — CF sudah flip
-                          </div>
-                          <div className="text-[8px] font-mono text-orange-800">
-                            M5 CMP {m5cmp === "BULLISH" ? "BUY" : "SELL"} ≠ arah M30 {m30IsBull ? "BUY" : "SELL"} → CF selesai, jangan entry
-                          </div>
-                          <div className="text-[8px] font-mono text-zinc-700 pt-0.5">
-                            Tunggu M5 balik searah dulu sebelum entry
-                          </div>
-                        </>
-                      )}
-                      {scalpPhase === 3 && !m30CfActive && (
-                        <>
-                          <div className="text-[10px] font-black font-mono text-zinc-500">
-                            F3 AKTIF · Tunggu CF{m30CfCount > 0 ? ` re-entry (CF${m30CfCount + 1})` : " re-entry"}
-                          </div>
-                          <div className="text-[8px] font-mono text-zinc-600">
-                            CF sebelumnya sudah selesai / flip — CMP masih valid, siklus belum reset
-                          </div>
-                          <div className="text-[8px] font-mono text-zinc-700 pt-0.5">
-                            Tunggu M5 fresh CF baru untuk entry berikutnya
                           </div>
                         </>
                       )}

@@ -17,7 +17,7 @@ function normalizeTF(raw) {
   if (s.startsWith('M30')) return 'M30';
   if (s.startsWith('M15')) return 'M15';
   if (s.startsWith('M5'))  return 'M5';
-  if (s.startsWith('M1'))  return 'M1';
+  // M1 dihapus di v4 — tidak dipakai sebagai VR/CF source
   return null;
 }
 
@@ -28,13 +28,40 @@ function cmpToValue(raw) {
   return '';
 }
 
+/**
+ * Parse action column dari indikator DD CMP Marker v4.
+ * Format v4:
+ *   "MENUNGGU VR"            → vr=BELUM, cf=BELUM, count=0
+ *   "MENUNGGU CF"            → vr=YA, cf=BELUM, count=0  (CF belum pernah)
+ *   "MENUNGGU CF #2"         → vr=YA, cf=BELUM, count=1  (CF #1 udah flip, nunggu #2)
+ *   "ENTRI ⚡ HIGH #1"       → vr=YA, cf=YA, count=1, type=HIGH
+ *   "ENTRI ✅ LOW #3"        → vr=YA, cf=YA, count=3, type=LOW
+ * Format v3 (backward compat):
+ *   "ENTRI ⚡ HIGH"          → vr=YA, cf=YA, count=0, type=HIGH
+ *   "MENUNGGU CF"            → vr=YA, cf=BELUM
+ */
 function actionToVRCF(raw) {
   const s = (raw || '').toUpperCase();
-  if (s.includes('ENTRI'))        return { vr: 'YA',    cf: 'YA'    };
-  if (s.includes('MENUNGGU CF'))  return { vr: 'YA',    cf: 'BELUM' };
-  if (s.includes('MENUNGGU VR'))  return { vr: 'BELUM', cf: 'BELUM' };
-  if (s.includes('MONITOR'))      return { vr: 'BELUM', cf: 'BELUM' };
-  return { vr: '', cf: '' };
+
+  // Extract count from #N pattern (v4)
+  const cntMatch = s.match(/#(\d+)/);
+  const nFromAction = cntMatch ? parseInt(cntMatch[1], 10) : 0;
+
+  // Extract type
+  const type = s.includes('HIGH') ? 'HIGH' : s.includes('LOW') ? 'LOW' : '';
+
+  if (s.includes('ENTRI')) {
+    // ENTRI artinya CF aktif, #N adalah cfCount sekarang
+    return { vr: 'YA', cf: 'YA', count: String(nFromAction), type };
+  }
+  if (s.includes('MENUNGGU CF')) {
+    // MENUNGGU CF #N artinya nunggu CF ke-N (cfCount sekarang = N-1)
+    const cnt = nFromAction > 0 ? nFromAction - 1 : 0;
+    return { vr: 'YA', cf: 'BELUM', count: String(cnt), type: '' };
+  }
+  if (s.includes('MENUNGGU VR')) return { vr: 'BELUM', cf: 'BELUM', count: '0', type: '' };
+  if (s.includes('MONITOR'))     return { vr: 'BELUM', cf: 'BELUM', count: '0', type: '' };
+  return { vr: '', cf: '', count: '', type: '' };
 }
 
 function detectSession() {
@@ -138,21 +165,25 @@ async function main() {
       }
     }
 
-    // Build context vars
-    const TF_KEYS = ['DAILY', 'H4', 'H1', 'M30', 'M15', 'M5', 'M1'];
+    // Build context vars (M1 dihapus di v4)
+    const TF_KEYS = ['DAILY', 'H4', 'H1', 'M30', 'M15', 'M5'];
     const ctx = {};
 
     for (const tf of TF_KEYS) {
       const s = rawState[tf];
       if (!s || !s.cmp) {
-        ctx[`${tf}_CMP`] = '';
-        ctx[`${tf}_VR`]  = '';
-        ctx[`${tf}_CF`]  = '';
+        ctx[`${tf}_CMP`]      = '';
+        ctx[`${tf}_VR`]       = '';
+        ctx[`${tf}_CF`]       = '';
+        ctx[`${tf}_CF_COUNT`] = '';
+        ctx[`${tf}_CF_TYPE`]  = '';
       } else {
-        const { vr, cf } = actionToVRCF(s.action);
-        ctx[`${tf}_CMP`] = cmpToValue(s.cmp);
-        ctx[`${tf}_VR`]  = vr;
-        ctx[`${tf}_CF`]  = cf;
+        const { vr, cf, count, type } = actionToVRCF(s.action);
+        ctx[`${tf}_CMP`]      = cmpToValue(s.cmp);
+        ctx[`${tf}_VR`]       = vr;
+        ctx[`${tf}_CF`]       = cf;
+        ctx[`${tf}_CF_COUNT`] = count;
+        ctx[`${tf}_CF_TYPE`]  = type;
       }
     }
 
