@@ -196,10 +196,19 @@ export function TeamChat() {
             startWithAudioMuted: false,
             prejoinPageEnabled: false,
             disableDeepLinking: true,
+            // Tombol toolbar — 'desktop' = SHARE SCREEN (eksplisit biar selalu kelihatan)
+            toolbarButtons: [
+              "microphone", "camera", "desktop", "tileview", "chat",
+              "raisehand", "fullscreen", "settings", "videoquality", "hangup",
+            ],
           },
           interfaceConfigOverwrite: {
             MOBILE_APP_PROMO: false,
             SHOW_JITSI_WATERMARK: false,
+            TOOLBAR_BUTTONS: [
+              "microphone", "camera", "desktop", "tileview", "chat",
+              "raisehand", "fullscreen", "settings", "videoquality", "hangup",
+            ],
           },
         });
         jitsiApiRef.current.addEventListener("readyToClose", () => setMeetingOpen(false));
