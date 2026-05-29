@@ -62,6 +62,14 @@ export const messages = sqliteTable("messages", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(new Date()),
 });
 
+export const teamMessages = sqliteTable("team_messages", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  userName: text("user_name").notNull(),
+  text: text("text").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(new Date()),
+});
+
 export const marketContext = sqliteTable("market_context", {
   id: text("id").primaryKey(),
   variableName: text("variable_name").notNull().unique(),

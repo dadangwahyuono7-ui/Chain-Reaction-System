@@ -8,6 +8,7 @@ import { SessionSidebar } from "@/components/session-sidebar";
 import { MarketPanel } from "@/components/market-panel";
 import { StatusBar } from "@/components/status-bar";
 import { LogoSidebar } from "@/components/logo";
+import { TeamChat } from "@/components/team-chat";
 import { LogOutIcon, PanelLeftIcon, ZapIcon, PlusIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -190,6 +191,9 @@ export default function DashboardPage() {
           />
         </div>
       </div>
+
+      {/* ── Team Chat + Voice Meeting (floating) ──────────────────────── */}
+      <TeamChat />
 
     </div>
   );
