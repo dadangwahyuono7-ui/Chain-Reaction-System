@@ -5,6 +5,7 @@ export type ChatMessage = {
   userId: string;
   userName: string;
   text: string;
+  imageUrl?: string | null;
   createdAt: number; // epoch ms
 };
 

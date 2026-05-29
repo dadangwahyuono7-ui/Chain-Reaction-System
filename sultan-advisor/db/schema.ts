@@ -66,7 +66,8 @@ export const teamMessages = sqliteTable("team_messages", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
   userName: text("user_name").notNull(),
-  text: text("text").notNull(),
+  text: text("text").notNull().default(""),
+  imageUrl: text("image_url"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(new Date()),
 });
 

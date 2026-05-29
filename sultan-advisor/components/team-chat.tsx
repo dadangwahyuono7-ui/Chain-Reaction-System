@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useSession } from "@/lib/auth-client";
-import { MessagesSquareIcon, SendIcon, XIcon, VideoIcon, UsersIcon, MicIcon } from "lucide-react";
+import { MessagesSquareIcon, SendIcon, XIcon, VideoIcon, UsersIcon, MicIcon, ImageIcon, Loader2Icon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type ChatMessage = {
@@ -11,8 +11,31 @@ type ChatMessage = {
   userId: string;
   userName: string;
   text: string;
+  imageUrl?: string | null;
   createdAt: number;
 };
+
+// Kompres gambar di browser (resize + JPEG) biar upload ringan & cepat
+async function compressImage(file: File, maxDim = 1600, quality = 0.82): Promise<Blob> {
+  try {
+    const img = await createImageBitmap(file);
+    let { width, height } = img;
+    if (width > maxDim || height > maxDim) {
+      const scale = Math.min(maxDim / width, maxDim / height);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, width, height);
+    const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
+    return blob ?? file;
+  } catch {
+    return file; // fallback: kirim original
+  }
+}
 
 // Room Jitsi — string panjang & gak gampang ditebak = berfungsi sbg "password"
 const JITSI_ROOM = "SultanAdvisorTeam-035ea0552ced4d2da4d0";
@@ -48,6 +71,13 @@ export function TeamChat() {
   const [meetingOpen, setMeetingOpen] = useState(false);
   const jitsiBoxRef = useRef<HTMLDivElement>(null);
   const jitsiApiRef = useRef<any>(null);
+
+  // Pending image (screenshot/gambar yang siap dikirim)
+  const [pendingBlob, setPendingBlob]       = useState<Blob | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [uploading, setUploading]           = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [lightbox, setLightbox]             = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const seenIds   = useRef<Set<string>>(new Set());
@@ -99,19 +129,52 @@ export function TeamChat() {
   // ── Reset unread saat panel dibuka ─────────────────────────────────────
   useEffect(() => { if (open) setUnread(0); }, [open]);
 
+  // Set gambar pending (dari paste atau pilih file)
+  const stageImage = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    const blob = await compressImage(file);
+    setPendingBlob(blob);
+    setPendingPreview(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(blob); });
+  }, []);
+
+  const clearPending = useCallback(() => {
+    setPendingPreview(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+    setPendingBlob(null);
+  }, []);
+
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text && !pendingBlob) return;
     setInput("");
+    let imageUrl: string | null = null;
     try {
+      if (pendingBlob) {
+        setUploading(true);
+        const fd = new FormData();
+        fd.append("file", pendingBlob, "screenshot.jpg");
+        const up = await fetch("/api/team-chat/upload", { method: "POST", body: fd });
+        const j = await up.json();
+        imageUrl = j.url ?? null;
+        clearPending();
+        setUploading(false);
+      }
       await fetch("/api/team-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, imageUrl }),
       });
-      // pesan masuk balik via SSE (dengan dedup id)
-    } catch { /* ignore */ }
-  }, [input]);
+      // pesan masuk balik via SSE (dedup id)
+    } catch { setUploading(false); }
+  }, [input, pendingBlob, clearPending]);
+
+  // Paste screenshot (Ctrl+V) di area chat
+  const onPaste = useCallback((e: React.ClipboardEvent) => {
+    const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith("image/"));
+    if (item) {
+      const file = item.getAsFile();
+      if (file) { e.preventDefault(); void stageImage(file); }
+    }
+  }, [stageImage]);
 
   // ── Jitsi meeting lifecycle ────────────────────────────────────────────
   useEffect(() => {
@@ -221,12 +284,23 @@ export function TeamChat() {
               return (
                 <div key={m.id} className={cn("flex flex-col", mine ? "items-end" : "items-start")}>
                   {!mine && <span className="text-[9px] text-amber-600/80 font-mono mb-0.5 px-1">{m.userName}</span>}
-                  <div className={cn(
-                    "max-w-[80%] px-2.5 py-1.5 rounded-2xl text-[12px] break-words whitespace-pre-wrap",
-                    mine ? "bg-amber-500 text-black rounded-tr-sm" : "bg-zinc-800 text-zinc-100 rounded-tl-sm"
-                  )}>
-                    {m.text}
-                  </div>
+                  {m.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={m.imageUrl}
+                      alt="screenshot"
+                      onClick={() => setLightbox(m.imageUrl!)}
+                      className="max-w-[80%] max-h-52 rounded-xl border border-zinc-700 mb-1 cursor-zoom-in object-contain bg-zinc-900"
+                    />
+                  )}
+                  {m.text && (
+                    <div className={cn(
+                      "max-w-[80%] px-2.5 py-1.5 rounded-2xl text-[12px] break-words whitespace-pre-wrap",
+                      mine ? "bg-amber-500 text-black rounded-tr-sm" : "bg-zinc-800 text-zinc-100 rounded-tl-sm"
+                    )}>
+                      {m.text}
+                    </div>
+                  )}
                   <span className="text-[8px] text-zinc-600 mt-0.5 px-1">{fmtTime(m.createdAt)}</span>
                 </div>
               );
@@ -234,24 +308,70 @@ export function TeamChat() {
             <div ref={bottomRef} />
           </div>
 
+          {/* Pending image preview */}
+          {pendingPreview && (
+            <div className="px-3 pt-2 shrink-0">
+              <div className="relative inline-block">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={pendingPreview} alt="preview" className="max-h-24 rounded-lg border border-zinc-700" />
+                <button
+                  onClick={clearPending}
+                  className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-red-600 text-white flex items-center justify-center border-2 border-zinc-950"
+                >
+                  <XIcon className="w-3 h-3" />
+                </button>
+                <span className="absolute bottom-1 left-1 text-[8px] bg-black/60 text-white px-1 rounded">siap dikirim</span>
+              </div>
+            </div>
+          )}
+
           {/* Input */}
           <div className="flex items-end gap-2 px-3 py-2.5 border-t border-zinc-800 bg-zinc-900/40 shrink-0">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) void stageImage(f); e.target.value = ""; }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="h-9 w-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center justify-center shrink-0 transition-colors"
+              title="Lampirkan gambar/screenshot"
+            >
+              <ImageIcon className="w-4 h-4" />
+            </button>
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
+              onPaste={onPaste}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              placeholder="Ketik pesan ke tim... (Enter kirim)"
+              placeholder="Ketik pesan / paste screenshot (Ctrl+V)..."
               rows={1}
               className="flex-1 resize-none bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-[12px] text-white placeholder:text-zinc-600 focus:border-amber-700 outline-none max-h-24"
             />
             <button
               onClick={send}
-              disabled={!input.trim()}
+              disabled={(!input.trim() && !pendingBlob) || uploading}
               className="h-9 w-9 rounded-xl bg-amber-500 hover:bg-amber-400 text-black flex items-center justify-center shrink-0 disabled:opacity-30 transition-colors"
             >
-              <SendIcon className="w-4 h-4" />
+              {uploading ? <Loader2Icon className="w-4 h-4 animate-spin" /> : <SendIcon className="w-4 h-4" />}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ── Lightbox gambar ────────────────────────────────────────────── */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[80] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightbox} alt="full" className="max-w-full max-h-full object-contain rounded-lg" />
+          <button className="absolute top-4 right-4 h-10 w-10 rounded-full bg-zinc-800 text-white flex items-center justify-center">
+            <XIcon className="w-5 h-5" />
+          </button>
         </div>
       )}
 

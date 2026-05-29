@@ -26,6 +26,7 @@ export async function GET() {
       userId: r.userId,
       userName: r.userName,
       text: r.text,
+      imageUrl: r.imageUrl ?? null,
       createdAt: (r.createdAt instanceof Date ? r.createdAt.getTime() : Number(r.createdAt) * 1000),
     }));
 
@@ -37,10 +38,16 @@ export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return new Response("Unauthorized", { status: 401 });
 
-  const body = (await req.json()) as { text?: string };
+  const body = (await req.json()) as { text?: string; imageUrl?: string };
   const text = (body.text ?? "").trim();
-  if (!text) return Response.json({ error: "Pesan kosong" }, { status: 400 });
+  const imageUrl = (body.imageUrl ?? "").trim() || null;
+  // Pesan harus ada teks ATAU gambar
+  if (!text && !imageUrl) return Response.json({ error: "Pesan kosong" }, { status: 400 });
   if (text.length > 2000) return Response.json({ error: "Pesan terlalu panjang" }, { status: 400 });
+  // imageUrl hanya boleh path upload internal (anti-abuse)
+  if (imageUrl && !imageUrl.startsWith("/uploads/")) {
+    return Response.json({ error: "imageUrl tidak valid" }, { status: 400 });
+  }
 
   const userName = session.user.name || session.user.email.split("@")[0];
   const now = new Date();
@@ -51,6 +58,7 @@ export async function POST(req: Request) {
     userId: session.user.id,
     userName,
     text,
+    imageUrl,
     createdAt: now,
   });
 
@@ -59,6 +67,7 @@ export async function POST(req: Request) {
     userId: session.user.id,
     userName,
     text,
+    imageUrl,
     createdAt: now.getTime(),
   };
 
