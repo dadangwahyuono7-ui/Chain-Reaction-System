@@ -56,6 +56,34 @@ function fmtTime(ms: number): string {
   return new Date(ms).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
 }
 
+// Bunyi notif chat (Web Audio — dua nada pendek)
+function playChatBeep() {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    const ctx = new Ctx();
+    const beep = (freq: number, at: number) => {
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = "sine"; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+      g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + at + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.18);
+      o.start(ctx.currentTime + at); o.stop(ctx.currentTime + at + 0.2);
+    };
+    beep(740, 0); beep(988, 0.12);
+    setTimeout(() => ctx.close(), 500);
+  } catch { /* ignore */ }
+}
+
+// Browser notification
+function notify(title: string, body: string) {
+  try {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const n = new Notification(title, { body, tag: "team-chat" });
+    setTimeout(() => n.close(), 6000);
+  } catch { /* ignore */ }
+}
+
 export function TeamChat() {
   const { data: session } = useSession();
   const myId   = session?.user?.id ?? "";
@@ -78,6 +106,69 @@ export function TeamChat() {
   const [uploading, setUploading]           = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [lightbox, setLightbox]             = useState<string | null>(null);
+
+  // ── Draggable position (persist localStorage) ──────────────────────────
+  type Pos = { x: number; y: number };
+  const [panelPos, setPanelPos] = useState<Pos | null>(null);
+  const [btnPos, setBtnPos]     = useState<Pos | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const btnRef   = useRef<HTMLButtonElement>(null);
+  const dragRef  = useRef<{ sx: number; sy: number; ox: number; oy: number; moved: boolean; kind: "panel" | "btn" } | null>(null);
+
+  // load saved positions
+  useEffect(() => {
+    try {
+      const p = localStorage.getItem("teamChatPanelPos"); if (p) setPanelPos(JSON.parse(p));
+      const b = localStorage.getItem("teamChatBtnPos");   if (b) setBtnPos(JSON.parse(b));
+    } catch { /* ignore */ }
+  }, []);
+
+  const clampPos = (x: number, y: number, w: number, h: number): Pos => ({
+    x: Math.max(4, Math.min(window.innerWidth  - w, x)),
+    y: Math.max(4, Math.min(window.innerHeight - h, y)),
+  });
+
+  const onDragStart = useCallback((e: React.PointerEvent, kind: "panel" | "btn") => {
+    // di header panel: jangan mulai drag kalau yang diklik tombol/kontrol
+    if (kind === "panel") {
+      const t = e.target as HTMLElement;
+      if (t.closest("button, a, input, textarea")) return;
+    }
+    const el = kind === "panel" ? panelRef.current : btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: r.left, oy: r.top, moved: false, kind };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
+
+  const onDragMove = useCallback((e: React.PointerEvent) => {
+    const d = dragRef.current; if (!d) return;
+    const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) d.moved = true;
+    const el = d.kind === "panel" ? panelRef.current : btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const np = clampPos(d.ox + dx, d.oy + dy, r.width, r.height);
+    if (d.kind === "panel") setPanelPos(np); else setBtnPos(np);
+  }, []);
+
+  const onDragEnd = useCallback((e: React.PointerEvent) => {
+    const d = dragRef.current; if (!d) return;
+    try {
+      if (d.kind === "panel" && panelRef.current) {
+        const r = panelRef.current.getBoundingClientRect();
+        localStorage.setItem("teamChatPanelPos", JSON.stringify({ x: r.left, y: r.top }));
+      } else if (d.kind === "btn" && btnRef.current) {
+        const r = btnRef.current.getBoundingClientRect();
+        localStorage.setItem("teamChatBtnPos", JSON.stringify({ x: r.left, y: r.top }));
+      }
+    } catch { /* ignore */ }
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    // simpan flag moved sebentar biar click handler bisa cek
+    const moved = d.moved;
+    dragRef.current = null;
+    if (d.kind === "btn") { (btnRef.current as any).__moved = moved; }
+  }, []);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const seenIds   = useRef<Set<string>>(new Set());
@@ -169,8 +260,15 @@ export function TeamChat() {
           setMessages(prev => [...prev, m]);
           // orang yang baru ngirim pesan = berhenti ngetik
           setTypingUsers(prev => { if (!prev[m.userName]) return prev; const n = { ...prev }; delete n[m.userName]; return n; });
-          // unread badge kalau panel ketutup & pesan dari orang lain
-          if (!openRef.current && m.userId !== myId) setUnread(u => u + 1);
+          // Notif kalau pesan dari orang lain & (panel ketutup ATAU tab gak aktif)
+          if (m.userId !== myId) {
+            const inactive = !openRef.current || document.hidden;
+            if (!openRef.current) setUnread(u => u + 1);
+            if (inactive) {
+              playChatBeep();
+              notify(`💬 ${m.userName}`, m.imageUrl && !m.text ? "📷 mengirim gambar" : m.text.slice(0, 120));
+            }
+          }
         }
       } catch { /* ignore */ }
     };
@@ -182,8 +280,16 @@ export function TeamChat() {
     if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, open]);
 
-  // ── Reset unread saat panel dibuka ─────────────────────────────────────
-  useEffect(() => { if (open) setUnread(0); }, [open]);
+  // ── Reset unread + minta izin notif saat panel dibuka ──────────────────
+  useEffect(() => {
+    if (!open) return;
+    setUnread(0);
+    try {
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+    } catch { /* ignore */ }
+  }, [open]);
 
   // Set gambar pending (dari paste atau pilih file)
   const stageImage = useCallback(async (file: File) => {
@@ -285,9 +391,18 @@ export function TeamChat() {
       {/* ── Floating toggle button ─────────────────────────────────────── */}
       {!open && (
         <button
-          onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-[60] h-14 w-14 rounded-full bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-900/40 flex items-center justify-center transition-all"
-          title="Team Chat"
+          ref={btnRef}
+          onPointerDown={(e) => onDragStart(e, "btn")}
+          onPointerMove={onDragMove}
+          onPointerUp={onDragEnd}
+          onClick={() => {
+            // kalau barusan digeser, jangan buka (anggap drag bukan klik)
+            if ((btnRef.current as any)?.__moved) { (btnRef.current as any).__moved = false; return; }
+            setOpen(true);
+          }}
+          style={btnPos ? { left: btnPos.x, top: btnPos.y, right: "auto", bottom: "auto" } : undefined}
+          className="fixed bottom-5 right-5 z-[60] h-14 w-14 rounded-full bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-900/40 flex items-center justify-center transition-all touch-none cursor-grab active:cursor-grabbing"
+          title="Team Chat (tahan & geser untuk pindah)"
         >
           <MessagesSquareIcon className="w-6 h-6" />
           {unread > 0 && (
@@ -305,9 +420,19 @@ export function TeamChat() {
 
       {/* ── Chat panel ─────────────────────────────────────────────────── */}
       {open && (
-        <div className="fixed bottom-5 right-5 z-[60] w-[340px] sm:w-[380px] h-[520px] max-h-[80vh] flex flex-col bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-zinc-800 bg-zinc-900/60 shrink-0">
+        <div
+          ref={panelRef}
+          style={panelPos ? { left: panelPos.x, top: panelPos.y, right: "auto", bottom: "auto" } : undefined}
+          className="fixed bottom-5 right-5 z-[60] w-[340px] sm:w-[380px] h-[520px] max-h-[80vh] flex flex-col bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden"
+        >
+          {/* Header (drag handle) */}
+          <div
+            onPointerDown={(e) => onDragStart(e, "panel")}
+            onPointerMove={onDragMove}
+            onPointerUp={onDragEnd}
+            className="flex items-center gap-2 px-3 py-2.5 border-b border-zinc-800 bg-zinc-900/60 shrink-0 cursor-move touch-none select-none"
+            title="Tahan & geser untuk pindahkan panel"
+          >
             <MessagesSquareIcon className="w-4 h-4 text-amber-500" />
             <span className="text-xs font-black text-amber-500 tracking-tighter">TEAM CHAT</span>
             <span className={cn("w-1.5 h-1.5 rounded-full", connected ? "bg-emerald-500" : "bg-zinc-600")} title={connected ? "Tersambung" : "Terputus"} />
