@@ -1270,6 +1270,72 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         );
       })()}
 
+      {/* ══ CHAIN PROGRESS HERO (REDESIGN v2 — elemen model BARU) ════════════
+          Pipeline penuh D1→H4→H1→M30→M15→M5 sebagai centerpiece dashboard. */}
+      {hasTFData && (
+        <div className="cr-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-semibold text-slate-300 tracking-wide uppercase">Chain Progress · Full Timeframe Pipeline</span>
+            <span className="text-[10px] text-slate-500 cr-num">
+              {tfData.filter(d => d.cmp && d.cmp === h4Dir).length}/{tfData.filter(d => !!d.cmp).length} selaras H4
+            </span>
+          </div>
+          <div className="flex items-stretch">
+            {tfData.map((d, i) => {
+              const label    = d.tf === "DAILY" ? "D1" : d.tf;
+              const isMaster = d.tf === "H4";
+              const isBull   = d.cmp === "BULLISH";
+              const isBear   = d.cmp === "BEARISH";
+              const aligned  = !!d.cmp && d.cmp === h4Dir;
+              const f        = d.fase;
+              const nextAligned = i < tfData.length - 1 && !!tfData[i + 1].cmp && tfData[i + 1].cmp === h4Dir;
+              const faseBadge =
+                f === 3 ? (blinkFast ? "bg-indigo-500/40 border-indigo-400/60 text-indigo-100" : "bg-indigo-500/20 border-indigo-400/60 text-indigo-200")
+                : f === 2 ? "bg-sky-950 border-sky-700 text-sky-300"
+                : "bg-slate-800 border-slate-700 text-slate-400";
+              return (
+                <div key={d.tf} className="flex items-stretch flex-1 min-w-0">
+                  <div className={cn(
+                    "flex-1 min-w-0 rounded-xl border px-2 py-3 text-center transition-all duration-500",
+                    f === 3 ? "bg-indigo-500/15 border-indigo-400/70 anim-signal-pop" :
+                    f === 2 ? "bg-sky-500/10 border-sky-700/50" :
+                    aligned ? (isBull ? "bg-emerald-500/8 border-emerald-800/50" : "bg-rose-500/8 border-rose-800/50") :
+                    d.cmp ? "bg-slate-800/30 border-slate-700/50" :
+                    "bg-slate-900/40 border-slate-800/60"
+                  )}>
+                    <div className="flex items-center justify-center gap-1">
+                      <span className={cn("text-[11px] font-bold tracking-wide", isMaster ? "text-indigo-300" : "text-slate-300")}>{label}</span>
+                      {isMaster && <span className="text-[8px] text-indigo-400">★</span>}
+                    </div>
+                    <div className={cn("cr-num text-[13px] font-bold mt-1.5 leading-none",
+                      isBull ? "text-emerald-400" : isBear ? "text-rose-400" : "text-slate-600")}>
+                      {d.cmp ? (isBull ? "▲ BUY" : "▼ SELL") : "—"}
+                    </div>
+                    <div className="mt-2">
+                      {d.cmp
+                        ? <span className={cn("inline-block text-[8px] font-bold px-1.5 py-0.5 rounded-full border", faseBadge)}>
+                            {f === 3 ? "F3 PRIME" : f === 2 ? "F2" : "F1"}
+                          </span>
+                        : <span className="text-[8px] text-slate-700">no cmp</span>}
+                    </div>
+                    <div className="text-[8px] text-slate-500 mt-1.5 cr-num h-3">
+                      {d.cf === "YA" ? `CF${d.cfCount > 0 ? ` #${d.cfCount}` : ""}` : d.vr === "YA" ? "VR ✓" : ""}
+                    </div>
+                  </div>
+                  {i < tfData.length - 1 && (
+                    <div className="flex items-center w-3 sm:w-4 shrink-0 px-0.5">
+                      <div className="h-0.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                        <div className={cn("h-full transition-all duration-700", (aligned && nextAligned) ? "w-full bg-indigo-500/70" : "w-0")} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── SYNC ROW 1: TradingView + SNR ─────────────────────────────────── */}
       <div className="flex gap-2 items-center">
         <button onClick={syncTV} disabled={syncing} className={cn("cr-sync-btn flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-[10px] xl:text-[13px] font-black font-mono tracking-widest uppercase border transition-all",
@@ -1375,13 +1441,13 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
       {/* ── MAIN GRID ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-[1fr_220px] xl:grid-cols-[1fr_270px] 2xl:grid-cols-[1fr_310px] gap-2">
 
-        {/* ─── LEFT COLUMN ─── */}
-        <div className="space-y-2">
+        {/* ─── LEFT: BENTO TILE GRID (REDESIGN v2 — bukan stack vertikal lagi) ─── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 auto-rows-min content-start">
 
-          {/* ══ SIGNAL.HEATMAP ══ */}
+          {/* ══ SIGNAL.HEATMAP — tile lebar penuh (hero data) ══ */}
           <PanelBox
             title={<PanelTitle label="SIGNAL.HEATMAP" />}
-            cls={cn("border-fuchsia-900/40 anim-neon-border")}
+            cls={cn("border-slate-800/70 md:col-span-2")}
             scanV={hasAnyF3}
           >
             {hasTFData ? (
@@ -1730,12 +1796,12 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
             </PanelBox>
           )}
 
-          {/* ══ NEURAL.FLOW ══ */}
+          {/* ══ NEURAL.FLOW — tile full width (chain butuh ruang) ══ */}
           <PanelBox
             title={<PanelTitle label="NEURAL.FLOW — CHAIN SEQUENCE" live={!!livePrice} />}
-            cls={cn(
-              h4Fase === 3 ? "border-amber-600/60 anim-amber-border" :
-              h4Fase === 2 ? "border-blue-700/50 anim-glow-blue"    : "border-zinc-800"
+            cls={cn("md:col-span-2",
+              h4Fase === 3 ? "border-indigo-500/50 anim-amber-border" :
+              h4Fase === 2 ? "border-sky-700/50" : "border-slate-800"
             )}
             scanV={h4Fase === 3}
           >
