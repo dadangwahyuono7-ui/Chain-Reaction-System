@@ -13,6 +13,7 @@ export const auth = betterAuth({
   // bisa diisi di .env.local kalau pakai domain/tunnel custom.
   trustedOrigins: [
     "http://localhost:3002",
+    "http://localhost:3003",            // preview redesign (worktree)
     "https://trade.dadangchatai.com",   // named tunnel permanen (akses team)
     "https://*.trycloudflare.com",      // quick tunnel cadangan
     ...(process.env.EXTRA_TRUSTED_ORIGINS?.split(",").map(s => s.trim()).filter(Boolean) ?? []),

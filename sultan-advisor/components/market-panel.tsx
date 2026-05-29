@@ -136,6 +136,41 @@ const ANIM_CSS = `
 .anim-price-glow-up { animation: price-glow-up 1.5s ease-in-out infinite; }
 .anim-price-glow-dn { animation: price-glow-dn 1.5s ease-in-out infinite; }
 
+/* ══ 2-TIER MOTION SYSTEM ══════════════════════════════════════════════
+   AMBIENT = kalem, nemenin nunggu (anti-bosen, gak bikin mata capek)
+   SIGNAL  = tajam & terang, CUMA buat yang actionable (entry valid) */
+@keyframes ambient-breathe {
+  0%,100% { opacity:0.5; }
+  50%      { opacity:1; }
+}
+@keyframes ambient-ring {
+  0%,100% { box-shadow: 0 0 0 0 rgba(34,211,238,0); }
+  50%      { box-shadow: 0 0 0 3px rgba(34,211,238,0.14); }
+}
+@keyframes ambient-flow {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+@keyframes ambient-dot {
+  0%,100% { opacity:0.35; transform:scale(0.85); }
+  50%      { opacity:0.9;  transform:scale(1.1); }
+}
+@keyframes signal-pulse {
+  0%,100% { box-shadow: 0 0 10px rgba(245,158,11,0.35); transform: scale(1); }
+  50%      { box-shadow: 0 0 28px rgba(245,158,11,0.9);  transform: scale(1.02); }
+}
+@keyframes signal-pop {
+  0%   { transform: scale(0.92); opacity:0.4; }
+  60%  { transform: scale(1.04); }
+  100% { transform: scale(1); opacity:1; }
+}
+.anim-ambient-breathe { animation: ambient-breathe 3.4s ease-in-out infinite; }
+.anim-ambient-ring    { animation: ambient-ring 2.6s ease-in-out infinite; }
+.anim-ambient-dot     { animation: ambient-dot 2.2s ease-in-out infinite; }
+.anim-ambient-flow    { background-size: 200% 100%; animation: ambient-flow 3.2s linear infinite; }
+.anim-signal-pulse    { animation: signal-pulse 0.85s ease-in-out infinite; }
+.anim-signal-pop      { animation: signal-pop 0.4s ease-out; }
+
 /* ── 27-inch / large screen scaling (≥1536px) ────────────────────────── */
 @media (min-width: 1536px) {
   .cr-price-display   { font-size: 54px !important; }
@@ -1465,9 +1500,11 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                 </div>
               }
               cls={cn(
-                scalpPhase === 3 ? "border-amber-600/60 anim-amber-border" :
-                scalpPhase === 2 ? "border-blue-700/50 anim-glow-blue"     :
-                scalpActive      ? "border-emerald-800/40"                  :
+                // Cuma ENTRY (phase 3) yang "signal" (border amber pulse tajam).
+                // Phase lain = kalem/steady (ambient), gak narik perhatian berlebih.
+                scalpPhase === 3 ? "border-amber-500/70 anim-amber-border" :
+                scalpPhase === 2 ? "border-cyan-800/40"                     :
+                scalpActive      ? "border-emerald-800/30"                  :
                 "border-zinc-800/50"
               )}
               scanV={scalpPhase === 3}
@@ -1525,96 +1562,91 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
                       </span>
                     </div>
 
-                    {/* 3-node chain */}
-                    <div className="flex items-stretch gap-1.5">
+                    {/* ══ PIPELINE STEPPER (REDESIGN) — progress chain yang jelas ══
+                        done=hijau ✓ · sekarang=cyan napas · pending=redup · ENTRY=amber SIGNAL */}
+                    {(() => {
+                      const done1 = m30Aligned;            // M30 CMP searah
+                      const done2 = m30vr === "YA";        // M15 VR
+                      const entry = m30CfActive;           // M5 CF = ENTRY
+                      const waitVR = done1 && !done2;
+                      const waitCF = done2 && !entry;
+                      const s1 = done1 ? "done" : (m30cmp ? "fail" : "now");
+                      const s2 = done2 ? "done" : (waitVR ? "now" : "pending");
+                      const s3 = entry ? "signal" : (waitCF ? "now" : "pending");
+                      const steps = [
+                        { n: 1, tf: "M30", role: "CMP", state: s1, val: m30cmp, txt: done1 ? "searah" : m30cmp ? "lawan" : "—" },
+                        { n: 2, tf: "M15", role: "VR",  state: s2, val: m15cmp, txt: done2 ? "VR ✓" : waitVR ? "ditunggu" : "—" },
+                        { n: 3, tf: "M5",  role: "CF",  state: s3, val: m5cmp,  txt: entry ? `CF${m30CfCount > 0 ? " #" + m30CfCount : ""}` : waitCF ? "ditunggu" : "—" },
+                      ];
+                      const doneCount = (done1?1:0) + (done2?1:0) + (entry?1:0);
+                      const pct = entry ? 100 : done2 ? 66 : done1 ? 33 : 0;
+                      const nowStep = steps.find(s => s.state === "now");
+                      const circleCls: Record<string,string> = {
+                        done:   "bg-emerald-500 border-emerald-400 text-black",
+                        now:    "bg-cyan-950 border-cyan-400 text-cyan-200 anim-ambient-ring",
+                        signal: "bg-amber-400 border-amber-200 text-black anim-signal-pulse anim-signal-pop",
+                        pending:"bg-zinc-900 border-zinc-700 text-zinc-600",
+                        fail:   "bg-red-950 border-red-600 text-red-300",
+                      };
+                      const labelCls: Record<string,string> = {
+                        done:"text-emerald-400", now:"text-cyan-300", signal:"text-amber-300", pending:"text-zinc-600", fail:"text-red-400",
+                      };
+                      return (
+                        <div className="space-y-2 py-1">
+                          {/* status line */}
+                          <div className="flex items-center gap-2 text-[10px] font-mono">
+                            <span className="text-zinc-500 uppercase tracking-widest">PROGRESS</span>
+                            <span className="flex gap-1">
+                              {[0,1,2].map(i => (
+                                <span key={i} className={cn("w-2 h-2 rounded-full transition-all",
+                                  i < doneCount ? "bg-emerald-400"
+                                  : (i === doneCount && nowStep) ? "bg-cyan-400 anim-ambient-dot"
+                                  : "bg-zinc-700")} />
+                              ))}
+                            </span>
+                            <span className="flex-1" />
+                            {entry
+                              ? <span className={cn("font-black", blinkFast ? "text-amber-200" : "text-amber-400")}>⚡ ENTRY SIAP</span>
+                              : nowStep
+                                ? <span className="text-cyan-300">← nunggu <b className="text-cyan-200">{nowStep.tf} {nowStep.role}</b></span>
+                                : <span className="text-zinc-600">—</span>}
+                          </div>
 
-                      {/* M30 node */}
-                      <div className={cn(
-                        "flex-1 rounded-lg border px-2 py-2 text-center transition-all duration-100",
-                        m30Aligned
-                          ? "bg-emerald-950/25 border-emerald-800"
-                          : m30cmp
-                            ? "bg-red-950/20 border-red-900"
-                            : "bg-zinc-900/60 border-zinc-700"
-                      )}>
-                        <div className="text-[9px] font-black font-mono text-cyan-400">M30</div>
-                        <div className={cn("text-[11px] font-black font-mono mt-0.5",
-                          m30cmp === "BULLISH" ? "text-emerald-400" :
-                          m30cmp === "BEARISH" ? "text-red-400"     : "text-zinc-600"
-                        )}>
-                          {m30cmp ? (m30cmp === "BULLISH" ? "▲BUY" : "▼SELL") : "──"}
-                        </div>
-                        <div className={cn("text-[8px] font-mono mt-0.5",
-                          m30Aligned ? "text-emerald-700" : m30cmp ? "text-red-800" : "text-zinc-700"
-                        )}>
-                          {m30Aligned ? "✓ searah" : m30cmp ? "✗ balik" : "belum"}
-                        </div>
-                      </div>
+                          {/* stepper: circle + connector */}
+                          <div className="flex items-start">
+                            {steps.map((s, i) => (
+                              <div key={s.n} className="flex items-start" style={{ flex: i < steps.length - 1 ? "1 1 0%" : "0 0 auto" }}>
+                                {/* step column */}
+                                <div className="flex flex-col items-center w-14 shrink-0">
+                                  <div className={cn("w-8 h-8 rounded-full border-2 flex items-center justify-center font-black font-mono text-[13px] transition-all duration-300", circleCls[s.state])}>
+                                    {s.state === "done" ? "✓" : s.state === "signal" ? "⚡" : s.state === "fail" ? "✕" : s.n}
+                                  </div>
+                                  <div className={cn("mt-1 text-[11px] font-black font-mono", labelCls[s.state])}>{s.tf}</div>
+                                  <div className="text-[8px] font-mono text-zinc-600 -mt-0.5">{s.role}</div>
+                                  <div className={cn("text-[9px] font-mono mt-0.5 text-center leading-tight", labelCls[s.state])}>
+                                    {s.val ? (s.val === "BULLISH" ? "▲" : "▼") : ""}{s.txt}
+                                  </div>
+                                </div>
+                                {/* connector */}
+                                {i < steps.length - 1 && (
+                                  <div className="flex-1 h-0.5 mt-4 bg-zinc-800 rounded overflow-hidden">
+                                    <div className={cn("h-full transition-all duration-500",
+                                      (steps[i].state === "done" || steps[i].state === "signal") ? "w-full bg-emerald-500" : "w-0")} />
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
 
-                      {/* Connector + VR label */}
-                      <div className="flex flex-col items-center justify-center gap-0.5 shrink-0">
-                        <span className={cn("font-mono text-base leading-none transition-all",
-                          m30vr === "YA"
-                            ? blink ? "text-blue-300 drop-shadow-[0_0_6px_rgba(96,165,250,0.7)]" : "text-blue-600"
-                            : "text-zinc-700"
-                        )}>►</span>
-                        <span className="text-[7px] font-mono text-zinc-700 tracking-widest">VR</span>
-                      </div>
-
-                      {/* M15 node */}
-                      <div className={cn(
-                        "flex-1 rounded-lg border px-2 py-2 text-center transition-all duration-100",
-                        m30vr === "YA"
-                          ? "bg-blue-950/40 border-blue-600"
-                          : "bg-zinc-900/60 border-zinc-700"
-                      )}>
-                        <div className="text-[9px] font-black font-mono text-cyan-400">M15</div>
-                        <div className={cn("text-[11px] font-black font-mono mt-0.5",
-                          m30vr === "YA" ? (blink ? "text-blue-200" : "text-blue-400") : "text-zinc-600"
-                        )}>
-                          {m30vr === "YA" ? "⚡VR✓" : "BELUM"}
+                          {/* progress bar */}
+                          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                            <div className={cn("h-full rounded-full transition-all duration-700",
+                              entry ? "bg-amber-400 anim-signal-pulse" : "bg-gradient-to-r from-emerald-500 to-cyan-400")}
+                              style={{ width: `${pct}%` }} />
+                          </div>
                         </div>
-                        <div className="text-[8px] font-mono text-zinc-700 mt-0.5">
-                          {m15cmp ? (m15cmp === "BULLISH" ? "▲BUY" : "▼SELL") : "—"}
-                        </div>
-                      </div>
-
-                      {/* Connector + CF label */}
-                      <div className="flex flex-col items-center justify-center gap-0.5 shrink-0">
-                        <span className={cn("font-mono text-base leading-none transition-all",
-                          m30CfActive
-                            ? blinkFast ? "text-amber-300 drop-shadow-[0_0_6px_rgba(245,158,11,0.8)]" : "text-amber-600"
-                            : m30vr === "YA" ? "text-amber-900" : "text-zinc-700"
-                        )}>►</span>
-                        <span className="text-[7px] font-mono text-zinc-700 tracking-widest">CF</span>
-                      </div>
-
-                      {/* M5 node — CF status autoritatif dari indikator (flip → M30_CF jadi BELUM otomatis) */}
-                      <div className={cn(
-                        "flex-1 rounded-lg border px-2 py-2 text-center transition-all duration-100",
-                        m30CfActive
-                          ? blinkFast
-                            ? "bg-amber-500/20 border-amber-400 shadow-[0_0_14px_rgba(245,158,11,0.4)]"
-                            : "bg-amber-950/40 border-amber-600"
-                          : m30vr === "YA"
-                            ? "bg-zinc-900/80 border-amber-900/50"
-                            : "bg-zinc-900/60 border-zinc-700"
-                      )}>
-                        <div className="text-[9px] font-black font-mono text-cyan-400">M5</div>
-                        <div className={cn("text-[11px] font-black font-mono mt-0.5",
-                          m30CfActive
-                            ? blinkFast ? "text-amber-200" : "text-amber-400"
-                            : m30vr === "YA" ? "text-amber-700 animate-pulse" : "text-zinc-600"
-                        )}>
-                          {m30CfActive
-                            ? `⚡CF${m30CfCount > 0 ? m30CfCount : ""}✓`
-                            : m30vr === "YA" ? "WAIT" : "BELUM"}
-                        </div>
-                        <div className="text-[8px] font-mono text-zinc-700 mt-0.5">
-                          {m5cmp ? (m5cmp === "BULLISH" ? "▲BUY" : "▼SELL") : "—"}
-                        </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
 
                     {/* Phase recommendation */}
                     <div className={cn(
