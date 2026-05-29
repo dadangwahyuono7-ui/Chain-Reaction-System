@@ -1223,63 +1223,62 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         </div>
       )}
 
-      {/* ── SITREP BAR ────────────────────────────────────────────────────── */}
-      {sitrep && (
-        <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/40 px-4 py-2 flex items-center gap-0 overflow-hidden">
-          <span className="text-[8px] font-black font-mono text-zinc-600 tracking-[0.2em] uppercase mr-3 shrink-0">SITREP</span>
-          {/* BIAS */}
-          <div className="flex items-center gap-1.5 pr-3 border-r border-zinc-800 shrink-0">
-            <span className="text-[8px] text-zinc-600 font-mono uppercase">BIAS</span>
-            <span className={cn("text-[11px] font-black font-mono",
-              sitrep.biasDir === "BULLISH" ? "text-emerald-400" :
-              sitrep.biasDir === "BEARISH" ? "text-red-400"     : "text-zinc-500"
-            )}>{sitrep.biasLabel}</span>
+      {/* ══ COMMAND BAR (REDESIGN) — verdict "ngapain sekarang" sebagai hero ══ */}
+      {sitrep && (() => {
+        const g = sitrep.gradeLabel;
+        const dir = sitrep.biasDir === "BULLISH" ? "BUY" : sitrep.biasDir === "BEARISH" ? "SELL" : "";
+        const blackout   = sitrep.newsLabel.startsWith("🚨");
+        const entryReady = sitrep.scalpLabel === "⚡ ENTRY" || g === "A+" || g === "A";
+        const waiting    = sitrep.scalpLabel === "WAIT M5 CF" || sitrep.primeLabel.includes("F2");
+        const skip       = g === "SKIP" || sitrep.scalpLabel === "SKIP DIR";
+        let verdict: string, vcls: string, vsub: string;
+        if (blackout)        { verdict = "⛔ NEWS BLACKOUT"; vcls = "bg-red-950/50 border-red-700 text-red-300"; vsub = "tunda entry — tunggu news lewat"; }
+        else if (entryReady) { verdict = `⚡ SIAP ENTRY ${dir}`; vcls = cn("border-amber-300 text-amber-100", blinkFast ? "bg-amber-500/25 anim-signal-pulse" : "bg-amber-950/50"); vsub = `grade ${g} · ${sitrep.scalpLabel === "⚡ ENTRY" ? "scalp siap" : "setup matang"}`; }
+        else if (waiting)    { verdict = "⏳ TUNGGU CF"; vcls = "bg-cyan-950/40 border-cyan-700/60 text-cyan-300"; vsub = "VR sudah · nunggu konfirmasi CF"; }
+        else if (skip)       { verdict = "✕ SKIP"; vcls = "bg-zinc-900 border-zinc-700 text-zinc-500"; vsub = "belum ada setup valid"; }
+        else                 { verdict = "○ PANTAU"; vcls = "bg-zinc-900/60 border-zinc-700/60 text-zinc-400"; vsub = "belum ada sinyal — sabar"; }
+
+        const Stat = ({ label, children }: { label: string; children: React.ReactNode }) => (
+          <div className="flex flex-col items-center px-3 border-l border-zinc-800/70 first:border-l-0 shrink-0">
+            <span className="text-[7px] text-zinc-600 font-mono uppercase tracking-[0.15em]">{label}</span>
+            <div className="text-[11px] font-black font-mono mt-0.5 leading-none">{children}</div>
           </div>
-          {/* PRIME */}
-          <div className="flex items-center gap-1.5 px-3 border-r border-zinc-800 shrink-0">
-            <span className="text-[8px] text-zinc-600 font-mono uppercase">PRIME</span>
-            <span className={cn("text-[10px] font-black font-mono",
-              sitrep.primeLabel.includes("F3") ? (blinkFast ? "text-amber-300" : "text-amber-500") :
-              sitrep.primeLabel.includes("F2") ? "text-blue-400" : "text-zinc-500"
-            )}>{sitrep.primeLabel}</span>
+        );
+
+        return (
+          <div className="rounded-xl border border-zinc-800/60 bg-gradient-to-r from-zinc-900/70 via-zinc-900/30 to-transparent px-3 py-2 flex items-center gap-3">
+            {/* VERDICT hero */}
+            <div className={cn("flex flex-col justify-center rounded-lg border px-3.5 py-2 min-w-[176px] transition-all duration-300", vcls)}>
+              <span className="text-[15px] font-black font-mono tracking-tight leading-none">{verdict}</span>
+              <span className="text-[8px] font-mono opacity-70 mt-1 leading-none">{vsub}</span>
+            </div>
+            {/* supporting stats */}
+            <div className="flex items-center flex-1 overflow-hidden">
+              <Stat label="BIAS">
+                <span className={sitrep.biasDir === "BULLISH" ? "text-emerald-400" : sitrep.biasDir === "BEARISH" ? "text-red-400" : "text-zinc-500"}>{sitrep.biasLabel}</span>
+              </Stat>
+              <Stat label="GRADE">
+                <span className={cn("px-1.5 py-0.5 rounded border",
+                  g === "A+" ? (blinkFast ? "bg-amber-500 border-amber-400 text-black" : "bg-amber-950 border-amber-600 text-amber-300") :
+                  g === "A"  ? "bg-emerald-950 border-emerald-700 text-emerald-300" :
+                  g === "B"  ? "bg-blue-950 border-blue-700 text-blue-300" :
+                  g === "C"  ? "bg-zinc-900 border-zinc-700 text-zinc-400" :
+                  g === "SKIP" ? "bg-red-950 border-red-800 text-red-500" :
+                  "bg-zinc-950 border-zinc-800 text-zinc-600")}>{g}</span>
+              </Stat>
+              <Stat label="PRIME">
+                <span className={sitrep.primeLabel.includes("F3") ? (blinkFast ? "text-amber-300" : "text-amber-500") : sitrep.primeLabel.includes("F2") ? "text-cyan-400" : "text-zinc-500"}>{sitrep.primeLabel}</span>
+              </Stat>
+              <Stat label="SCALP">
+                <span className={sitrep.scalpLabel === "⚡ ENTRY" ? (blinkFast ? "text-amber-200" : "text-amber-400") : sitrep.scalpLabel === "WAIT M5 CF" ? "text-cyan-400" : sitrep.scalpLabel === "SKIP DIR" ? "text-red-600" : "text-zinc-500"}>{sitrep.scalpLabel}</span>
+              </Stat>
+              <Stat label="NEWS">
+                <span className={sitrep.newsLabel.startsWith("🚨") ? (blinkFast ? "text-red-300" : "text-red-500") : sitrep.newsLabel.startsWith("⚠") ? "text-amber-400" : "text-emerald-600"}>{sitrep.newsLabel}</span>
+              </Stat>
+            </div>
           </div>
-          {/* SCALP */}
-          <div className="flex items-center gap-1.5 px-3 border-r border-zinc-800 shrink-0">
-            <span className="text-[8px] text-zinc-600 font-mono uppercase">SCALP</span>
-            <span className={cn("text-[10px] font-black font-mono",
-              sitrep.scalpLabel === "⚡ ENTRY"   ? (blinkFast ? "text-amber-200" : "text-amber-400") :
-              sitrep.scalpLabel === "WAIT M5 CF" ? "text-blue-400" :
-              sitrep.scalpLabel === "SKIP DIR"   ? "text-red-600"  : "text-zinc-500"
-            )}>{sitrep.scalpLabel}</span>
-          </div>
-          {/* NEWS */}
-          <div className="flex items-center gap-1.5 px-3 border-r border-zinc-800 shrink-0">
-            <span className="text-[8px] text-zinc-600 font-mono uppercase">NEWS</span>
-            <span className={cn("text-[10px] font-black font-mono",
-              sitrep.newsLabel.startsWith("🚨") ? (blinkFast ? "text-red-300"   : "text-red-500")   :
-              sitrep.newsLabel.startsWith("⚠")  ? "text-amber-400" : "text-emerald-600"
-            )}>{sitrep.newsLabel}</span>
-          </div>
-          {/* GRADE */}
-          <div className="flex items-center gap-1.5 pl-3 shrink-0">
-            <span className="text-[8px] text-zinc-600 font-mono uppercase">GRADE</span>
-            <span className={cn(
-              "text-[11px] font-black font-mono px-2 py-0.5 rounded border",
-              sitrep.gradeLabel === "A+"   ? (blinkFast ? "bg-amber-500 border-amber-400 text-black" : "bg-amber-950 border-amber-600 text-amber-300")   :
-              sitrep.gradeLabel === "A"    ? "bg-emerald-950 border-emerald-700 text-emerald-300" :
-              sitrep.gradeLabel === "B"    ? "bg-blue-950 border-blue-700 text-blue-300"          :
-              sitrep.gradeLabel === "C"    ? "bg-zinc-900 border-zinc-700 text-zinc-400"          :
-              sitrep.gradeLabel === "SKIP" ? "bg-red-950 border-red-800 text-red-500"             :
-              "bg-zinc-950 border-zinc-800 text-zinc-600"
-            )}>
-              {sitrep.gradeLabel}
-            </span>
-            {sitrep.gradeLabel !== "—" && (
-              <span className="text-[8px] font-mono text-zinc-600 max-w-[140px] truncate hidden xl:block">{autoGrade.reason}</span>
-            )}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── SYNC ROW 1: TradingView + SNR ─────────────────────────────────── */}
       <div className="flex gap-2 items-center">
