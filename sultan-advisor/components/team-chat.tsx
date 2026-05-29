@@ -84,6 +84,53 @@ export function TeamChat() {
   const openRef   = useRef(open);
   useEffect(() => { openRef.current = open; }, [open]);
 
+  // Typing indicator
+  const [typingUsers, setTypingUsers] = useState<Record<string, number>>({}); // userName -> last ts
+  const typingTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingSentRef   = useRef(false);
+
+  const notifyTyping = useCallback((isTyping: boolean) => {
+    fetch("/api/team-chat/typing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isTyping }),
+    }).catch(() => {});
+  }, []);
+
+  // Dipanggil tiap user ngetik: kirim "typing:true" sekali, lalu auto "false" 2.5s setelah berhenti
+  const handleTyping = useCallback(() => {
+    if (!typingSentRef.current) {
+      typingSentRef.current = true;
+      notifyTyping(true);
+    }
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      typingSentRef.current = false;
+      notifyTyping(false);
+    }, 2500);
+  }, [notifyTyping]);
+
+  const stopTyping = useCallback(() => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    if (typingSentRef.current) { typingSentRef.current = false; notifyTyping(false); }
+  }, [notifyTyping]);
+
+  // Bersihkan typing yang stale (kalau event "false" kelewat)
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setTypingUsers(prev => {
+        const now = Date.now();
+        let changed = false;
+        const next: Record<string, number> = {};
+        for (const [u, ts] of Object.entries(prev)) {
+          if (now - ts < 4000) next[u] = ts; else changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(iv);
+  }, []);
+
   // ── Load history sekali ────────────────────────────────────────────────
   useEffect(() => {
     if (!session) return;
@@ -108,11 +155,20 @@ export function TeamChat() {
         const data = JSON.parse(ev.data);
         if (data.type === "presence") {
           setOnline(data.online ?? []);
+        } else if (data.type === "typing") {
+          setTypingUsers(prev => {
+            const next = { ...prev };
+            if (data.isTyping) next[data.userName] = Date.now();
+            else delete next[data.userName];
+            return next;
+          });
         } else if (data.type === "message" && data.message) {
           const m: ChatMessage = data.message;
           if (seenIds.current.has(m.id)) return;
           seenIds.current.add(m.id);
           setMessages(prev => [...prev, m]);
+          // orang yang baru ngirim pesan = berhenti ngetik
+          setTypingUsers(prev => { if (!prev[m.userName]) return prev; const n = { ...prev }; delete n[m.userName]; return n; });
           // unread badge kalau panel ketutup & pesan dari orang lain
           if (!openRef.current && m.userId !== myId) setUnread(u => u + 1);
         }
@@ -146,6 +202,7 @@ export function TeamChat() {
     const text = input.trim();
     if (!text && !pendingBlob) return;
     setInput("");
+    stopTyping();
     let imageUrl: string | null = null;
     try {
       if (pendingBlob) {
@@ -165,7 +222,7 @@ export function TeamChat() {
       });
       // pesan masuk balik via SSE (dedup id)
     } catch { setUploading(false); }
-  }, [input, pendingBlob, clearPending]);
+  }, [input, pendingBlob, clearPending, stopTyping]);
 
   // Paste screenshot (Ctrl+V) di area chat
   const onPaste = useCallback((e: React.ClipboardEvent) => {
@@ -317,6 +374,27 @@ export function TeamChat() {
             <div ref={bottomRef} />
           </div>
 
+          {/* Typing indicator */}
+          {(() => {
+            const others = Object.keys(typingUsers).filter(u => u !== myName);
+            if (others.length === 0) return null;
+            const label = others.length === 1
+              ? `${others[0]} sedang mengetik`
+              : others.length === 2
+                ? `${others[0]} & ${others[1]} sedang mengetik`
+                : `${others.length} orang sedang mengetik`;
+            return (
+              <div className="flex items-center gap-1.5 px-3 py-1 shrink-0">
+                <span className="flex gap-0.5">
+                  <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce [animation-delay:0ms]" />
+                  <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce [animation-delay:150ms]" />
+                  <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce [animation-delay:300ms]" />
+                </span>
+                <span className="text-[10px] text-amber-500/80 italic">{label}...</span>
+              </div>
+            );
+          })()}
+
           {/* Pending image preview */}
           {pendingPreview && (
             <div className="px-3 pt-2 shrink-0">
@@ -352,7 +430,7 @@ export function TeamChat() {
             </button>
             <textarea
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={e => { setInput(e.target.value); if (e.target.value) handleTyping(); else stopTyping(); }}
               onPaste={onPaste}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
               placeholder="Ketik pesan / paste screenshot (Ctrl+V)..."

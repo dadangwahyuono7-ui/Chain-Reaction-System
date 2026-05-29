@@ -11,7 +11,8 @@ export type ChatMessage = {
 
 export type BusEvent =
   | { type: "message"; message: ChatMessage }
-  | { type: "presence"; online: string[] };
+  | { type: "presence"; online: string[] }
+  | { type: "typing"; userName: string; isTyping: boolean };
 
 // Singleton across hot-reload / route modules via globalThis
 type BusState = {
