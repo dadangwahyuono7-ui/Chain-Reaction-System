@@ -280,7 +280,7 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
   const Step = ({ label, done, active, waiting, tone, sub }: {
     label: string; done: boolean; active?: boolean; waiting?: boolean; tone: string; sub?: string;
   }) => (
-    <div className="flex flex-col items-center gap-1 shrink-0">
+    <div className="flex flex-col items-center gap-1 shrink-0 w-9">
       <div className={cn(
         "w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition-all",
         active
@@ -301,12 +301,13 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
     </div>
   );
 
+  // konektor sejajar TENGAH lingkaran: circle h-7 (28px) → center 14px, line 2px → mt 13px
   const Conn = ({ on, tone }: { on: boolean; tone: string }) => (
     on ? (
-      <div className="dp-stream flex-1 h-[2px] mx-1 mt-[-14px] rounded-full"
+      <div className="dp-stream flex-1 h-[2px] mx-1 mt-[13px] rounded-full self-start"
         style={{ ["--c" as string]: tone === "emerald" ? "#10b981" : tone === "rose" ? "#f43f5e" : "#4f7cff" }} />
     ) : (
-      <div className="flex-1 h-[2px] mx-1 mt-[-14px] rounded-full bg-slate-800" />
+      <div className="flex-1 h-[2px] mx-1 mt-[13px] rounded-full self-start bg-slate-800" />
     )
   );
 
