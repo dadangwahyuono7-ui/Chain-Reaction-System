@@ -17,7 +17,8 @@ function normalizeTF(raw) {
   if (s.startsWith('M30')) return 'M30';
   if (s.startsWith('M15')) return 'M15';
   if (s.startsWith('M5'))  return 'M5';
-  // M1 dihapus di v4 — tidak dipakai sebagai VR/CF source
+  // M1 = trigger monitor (momentum read), BUKAN setup
+  if (s === 'M1' || (s.startsWith('M1') && !s.startsWith('M15') && !s.startsWith('M30'))) return 'M1';
   return null;
 }
 
@@ -165,8 +166,8 @@ async function main() {
       }
     }
 
-    // Build context vars (M1 dihapus di v4)
-    const TF_KEYS = ['DAILY', 'H4', 'H1', 'M30', 'M15', 'M5'];
+    // Build context vars — M5 & M1 = trigger monitor (bukan setup)
+    const TF_KEYS = ['DAILY', 'H4', 'H1', 'M30', 'M15', 'M5', 'M1'];
     const ctx = {};
 
     for (const tf of TF_KEYS) {

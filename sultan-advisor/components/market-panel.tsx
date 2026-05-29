@@ -210,7 +210,7 @@ const STORYLINE_MAP: Record<string, { vrFrom: string; cfLow: string; cfHigh: str
   // M5 removed — no M1 CF; M5 is terkecil
 };
 
-const TF_ROWS = ["DAILY", "H4", "H1", "M30", "M15", "M5"];
+const TF_ROWS = ["DAILY", "H4", "H1", "M30", "M15", "M5", "M1"];
 
 const SNR_AUTO_GROUPS = [
   { label: "Daily",   keys: [{ key: "PDH", short: "PDH", stars: 5 }, { key: "PDL", short: "PDL", stars: 5 }, { key: "DAILY_OPEN", short: "DOpen", stars: 4 }] },
