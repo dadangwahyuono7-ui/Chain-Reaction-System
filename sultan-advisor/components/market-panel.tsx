@@ -1234,11 +1234,11 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         );
 
         return (
-          <div className="rounded-xl border border-zinc-800/60 bg-gradient-to-r from-zinc-900/70 via-zinc-900/30 to-transparent px-3 py-2 flex items-center gap-3">
+          <div className="rounded-2xl border border-slate-800/70 bg-gradient-to-r from-slate-900/80 via-slate-900/40 to-transparent px-4 py-3 flex items-center gap-4">
             {/* VERDICT hero */}
-            <div className={cn("flex flex-col justify-center rounded-lg border px-3.5 py-2 min-w-[176px] transition-all duration-300", vcls)}>
-              <span className="text-[15px] font-black font-mono tracking-tight leading-none">{verdict}</span>
-              <span className="text-[8px] font-mono opacity-70 mt-1 leading-none">{vsub}</span>
+            <div className={cn("flex flex-col justify-center rounded-xl border px-5 py-3 min-w-[230px] transition-all duration-300", vcls)}>
+              <span className="text-[20px] font-bold tracking-tight leading-none">{verdict}</span>
+              <span className="text-[10px] opacity-70 mt-1.5 leading-none">{vsub}</span>
             </div>
             {/* supporting stats */}
             <div className="flex items-center flex-1 overflow-hidden">

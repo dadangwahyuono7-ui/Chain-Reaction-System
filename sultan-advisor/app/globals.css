@@ -129,3 +129,45 @@
     @apply font-sans;
   }
 }
+
+/* ══ REDESIGN v2 — Clean Institutional tokens & base polish ══════════════ */
+:root {
+  --cr-bg:       #0a0e16;
+  --cr-surface:  #111722;
+  --cr-surface2: #161d2b;
+  --cr-border:   #1e2733;
+  --cr-border-hi:#2a3647;
+  --cr-text:     #e2e8f0;
+  --cr-text-dim: #94a3b8;
+  --cr-text-mute:#64748b;
+  --cr-primary:  #4f7cff;
+  --cr-buy:      #10b981;
+  --cr-sell:     #f43f5e;
+  --cr-warn:     #f59e0b;
+  --cr-signal:   #fbbf24;
+}
+
+/* Base premium: smoothing + subtle radial depth pada slate base */
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body {
+  background-color: var(--cr-bg);
+  background-image:
+    radial-gradient(1200px 600px at 78% -8%, rgba(79,124,255,0.06), transparent 60%),
+    radial-gradient(900px 500px at 8% 108%, rgba(79,124,255,0.04), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* Scrollbar halus institusi (bukan default chunky) */
+* { scrollbar-width: thin; scrollbar-color: #2a3647 transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #233047; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: #324061; background-clip: content-box; }
+
+/* Seleksi teks */
+::selection { background: rgba(79,124,255,0.30); color: #fff; }
+
+/* Util kartu konsisten (dipakai komponen redesign) */
+.cr-card { background: var(--cr-surface); border: 1px solid var(--cr-border); border-radius: 14px; }
+.cr-card-hover:hover { background: var(--cr-surface2); border-color: var(--cr-border-hi); }
+.cr-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
