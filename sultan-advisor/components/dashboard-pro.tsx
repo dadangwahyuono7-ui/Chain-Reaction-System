@@ -56,6 +56,50 @@ export interface DashboardProProps {
   blink: boolean; blinkFast: boolean;
 }
 
+// ── MOTION: 2 lapis (AMBIENT kalem · SIGNAL sangar) — vibe hacker ────────────
+const DP_ANIM = `
+/* data stream mengalir di konektor (ambient) */
+@keyframes dp-flow { from { background-position: 0 0; } to { background-position: 24px 0; } }
+/* napas pelan untuk step yang lagi DITUNGGU */
+@keyframes dp-breathe {
+  0%,100% { box-shadow: 0 0 0 0 rgba(79,124,255,0.0); border-color: rgba(79,124,255,0.5); }
+  50%     { box-shadow: 0 0 0 5px rgba(79,124,255,0.12); border-color: rgba(79,124,255,0.95); }
+}
+/* SIGNAL: tajam + terang, cuma pas entry valid (CF fase-3) */
+@keyframes dp-signal {
+  0%,100% { box-shadow: 0 0 8px rgba(251,191,36,0.45); }
+  50%     { box-shadow: 0 0 22px rgba(251,191,36,0.95), 0 0 44px rgba(251,191,36,0.4); }
+}
+/* scanline nyapu (hacker) */
+@keyframes dp-scan { 0% { transform: translateX(-30%); opacity: 0; } 12% { opacity: .9; } 88% { opacity: .9; } 100% { transform: translateX(560%); opacity: 0; } }
+/* grid hidup di hero */
+@keyframes dp-grid { from { background-position: 0 0, 0 0; } to { background-position: 24px 24px, 24px 24px; } }
+/* gradient border bergerak pas GO */
+@keyframes dp-slide { from { background-position: 0 0; } to { background-position: 200% 0; } }
+/* flicker halus angka harga (CRT) */
+@keyframes dp-flicker { 0%,96%,100% { opacity: 1; } 97% { opacity: .82; } 98% { opacity: 1; } 99% { opacity: .9; } }
+/* radar blip dot */
+@keyframes dp-blip { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(2.6); opacity: 0; } }
+/* sparkline bar denyut */
+@keyframes dp-bar { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+
+.dp-stream      { background-image: repeating-linear-gradient(90deg, var(--c) 0 7px, transparent 7px 14px); background-size: 24px 100%; animation: dp-flow .7s linear infinite; }
+.dp-breathe     { animation: dp-breathe 3.2s ease-in-out infinite; }
+.dp-signal      { animation: dp-signal .9s ease-in-out infinite; }
+.dp-grid        { background-image: linear-gradient(rgba(79,124,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(79,124,255,.05) 1px, transparent 1px); background-size: 24px 24px; animation: dp-grid 7s linear infinite; }
+.dp-flicker     { animation: dp-flicker 4s steps(1) infinite; }
+.dp-bar         { animation: dp-bar 1.4s ease-in-out infinite; }
+.dp-scanline    { position: absolute; top: 0; bottom: 0; width: 90px; pointer-events: none;
+                  background: linear-gradient(90deg, transparent, rgba(79,124,255,0.10), transparent);
+                  animation: dp-scan 5.5s ease-in-out infinite; }
+.dp-border-go::before {
+  content: ''; position: absolute; inset: 0; border-radius: 1rem; padding: 1px;
+  background: linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24, #f59e0b); background-size: 200% 100%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; animation: dp-slide 2s linear infinite; pointer-events: none;
+}
+`;
+
 const TF_ORDER = ["DAILY", "H4", "H1", "M30", "M15", "M5"];
 const TF_SHORT: Record<string, string> = { DAILY: "D1", H4: "H4", H1: "H1", M30: "M30", M15: "M15", M5: "M5" };
 
@@ -185,7 +229,8 @@ function ChainRail({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
                 "flex-1 min-w-0 rounded-xl border px-2.5 py-2.5 text-center transition-all",
                 has ? "bg-slate-900/70" : "bg-slate-900/30 opacity-50",
                 isMaster ? "border-indigo-500/50" : has ? "border-slate-700/70" : "border-slate-800/50",
-                d?.fase === 3 && aligned && "ring-1 ring-amber-400/50"
+                d?.fase === 3 && aligned && "ring-1 ring-amber-400/60 dp-signal",
+                d?.fase === 2 && aligned && "dp-breathe"
               )}>
                 <div className="flex items-center justify-center gap-1">
                   <span className={cn("text-[11px] font-bold tracking-wide",
@@ -205,10 +250,14 @@ function ChainRail({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
                   </div>
                 )}
               </div>
-              {/* connector */}
+              {/* connector — data stream mengalir kalau selaras */}
               {i < TF_ORDER.length - 1 && (
-                <div className="w-3 sm:w-4 h-[2px] mx-0.5 shrink-0 rounded-full"
-                  style={{ background: connOn ? (h4Dir === "BULLISH" ? "#10b981" : "#f43f5e") : "#1e293b" }} />
+                connOn ? (
+                  <div className="dp-stream w-3 sm:w-4 h-[2px] mx-0.5 shrink-0 rounded-full"
+                    style={{ ["--c" as string]: h4Dir === "BULLISH" ? "#10b981" : "#f43f5e" }} />
+                ) : (
+                  <div className="w-3 sm:w-4 h-[2px] mx-0.5 shrink-0 rounded-full bg-slate-800" />
+                )
               )}
             </div>
           );
@@ -228,31 +277,37 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
   if (rows.length === 0)
     return <div className="px-4 pb-4 text-[11px] text-slate-500">Belum ada CMP aktif. Sync TradingView.</div>;
 
-  const Step = ({ label, done, active, tone, sub }: {
-    label: string; done: boolean; active?: boolean; tone: string; sub?: string;
+  const Step = ({ label, done, active, waiting, tone, sub }: {
+    label: string; done: boolean; active?: boolean; waiting?: boolean; tone: string; sub?: string;
   }) => (
     <div className="flex flex-col items-center gap-1 shrink-0">
       <div className={cn(
         "w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition-all",
         active
-          ? "border-amber-400 bg-amber-400/15 text-amber-300"
+          ? "border-amber-400 bg-amber-400/15 text-amber-300 dp-signal"
           : done
             ? tone === "emerald" ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
               : tone === "rose" ? "border-rose-500 bg-rose-500/15 text-rose-300"
               : "border-indigo-500 bg-indigo-500/15 text-indigo-300"
-            : "border-slate-700 bg-slate-800/40 text-slate-600"
+            : waiting
+              ? "border-indigo-500 bg-indigo-500/10 text-indigo-300 dp-breathe"
+              : "border-slate-700 bg-slate-800/40 text-slate-600"
       )}>
-        {done || active ? "✓" : "○"}
+        {done || active ? "✓" : waiting ? "◌" : "○"}
       </div>
       <span className={cn("text-[8.5px] font-semibold tracking-wide",
-        done || active ? "text-slate-300" : "text-slate-600")}>{label}</span>
-      {sub && <span className="text-[8px] text-slate-500 tabular-nums leading-none">{sub}</span>}
+        done || active || waiting ? "text-slate-300" : "text-slate-600")}>{label}</span>
+      {sub && <span className="text-[8px] text-amber-400/90 tabular-nums leading-none">{sub}</span>}
     </div>
   );
 
   const Conn = ({ on, tone }: { on: boolean; tone: string }) => (
-    <div className="flex-1 h-[2px] mx-1 mt-[-14px] rounded-full"
-      style={{ background: on ? (tone === "emerald" ? "#10b981" : tone === "rose" ? "#f43f5e" : "#4f7cff") : "#1e293b" }} />
+    on ? (
+      <div className="dp-stream flex-1 h-[2px] mx-1 mt-[-14px] rounded-full"
+        style={{ ["--c" as string]: tone === "emerald" ? "#10b981" : tone === "rose" ? "#f43f5e" : "#4f7cff" }} />
+    ) : (
+      <div className="flex-1 h-[2px] mx-1 mt-[-14px] rounded-full bg-slate-800" />
+    )
   );
 
   return (
@@ -286,9 +341,10 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
             <div className="flex-1 flex items-start min-w-0">
               <Step label="CMP" done tone={tone} />
               <Conn on={vrDone || cfDone} tone={tone} />
-              <Step label="VR" done={vrDone} tone={tone} />
+              <Step label="VR" done={vrDone} waiting={!vrDone} tone={tone} />
               <Conn on={cfDone} tone={tone} />
-              <Step label="CF" done={cfDone && d.fase !== 3} active={cfDone && d.fase === 3} tone={tone}
+              <Step label="CF" done={cfDone && d.fase !== 3} active={cfDone && d.fase === 3}
+                waiting={!cfDone && vrDone} tone={tone}
                 sub={d.cfCount > 0 ? `×${d.cfCount}${d.cfType ? " " + d.cfType : ""}` : undefined} />
             </div>
             {/* status */}
@@ -384,8 +440,8 @@ function Pressure({ buyPct, sellPct, cumDelta, momentum, barDeltas, maxBarAbs, d
               const h = Math.max(8, Math.abs(d) / maxBarAbs * 100);
               return (
                 <div key={i} className="flex-1 flex flex-col justify-end h-full">
-                  <div className={cn("w-full rounded-sm transition-all", d >= 0 ? "bg-emerald-500/60" : "bg-rose-500/60")}
-                    style={{ height: `${h}%` }} />
+                  <div className={cn("dp-bar w-full rounded-sm transition-all", d >= 0 ? "bg-emerald-500/60" : "bg-rose-500/60")}
+                    style={{ height: `${h}%`, animationDelay: `${i * 0.12}s` }} />
                 </div>
               );
             })}
@@ -522,6 +578,7 @@ export function DashboardPro(p: DashboardProProps) {
 
   return (
     <div className="px-4 py-4 max-w-[1180px] mx-auto space-y-3.5">
+      <style>{DP_ANIM}</style>
 
       {/* ══ TOP STRIP: price + session + sync ══════════════════════════════ */}
       <div className="flex items-center gap-3 flex-wrap">
@@ -541,6 +598,7 @@ export function DashboardPro(p: DashboardProProps) {
             <span className="text-[9px] text-slate-500 tabular-nums">{p.sess} · spr {p.spread}</span>
           </div>
           <div className={cn("text-[30px] font-bold tabular-nums leading-none",
+            p.livePrice && "dp-flicker",
             p.priceFlash === "up" ? "text-emerald-300" : p.priceFlash === "dn" ? "text-rose-300" : "text-slate-100"
           )}>{p.displayPrice}</div>
         </div>
@@ -564,14 +622,17 @@ export function DashboardPro(p: DashboardProProps) {
       {/* ══ HERO COMMAND CARD ══════════════════════════════════════════════ */}
       <div className={cn(
         "relative rounded-2xl border overflow-hidden",
-        v.tone === "go" ? "border-amber-500/40" : v.tone === "stop" ? "border-rose-500/30" : "border-slate-800/70",
+        v.tone === "go" ? "border-amber-500/40 dp-border-go" : v.tone === "stop" ? "border-rose-500/30" : "border-slate-800/70",
         "bg-slate-900/50"
       )}>
+        {/* grid hidup + scanline (hacker ambient) */}
+        <div className="dp-grid absolute inset-0 opacity-50 pointer-events-none" />
+        <div className="dp-scanline" />
         <div className={cn("absolute inset-0 bg-gradient-to-r pointer-events-none", accentBg[v.tone])} />
         <div className="relative flex items-center gap-5 px-6 py-5">
-          <div className={cn("text-[40px] leading-none shrink-0",
+          <div className={cn("text-[40px] leading-none shrink-0 transition-transform duration-300",
+            v.tone === "go" ? "drop-shadow-[0_0_14px_rgba(251,191,36,0.7)]" : v.tone === "stop" ? "drop-shadow-[0_0_12px_rgba(244,63,94,0.5)]" : "",
             v.tone === "go" && (p.blinkFast ? "scale-110" : "scale-100"),
-            "transition-transform duration-300"
           )}>{v.icon}</div>
           <div className="flex-1 min-w-0">
             <div className={cn("text-[26px] font-bold tracking-tight leading-tight", accentText[v.accent])}>{v.head}</div>
