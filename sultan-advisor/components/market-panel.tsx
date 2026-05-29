@@ -520,12 +520,14 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const [, setTick] = useState(0);
 
   useEffect(() => {
-    const t = setInterval(() => setBlink(p => !p), 800);
+    // REDESIGN: dipelanin biar kalem institusi (dulu 800ms) — gerakan ambient
+    const t = setInterval(() => setBlink(p => !p), 1400);
     return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
-    const t = setInterval(() => setBlinkFast(p => !p), 350);
+    // REDESIGN: dulu 350ms (frantic). Dipelanin ke 700ms — tetap "hidup" tapi gak bikin capek.
+    const t = setInterval(() => setBlinkFast(p => !p), 700);
     return () => clearInterval(t);
   }, []);
 
