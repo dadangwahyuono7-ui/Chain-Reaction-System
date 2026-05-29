@@ -1,3 +1,15 @@
+> ⛔⛔ MANDAT UTAMA (BACA DULU) ⛔⛔
+> User TEGAS: **JANGAN recolor / ganti tema lagi.** Sesi sebelumnya cuma ganti warna
+> (amber→indigo, zinc→slate) + poles logo/chrome — LAYOUT & MODEL MASIH SAMA PERSIS 3002.
+> Itu BUKAN yang diminta. User mau **MODEL/STRUKTUR/LAYOUT BERUBAH TOTAL.**
+>
+> TUGAS SESI BARU = BONGKAR ARSITEKTUR TAMPILAN:
+> 1. Buang layout 3-kolom padat (sidebar|market|chat) → ganti susunan BARU (lihat "LAYOUT BARU").
+> 2. Bikin komponen primitif BARU (Card, Stat, StepDot) — JANGAN pakai panel lama apa adanya.
+> 3. Susun ulang: Command Card hero full-width → card grid lega → chain progress besar.
+> 4. Hasil harus kelihatan SEBAGAI APLIKASI BEDA, bukan 3002 yang dicat ulang.
+> JANGAN cuma ganti class warna. Kalau hasilnya masih "mirip 3002 beda warna" = GAGAL.
+
 # REDESIGN BRIEF — ChainReaction Dashboard v2 (Clean Institutional)
 
 > **Tujuan:** Build dashboard BARU dari nol (bukan poles 3002). Arah: **Clean Institutional**
