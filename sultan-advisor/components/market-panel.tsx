@@ -456,18 +456,10 @@ function PanelBox({ title, children, cls = "", extra, scanV = false }: {
   title: React.ReactNode; children: React.ReactNode; cls?: string; extra?: React.ReactNode; scanV?: boolean;
 }) {
   return (
-    <div className={cn("rounded-xl border bg-zinc-950/90 overflow-hidden relative", cls)}>
-      {/* Horizontal scan line sweeper */}
-      <div className="absolute top-0 left-0 w-full h-[1px] overflow-hidden pointer-events-none z-10">
-        <div className="anim-scan-h h-full w-1/4 bg-gradient-to-r from-transparent via-cyan-400/35 to-transparent" />
-      </div>
-      {/* Optional vertical scan */}
-      {scanV && (
-        <div className="absolute top-0 left-0 h-full w-[1px] overflow-hidden pointer-events-none z-10">
-          <div className="anim-scan-v w-full h-1/4 bg-gradient-to-b from-transparent via-amber-400/20 to-transparent" />
-        </div>
-      )}
-      <div className="cr-panel-header px-3 py-1 border-b border-zinc-800/80 flex items-center justify-between bg-zinc-900/50">
+    <div className={cn("rounded-xl border border-slate-800/70 bg-slate-900/40 overflow-hidden relative", cls)}>
+      {/* Accent atas tipis (statis) — cuma saat panel ditandai aktif */}
+      {scanV && <div className="absolute top-0 left-0 w-full h-[2px] bg-indigo-500/70 pointer-events-none" />}
+      <div className="cr-panel-header px-3.5 py-2 border-b border-slate-800/60 flex items-center justify-between">
         {title}
         {extra}
       </div>
@@ -476,17 +468,13 @@ function PanelBox({ title, children, cls = "", extra, scanV = false }: {
   );
 }
 
-function HexTag() {
-  const [hex] = useState(() => Math.random().toString(16).slice(2, 8).toUpperCase());
-  return <span className="cr-label-xs text-[9px] text-zinc-700 font-mono tabular-nums">{hex}</span>;
-}
+function HexTag() { return null; }
 
 function PanelTitle({ label, live = false }: { label: string; live?: boolean }) {
   return (
     <div className="flex items-center gap-2">
-      {live && <span className="anim-pulse-dot w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
-      <span className="cr-label-sm text-[10px] font-black font-mono text-cyan-400 tracking-widest">[ {label} ]</span>
-      <HexTag />
+      {live && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 anim-ambient-dot" />}
+      <span className="text-[11px] font-semibold text-slate-300 tracking-wide uppercase">{label}</span>
     </div>
   );
 }
