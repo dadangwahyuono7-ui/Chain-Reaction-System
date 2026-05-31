@@ -9,7 +9,13 @@ import { MarketPanel } from "@/components/market-panel";
 import { StatusBar } from "@/components/status-bar";
 import { LogoSidebar } from "@/components/logo";
 import { TeamChat } from "@/components/team-chat";
+import dynamic from "next/dynamic";
 import { LogOutIcon, PanelLeftIcon, ZapIcon, PlusIcon, UsersIcon, BookOpenIcon, BarChart2Icon } from "lucide-react";
+
+// WebGL bg di-load client-only (hindari SSR mismatch + nggak blok first paint)
+const ThreeBg = dynamic(() => import("@/components/three-bg").then(m => m.ThreeBg), { ssr: false });
+const Chain3DLive = dynamic(() => import("@/components/chain-3d").then(m => m.Chain3DLive), { ssr: false });
+import { TiltCard } from "@/components/tilt-card";
 
 const ADMIN_EMAIL = "dadangwahyuono@gmail.com";
 import { cn } from "@/lib/utils";
@@ -72,7 +78,10 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
+    <div className="flex h-screen bg-transparent text-slate-100 overflow-hidden">
+
+      {/* ── WebGL 3D wireframe background ──────────────────────── */}
+      <ThreeBg />
 
       {/* ── WATERMARK ─────────────────────────────────────────── */}
       <div
@@ -187,6 +196,12 @@ export default function DashboardPage() {
 
         {/* Dashboard scroll area */}
         <div className="flex-1 overflow-y-auto">
+          {/* 3D CMP→VR→CF chain (live H4) */}
+          <div className="p-3 pb-0">
+            <TiltCard className="p-3" intensity={5}>
+              <Chain3DLive tf="H4" />
+            </TiltCard>
+          </div>
           <MarketPanel
             onAutoAnalysis={(prompt) => setAutoPrompt(prompt)}
             onPriceUpdate={(price) => setCurrentPrice(price)}

@@ -5,6 +5,9 @@ import { signIn } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 import { LogoLogin } from "@/components/logo";
 import { EyeIcon, EyeOffIcon } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const ThreeBg = dynamic(() => import("@/components/three-bg").then(m => m.ThreeBg), { ssr: false });
 
 export default function LoginPage() {
   const router = useRouter();
@@ -28,7 +31,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-transparent flex items-center justify-center p-4 relative overflow-hidden">
+
+      {/* WebGL 3D wireframe background */}
+      <ThreeBg />
 
       {/* Background grid */}
       <div
