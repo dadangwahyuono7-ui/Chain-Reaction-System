@@ -156,6 +156,13 @@ venv\Scripts\python.exe engine\connection.py
 
 ## GIT WORKFLOW — WAJIB DIIKUTI
 
+> **🔧 MAU TUNE-UP / UPGRADE AI LOCAL? BACA `TUNEUP_WORKFLOW.md` DULU.**
+> Aturan inti: produksi (web port 3002 + llama.cpp :8080 → trade.dadangchatai.com)
+> JANGAN disentuh saat ngoprek. Eksperimen di LAB terpisah: worktree
+> `sultan-advisor-lab` (branch `feat/tune-up`) + web port 3003 + llama.cpp :8081.
+> Port beda ≠ aman — isolasi sejati = folder worktree + instance llama.cpp ke-2.
+> Promosi ke master HANYA setelah teruji di lab. Safety net: `git reset --hard origin/master`.
+
 ```
 master       — production, selalu stabil
 feat/xxx     — fitur baru
