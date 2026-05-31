@@ -776,8 +776,10 @@ export async function POST(req: Request) {
     : modelType === "groq" ? buildGroqModel()
     : buildCloudModel();
 
-  // Lite prompt untuk local (hemat token), full untuk groq/cloud
-  const systemPrompt = isLocal
+  // Groq free tier: max 12K TPM → WAJIB lite prompt
+  // Local: lite prompt (model kecil)
+  // Cloud (Claude): full prompt
+  const systemPrompt = (isLocal || modelType === "groq")
     ? buildSystemPromptLite(_ctxForPrompt, _memForPrompt)
     : buildSystemPrompt(_ctxForPrompt, _memForPrompt);
 
@@ -1078,13 +1080,28 @@ export async function POST(req: Request) {
     }),
   };
 
+  // Local: no tools
+  // Groq: minimal tools (web_search + save_memory + get_ohlc + calculate_risk)
+  // Cloud: full tools (semua 16 tools)
+  const groqMinimalTools = {
+    web_search:      toolsWithContext.web_search,
+    save_memory:     toolsWithContext.save_memory,
+    get_ohlc:        toolsWithContext.get_ohlc,
+    calculate_risk:  toolsWithContext.calculate_risk,
+  };
+
   const result = streamText({
     model: selectedModel,
     system: systemPrompt,
     messages: coreMessages,
     maxOutputTokens: 4096,
-    stopWhen: stepCountIs(15), // max 15 tool rounds — full agent can chain: sync→read→write→build→verify
-    tools: toolsWithContext,   // AI bisa browse web + fetch URL + save memory
+    ...(modelType === "cloud" ? {
+      stopWhen: stepCountIs(15),
+      tools: toolsWithContext,
+    } : modelType === "groq" ? {
+      stopWhen: stepCountIs(3),
+      tools: groqMinimalTools,
+    } : {}),
     onFinish: async ({ text }) => {
       if (sessionId && text) {
         await db.insert(messages).values({ id: nanoid(), sessionId, role: "assistant", content: text });

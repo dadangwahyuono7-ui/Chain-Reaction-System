@@ -22,12 +22,12 @@ export const LOCAL_MODELS = [
     fast:  true,
   },
   {
-    id:    "gemma3-12b",
-    label: "Gemma 3 12B Vision",
-    desc:  "Vision capable — analisis screenshot chart",
-    size:  "7.6 GB",
-    stars: 4,
-    bat:   "F:\\AI-AGENT\\start-gemma3-12b.bat",
+    id:    "gemma4-e4b",
+    label: "Gemma 4 E4B Vision",
+    desc:  "Vision + Audio — analisis screenshot chart, context 128K",
+    size:  "3.5 GB",
+    stars: 5,
+    bat:   "F:\\AI-AGENT\\start-gemma4-e4b.bat",
     fast:  false,
   },
   {
