@@ -538,7 +538,11 @@ function PanelBox({ title, children, cls = "", extra, scanV = false }: {
   title: React.ReactNode; children: React.ReactNode; cls?: string; extra?: React.ReactNode; scanV?: boolean;
 }) {
   return (
-    <div className={cn("rounded-xl border border-slate-800/70 bg-slate-900/40 overflow-hidden relative", cls)}>
+    <div className={cn(
+      "rounded-xl border border-slate-800/70 bg-slate-900/55 backdrop-blur-md overflow-hidden relative",
+      "transition-all duration-300 hover:-translate-y-0.5 hover:border-indigo-500/40 hover:bg-slate-900/65 hover:shadow-[0_10px_34px_rgba(99,102,241,0.18)]",
+      cls
+    )}>
       {/* Accent atas tipis (statis) — cuma saat panel ditandai aktif */}
       {scanV && <div className="absolute top-0 left-0 w-full h-[2px] bg-indigo-500/70 pointer-events-none" />}
       <div className="cr-panel-header px-3.5 py-2 border-b border-slate-800/60 flex items-center justify-between">

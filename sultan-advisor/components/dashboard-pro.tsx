@@ -153,7 +153,7 @@ const DP_ANIM = `
   --dp-sh-1: 0 1px 0 0 rgba(255,255,255,.03) inset, 0 8px 32px -16px rgba(0,0,0,.7);
   --dp-sh-2: 0 1px 0 0 rgba(255,255,255,.05) inset, 0 20px 60px -20px rgba(0,0,0,.85);
   --dp-sh-glow: 0 0 40px -12px;
-  --dp-glass: rgba(15,23,42,0.6);
+  --dp-glass: rgba(15,23,42,0.5);
   --dp-glass-border: rgba(148,163,184,0.08);
 }
 /* ═══ TYPE SCALE — optimised for 27" monitor ═══ */
@@ -167,7 +167,7 @@ const DP_ANIM = `
 .dp-num   { font-variant-numeric: tabular-nums; }
 /* ═══ GLASS MATERIAL ═══ */
 .dp-card  { box-shadow: var(--dp-sh-1); transition: box-shadow .3s ease, border-color .3s ease, transform .3s ease; }
-.dp-card:hover { box-shadow: var(--dp-sh-2); transform: translateY(-1px); }
+.dp-card:hover { box-shadow: var(--dp-sh-2), 0 12px 44px -10px rgba(99,102,241,0.38); transform: translateY(-3px) scale(1.006); border-color: rgba(99,102,241,0.38); }
 .dp-glass { background: var(--dp-glass); backdrop-filter: blur(16px) saturate(1.5); -webkit-backdrop-filter: blur(16px) saturate(1.5); }
 
 /* ═══ REDUCED MOTION ═══ */
