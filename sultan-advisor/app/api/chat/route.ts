@@ -10,7 +10,7 @@ import { db } from "@/db";
 export const maxDuration = 300;
 import { messages, chatSessions, marketContext, memories, paperAccounts, paperTrades } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { buildSystemPrompt, type Memory } from "@/lib/system-prompt";
+import { buildSystemPrompt, buildSystemPromptLite, type Memory } from "@/lib/system-prompt";
 import { headers } from "next/headers";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -709,7 +709,10 @@ export async function POST(req: Request) {
     ctxRows.map((r) => [r.variableName, { label: r.label, value: r.value }])
   );
   const recentMemories = await recallMemories(30);
-  const systemPrompt = buildSystemPrompt(ctx, recentMemories);
+  // Prompt dibangun setelah model selection (lihat bawah)
+  // placeholder dulu, diganti setelah isLocal diketahui
+  const _ctxForPrompt = ctx;
+  const _memForPrompt = recentMemories;
 
   // Upsert session
   if (sessionId) {
@@ -752,7 +755,13 @@ export async function POST(req: Request) {
     if (!localOk) useCloud = true; // Qwen3 tidak jalan → pakai cloud otomatis
   }
 
+  const isLocal = !useCloud;
   const selectedModel = useCloud ? buildCloudModel() : buildLocalModel();
+  // Build system prompt setelah isLocal diketahui
+  // Lite version untuk local: hemat ~3K token → prefill lebih cepat
+  const systemPrompt = isLocal
+    ? buildSystemPromptLite(_ctxForPrompt, _memForPrompt)
+    : buildSystemPrompt(_ctxForPrompt, _memForPrompt);
 
   // Build tools with session context
   const toolsWithContext = {

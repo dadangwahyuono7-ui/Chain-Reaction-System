@@ -820,3 +820,26 @@ Ini adalah pola-pola LANJUTAN yang harus kamu kuasai agar analisismu makin tajam
    - BE protect setelah profit 10 pips (sesuai chain_settings)
    - Kalau 2 trade berturut-turut kena SL → suggest Commander istirahat, jangan revenge trade`;
 }
+
+// ── LITE VERSION untuk model lokal (Qwen3-8B, Gemma) ─────────────────────────
+// Skip tools/arsenal section → hemat ~3.000 token → prefill 30-40% lebih cepat
+// Model lokal tidak support tool calling anyway
+export function buildSystemPromptLite(ctx: MarketContext, memories?: Memory[]): string {
+  const full = buildSystemPrompt(ctx, memories);
+
+  // Potong dari bagian ARSENAL sampai sebelum FORMAT RESPONS
+  const cutStart = full.indexOf("===  ARSENAL — 7 TOOLS YANG KAMU PUNYA ===");
+  const cutEnd   = full.indexOf("===  FORMAT RESPONS ===");
+
+  if (cutStart === -1 || cutEnd === -1) return full; // fallback ke full kalau tidak ketemu
+
+  const lite = full.slice(0, cutStart)
+    + `===  MODE LOCAL AI ===
+Kamu berjalan sebagai model lokal (offline). Fokus pada analisis trading saja.
+Tidak ada tool calls — langsung jawab berdasarkan data market di context.
+
+`
+    + full.slice(cutEnd);
+
+  return lite;
+}
