@@ -17,8 +17,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   RefreshCwIcon, ArrowUpIcon, ArrowDownIcon, ZapIcon,
   WifiIcon, WifiOffIcon, ClockIcon, TargetIcon, ActivityIcon,
-  LayersIcon, GaugeIcon, Volume2Icon, VolumeXIcon,
+  LayersIcon, GaugeIcon, Volume2Icon, VolumeXIcon, CpuIcon,
 } from "lucide-react";
+import { LocalModelSwitcher } from "@/components/local-model-switcher";
 
 // ── Tick halus (WebAudio) pas level masuk HOT — beda dari beep entry ──────────
 let _ac: AudioContext | null = null;
@@ -1389,6 +1390,14 @@ export function DashboardPro(p: DashboardProProps) {
         right={<span className="text-[12.5px] text-slate-500">resistance ▲ · support ▼</span>}>
         <SnrLadder aboveLevels={p.aboveLevels} belowLevels={p.belowLevels} atLevel={p.atLevel}
           cmpFloat={p.cmpFloat} displayPrice={p.displayPrice} livePrice={p.livePrice} />
+      </Card>
+
+      {/* ══ LOCAL MODEL SWITCHER ════════════════════════════════════════ */}
+      <Card title="Local AI Model" icon={<CpuIcon className="w-3.5 h-3.5" />}
+        right={<span className="text-[12.5px] text-slate-500">hemat Claude Sonnet · switch model lokal</span>}>
+        <div className="px-5 pb-5">
+          <LocalModelSwitcher />
+        </div>
       </Card>
 
       <div className="text-center text-[12px] text-slate-600/60 pt-2 pb-6 tracking-widest uppercase font-medium">
