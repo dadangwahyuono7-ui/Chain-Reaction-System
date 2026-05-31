@@ -821,25 +821,66 @@ Ini adalah pola-pola LANJUTAN yang harus kamu kuasai agar analisismu makin tajam
    - Kalau 2 trade berturut-turut kena SL → suggest Commander istirahat, jangan revenge trade`;
 }
 
-// ── LITE VERSION untuk model lokal (Qwen3-8B, Gemma) ─────────────────────────
-// Skip tools/arsenal section → hemat ~3.000 token → prefill 30-40% lebih cepat
-// Model lokal tidak support tool calling anyway
+// ── ULTRA-LITE untuk model lokal kecil (Qwen3-8B ngl=28) ────────────────────
+// Target: ~5.000 token max → prefill ~25 detik → tidak timeout
+// Hanya berisi: identitas + aturan inti doktrin + state market + format singkat
 export function buildSystemPromptLite(ctx: MarketContext, memories?: Memory[]): string {
-  const full = buildSystemPrompt(ctx, memories);
+  const get = (k: string) => ctx[k]?.value?.trim() || "";
 
-  // Potong dari bagian ARSENAL sampai sebelum FORMAT RESPONS
-  const cutStart = full.indexOf("===  ARSENAL — 7 TOOLS YANG KAMU PUNYA ===");
-  const cutEnd   = full.indexOf("===  FORMAT RESPONS ===");
+  // TF state table
+  const TF_KEYS = ["DAILY","H4","H1","M30","M15","M5"] as const;
+  const tfRows = TF_KEYS.map(tf => {
+    const cmp = get(`${tf}_CMP`); if (!cmp) return null;
+    const vr  = get(`${tf}_VR`) || "—";
+    const cf  = get(`${tf}_CF`) || "—";
+    const fase = (vr === "YA" && cf === "YA") ? "F3⚡" : vr === "YA" ? "F2" : "F1";
+    const dir  = cmp === "BULLISH" ? "BUY" : cmp === "BEARISH" ? "SELL" : cmp;
+    return `${tf.padEnd(6)}| ${dir.padEnd(5)}| VR:${vr.padEnd(6)}| CF:${cf.padEnd(6)}| ${fase}`;
+  }).filter(Boolean).join("\n");
 
-  if (cutStart === -1 || cutEnd === -1) return full; // fallback ke full kalau tidak ketemu
+  // SNR ringkas
+  const snrKeys = ["HARGA","PDH","PDL","DAILY_OPEN","PWH","PWL","ROUND_ABOVE","ROUND_BELOW"];
+  const snrLines = snrKeys.filter(k => get(k)).map(k => `${ctx[k].label}: ${ctx[k].value}`).join(" | ");
 
-  const lite = full.slice(0, cutStart)
-    + `===  MODE LOCAL AI ===
-Kamu berjalan sebagai model lokal (offline). Fokus pada analisis trading saja.
-Tidak ada tool calls — langsung jawab berdasarkan data market di context.
+  // Memory terbaru (max 3)
+  const memLines = memories?.slice(0, 3).map(m => `- ${m.content}`).join("\n") || "";
 
-`
-    + full.slice(cutEnd);
+  const symbol = get("TV_SYMBOL") || "XAUUSD";
+  const nextEvt = get("NEXT_EVENT_NAME");
+  const nextMin = get("NEXT_EVENT_EPOCH") ? Math.floor((parseInt(get("NEXT_EVENT_EPOCH")) - Date.now()) / 60000) : null;
+  const newsWarn = nextMin !== null && nextMin >= 0 && nextMin <= 30 ? `⚠️ NEWS ${nextMin}m: ${nextEvt}` : "";
 
-  return lite;
+  return `Kamu adalah AI trading advisor untuk Commander Dadang, pakar sistem Chain Reaction (CMP→VR→CF).
+Instrumen aktif: ${symbol}. Jawab dalam Bahasa Indonesia. Singkat dan tajam.
+
+DOKTRIN INTI:
+- CMP = candle CLOSE break Minor SNR (body only, bukan wick)
+- VR = breakout BERLAWANAN di TF 1 level bawah. Hanya SEKALI per siklus.
+- CF = breakout SEARAH setelah VR. Bisa berkali-kali. = Trigger entry.
+- Urutan wajib: CMP → VR → CF → ENTRY
+- TF hierarchy: Daily → H4 → H1 → M30 → M15 → M5
+- VR hanya dari TF 1 level bawah (H4 VR=dari H1, bukan M30)
+- TP rules: CF M5→SNR M15, CF M15→SNR M30, CF M30→SNR H1, CF H1→SNR H4
+- SL = puncak VR TF. CF berkali-kali = re-entry valid.
+- CONTI = entry tanpa VR dulu = berisiko, size kecil
+- VR = CMP baru di TF itu sendiri → scalp valid searah VR selama guard TF belum VR balik
+
+GRADING: A+=M30/M15 F3 searah H4+SNR | A=F3 searah H4 | B=F3 counter | C=SKIP
+
+STATE MARKET SAAT INI (${symbol}):
+TF     | DIR   | VR     | CF     | FASE
+-------+-------+--------+--------+------
+${tfRows || "Belum sync"}
+
+${snrLines ? `SNR: ${snrLines}` : ""}
+${newsWarn}
+${memLines ? `\nPENGALAMAN TERAKHIR:\n${memLines}` : ""}
+
+FORMAT JAWABAN:
+- Konfirmasi state: H4=[x] F[x] | M30=[x] | Daily=[x]
+- Storyline per TF (singkat)
+- Setup terbaik: TF, arah, grade, entry via CF [TF], SL=[TF] barrier, TP=[TF] SNR
+- Kalau belum ada setup → bilang dengan jelas kenapa
+
+Jangan gunakan Fibonacci, EMA, atau indikator eksternal. Murni CMP/VR/CF.`;
 }

@@ -36,6 +36,15 @@ function buildLocalModel(): LanguageModel {
   return client(process.env.LLM_MODEL ?? "qwen3-8b-q4.gguf");
 }
 
+function buildGroqModel(): LanguageModel {
+  const client = createOpenAICompatible({
+    name: "groq",
+    apiKey:  process.env.GROQ_API_KEY  ?? "",
+    baseURL: process.env.GROQ_BASE_URL ?? "https://api.groq.com/openai/v1",
+  });
+  return client(process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile");
+}
+
 function buildCloudModel(): LanguageModel {
   const client = createAnthropic({
     apiKey:  process.env.BLUEPACK_API_KEY ?? "",
@@ -744,21 +753,30 @@ export async function POST(req: Request) {
     }));
 
   // Smart selection: ikut pilihan Commander.
-  // Tapi kalau LOCAL dipilih dan server Qwen3 tidak hidup → auto-fallback ke cloud (API premium).
-  // Kalau CLOUD dipilih → langsung cloud, tidak cek local sama sekali.
-  let useCloud = modelChoice === "cloud";
-  if (!useCloud) {
+  // local  → Qwen3-8B di localhost:8080 (lite prompt, offline)
+  // groq   → Groq LPU cloud (Llama 70B, gratis, 200+ t/s)
+  // cloud  → Claude Sonnet via Bluepack (paling pintar, premium)
+  // Auto-fallback: local mati → groq; groq key kosong → cloud
+  let modelType: "local" | "groq" | "cloud" =
+    modelChoice === "cloud" ? "cloud" :
+    modelChoice === "groq"  ? "groq"  : "local";
+
+  if (modelType === "local") {
     const localBase = process.env.LLM_BASE_URL ?? "http://localhost:8080/v1";
     const localOk = await fetch(`${localBase}/models`, {
       signal: AbortSignal.timeout(1000),
     }).then(r => r.ok).catch(() => false);
-    if (!localOk) useCloud = true; // Qwen3 tidak jalan → pakai cloud otomatis
+    if (!localOk) modelType = process.env.GROQ_API_KEY ? "groq" : "cloud";
   }
 
-  const isLocal = !useCloud;
-  const selectedModel = useCloud ? buildCloudModel() : buildLocalModel();
-  // Build system prompt setelah isLocal diketahui
-  // Lite version untuk local: hemat ~3K token → prefill lebih cepat
+  if (modelType === "groq" && !process.env.GROQ_API_KEY) modelType = "cloud";
+
+  const isLocal = modelType === "local";
+  const selectedModel = modelType === "local" ? buildLocalModel()
+    : modelType === "groq" ? buildGroqModel()
+    : buildCloudModel();
+
+  // Lite prompt untuk local (hemat token), full untuk groq/cloud
   const systemPrompt = isLocal
     ? buildSystemPromptLite(_ctxForPrompt, _memForPrompt)
     : buildSystemPrompt(_ctxForPrompt, _memForPrompt);
