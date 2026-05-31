@@ -3,6 +3,11 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
+
+// Model lokal (Gemma-12B / Qwen-32B via llama.cpp) butuh 3-4 menit
+// untuk ingest system prompt 13K token pertama kali.
+// 300 detik = batas maksimum Next.js edge/node route duration.
+export const maxDuration = 300;
 import { messages, chatSessions, marketContext, memories, paperAccounts, paperTrades } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { buildSystemPrompt, type Memory } from "@/lib/system-prompt";

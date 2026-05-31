@@ -73,13 +73,17 @@ if (-not (Port-Free $WEB_PORT)) {
   if (-not (Test-Path "$WEB_DIR\package.json")) {
     Write-Host "      ERROR: sultan-advisor tidak ditemukan!" -ForegroundColor Red
   } else {
-    $hasBuild = Test-Path "$WEB_DIR\.next\BUILD_ID"
-    if ($hasBuild) {
+    $hasBuild  = Test-Path "$WEB_DIR\.next\BUILD_ID"
+    $hasServer = Test-Path "$WEB_DIR\server.js"
+    if ($hasBuild -and $hasServer) {
+      Write-Host "      Starting production server (custom, 300s timeout)..." -ForegroundColor Yellow
+      Start-Process "cmd.exe" -ArgumentList "/k cd /d `"$WEB_DIR`" && node server.js" -WindowStyle Minimized
+    } elseif ($hasBuild) {
       Write-Host "      Starting production server..." -ForegroundColor Yellow
       Start-Process "cmd.exe" -ArgumentList "/k cd /d `"$WEB_DIR`" && npx next start -p $WEB_PORT" -WindowStyle Minimized
     } else {
       Write-Host "      Build belum ada — jalankan build dulu..." -ForegroundColor Yellow
-      Start-Process "cmd.exe" -ArgumentList "/k cd /d `"$WEB_DIR`" && npx next build && npx next start -p $WEB_PORT" -WindowStyle Normal
+      Start-Process "cmd.exe" -ArgumentList "/k cd /d `"$WEB_DIR`" && npx next build && node server.js" -WindowStyle Normal
     }
 
     Write-Host "      Menunggu server ready..." -ForegroundColor DarkYellow
