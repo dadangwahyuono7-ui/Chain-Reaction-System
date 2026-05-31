@@ -20,6 +20,7 @@ export const LOCAL_MODELS = [
     stars: 3,
     bat:   "F:\\AI-AGENT\\start-qwen3-8b.bat",
     fast:  true,
+    match: "qwen3",
   },
   {
     id:    "gemma4-e4b",
@@ -29,24 +30,7 @@ export const LOCAL_MODELS = [
     stars: 5,
     bat:   "F:\\AI-AGENT\\start-gemma4-e4b.bat",
     fast:  false,
-  },
-  {
-    id:    "qwen36-moe",
-    label: "Qwen3.6 35B MoE",
-    desc:  "Best balance — kualitas 35B, speed 3B aktif",
-    size:  "10 GB",
-    stars: 5,
-    bat:   "F:\\AI-AGENT\\start-qwen36.bat",
-    fast:  false,
-  },
-  {
-    id:    "qwen25-32b",
-    label: "Qwen2.5 32B",
-    desc:  "Analisis mendalam — tidak buru-buru",
-    size:  "18.5 GB",
-    stars: 5,
-    bat:   "F:\\AI-AGENT\\start-qwen2.5-32b.bat",
-    fast:  false,
+    match: "gemma-4",
   },
 ] as const;
 
@@ -119,7 +103,7 @@ export async function POST(req: Request) {
     // 4. Tambahan Buffer Time
     // Meskipun /health bilang ok, model GGUF masih loading ke VRAM dan akan error 503 jika dichat
     if (ready) {
-      const bufferWait = model.fast ? 10000 : 25000;
+      const bufferWait = model.fast ? 5000 : 10000;
       await new Promise(r => setTimeout(r, bufferWait));
     }
 

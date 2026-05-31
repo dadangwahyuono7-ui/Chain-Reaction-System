@@ -74,3 +74,6 @@ sultan-advisor/public/uploads/
 
 # Runtime uploads/screenshots
 sultan-advisor/screenshots/
+
+# Backtest data (besar, jangan commit)
+backtest/DATACSV/

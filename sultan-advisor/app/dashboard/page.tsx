@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useSession, signOut } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 import { ChatInterface } from "@/components/chat-interface";
@@ -41,7 +41,28 @@ export default function DashboardPage() {
       });
   }, [selectedId]);
 
-  if (isPending) return (
+  const redirectingRef = React.useRef(false);
+
+  useEffect(() => {
+    if (isPending) return;
+    if (!session && !redirectingRef.current) {
+      redirectingRef.current = true;
+      router.replace("/login");
+    }
+  }, [isPending, session, router]);
+
+  // Timeout fallback: kalau isPending > 5 detik DAN masih belum ada session, paksa ke login
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!session && !redirectingRef.current) {
+        redirectingRef.current = true;
+        router.replace("/login");
+      }
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [session, router]);
+
+  if (isPending || !session) return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
       <div className="flex flex-col items-center gap-3">
         <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
@@ -49,8 +70,6 @@ export default function DashboardPage() {
       </div>
     </div>
   );
-
-  if (!session) { router.push("/login"); return null; }
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">

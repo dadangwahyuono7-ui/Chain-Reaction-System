@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 type ModelDef = {
   id: string; label: string; desc: string;
-  size: string; stars: number; bat: string; fast: boolean;
+  size: string; stars: number; bat: string; fast: boolean; match: string;
 };
 
 export function LocalModelSwitcher() {
@@ -96,7 +96,7 @@ export function LocalModelSwitcher() {
       {/* Model cards */}
       <div className="space-y-2">
         {models.map(m => {
-          const isActive   = running && current?.toLowerCase().includes(m.id.split("-")[0]);
+          const isActive    = running && !!current?.toLowerCase().includes(m.match.toLowerCase());
           const isSwitching = switching === m.id;
 
           return (
@@ -126,22 +126,27 @@ export function LocalModelSwitcher() {
                 </div>
 
                 {/* Button */}
-                <button
-                  onClick={() => switchModel(m.id)}
-                  disabled={loading || isActive}
-                  className={cn(
-                    "shrink-0 px-3 py-1.5 rounded-lg text-[12px] font-bold border transition-all",
-                    isActive
-                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 cursor-default"
-                      : loading && switching === m.id
+                {isActive ? (
+                  <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-[12px] font-bold text-emerald-400">AI ON</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => switchModel(m.id)}
+                    disabled={loading}
+                    className={cn(
+                      "shrink-0 px-3 py-1.5 rounded-lg text-[12px] font-bold border transition-all",
+                      isSwitching
                         ? "bg-amber-500/10 border-amber-500/30 text-amber-400 cursor-wait animate-pulse"
                         : loading
                           ? "bg-slate-800/40 border-slate-700/40 text-slate-600 cursor-not-allowed"
                           : "bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20"
-                  )}
-                >
-                  {isActive ? "✓ Running" : isSwitching ? "Loading..." : "Switch"}
-                </button>
+                    )}
+                  >
+                    {isSwitching ? "Loading..." : "Switch"}
+                  </button>
+                )}
               </div>
             </div>
           );

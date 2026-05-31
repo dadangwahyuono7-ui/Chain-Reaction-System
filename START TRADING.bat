@@ -12,7 +12,14 @@ echo   Commander Dadang Wahyuono  -  XAUUSD Daily Deploy
 echo  ============================================================
 echo.
 
-set "TV_EXE=C:\Program Files\WindowsApps\TradingView.Desktop_3.1.0.7818_x64__n534cwy3pjxzj\TradingView.exe"
+:: Auto-detect TradingView path (versi bisa berubah)
+set "TV_EXE="
+for /f "tokens=*" %%i in ('dir /s /b "C:\Program Files\WindowsApps\TradingView*\TradingView.exe" 2^>nul') do set "TV_EXE=%%i"
+if "!TV_EXE!"=="" (
+  powershell -NoProfile -Command "(Get-AppxPackage *TradingView* -ErrorAction SilentlyContinue | Select-Object -First 1).InstallLocation" > "%TEMP%\tv_path.txt" 2>nul
+  for /f "usebackq tokens=*" %%i in ("%TEMP%\tv_path.txt") do if exist "%%i\TradingView.exe" set "TV_EXE=%%i\TradingView.exe"
+  del "%TEMP%\tv_path.txt" >nul 2>&1
+)
 set "WEB_DIR=D:\PROJECT TRADING\sultan-advisor"
 set "CF_EXE=C:\Program Files (x86)\cloudflared\cloudflared.exe"
 set "WEB_PORT=3002"
@@ -73,19 +80,21 @@ echo        Server lambat - browser akan dibuka, refresh kalau belum siap
 echo.
 
 :: == [3] Cloudflare Tunnel =====================================================
-echo  [3/3] Cloudflare Tunnel...
-tasklist /FI "IMAGENAME eq cloudflared.exe" 2>nul | find /I "cloudflared.exe" >nul
-if not errorlevel 1 (
-    echo        OK - Tunnel sudah jalan
-    goto cf_done
-)
+echo  [3/3] Cloudflare Tunnel (trade.dadangchatai.com)...
 if not exist "%CF_EXE%" (
     echo        SKIP - cloudflared tidak ada
     goto cf_done
 )
-start "CLOUDFLARE" /MIN "%CF_EXE%" tunnel run
-timeout /t 3 /nobreak >nul
-echo        OK - Tunnel starting (trade.dadangchatai.com)
+:: Cek apakah sultan-advisor tunnel sudah punya active connection
+"%CF_EXE%" tunnel info sultan-advisor 2>nul | find "CONNECTOR" >nul 2>&1
+if not errorlevel 1 (
+    echo        OK - Tunnel sultan-advisor sudah aktif
+    goto cf_done
+)
+echo        Starting tunnel sultan-advisor...
+start "CLOUDFLARE TUNNEL" /MIN "%CF_EXE%" tunnel --config "%USERPROFILE%\.cloudflared\config.yml" run
+timeout /t 5 /nobreak >nul
+echo        OK - Tunnel starting via HTTP2 (trade.dadangchatai.com)
 :cf_done
 echo.
 

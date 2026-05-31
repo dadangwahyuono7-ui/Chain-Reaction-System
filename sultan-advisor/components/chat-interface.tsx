@@ -83,7 +83,7 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
   const bottomRef    = useRef<HTMLDivElement>(null);
   const textareaRef  = useRef<HTMLTextAreaElement>(null);
   const [isListening, setIsListening] = useState(false);
-  const [modelChoice, setModelChoice] = useState<"local" | "groq" | "cloud">("groq");
+  const [modelChoice, setModelChoice] = useState<"local" | "cloud">("local");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef  = useRef<any>(null);
   const autoFiredRef    = useRef<string | null>(null);
@@ -354,18 +354,7 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
             <CpuIcon className="w-3 h-3" />
             LOCAL
           </button>
-          <button
-            onClick={() => setModelChoice("groq")}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-mono tracking-wider border transition-all",
-              modelChoice === "groq"
-                ? "bg-emerald-950/50 border-emerald-500/30 text-emerald-300"
-                : "bg-transparent border-slate-800/40 text-slate-600 hover:text-slate-400 hover:border-slate-700/50"
-            )}
-          >
-            <ZapIcon className="w-3 h-3" />
-            GROQ
-          </button>
+
           <button
             onClick={() => setModelChoice("cloud")}
             className={cn(
@@ -380,7 +369,7 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
           </button>
           <div className="flex-1" />
           <span className="text-[9px] text-slate-600 font-mono">
-            {modelChoice === "cloud" ? "sonnet · premium" : modelChoice === "groq" ? "llama70b · free" : "qwen3 · local"}
+            {modelChoice === "cloud" ? "sonnet · premium" : "gemma4 · local"}
           </span>
         </div>
 

@@ -36,14 +36,6 @@ function buildLocalModel(): LanguageModel {
   return client(process.env.LLM_MODEL ?? "qwen3-8b-q4.gguf");
 }
 
-function buildGroqModel(): LanguageModel {
-  const client = createOpenAICompatible({
-    name: "groq",
-    apiKey:  process.env.GROQ_API_KEY  ?? "",
-    baseURL: process.env.GROQ_BASE_URL ?? "https://api.groq.com/openai/v1",
-  });
-  return client(process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile");
-}
 
 function buildCloudModel(): LanguageModel {
   const client = createAnthropic({
@@ -231,38 +223,125 @@ async function fetchOHLC(tf: string, bars: number): Promise<string> {
 }
 
 async function fetchUrl(url: string): Promise<string> {
+  // 1. Jina Reader — render JS pages, return clean markdown (free, no key)
+  try {
+    const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
+      headers: {
+        "Accept": "text/plain",
+        "X-Return-Format": "markdown",
+        "User-Agent": "SultanAdvisor/1.0",
+      },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (jinaRes.ok) {
+      const text = (await jinaRes.text()).trim();
+      if (text.length > 200) {
+        return `📄 **${url}**\n\n${text.slice(0, 6000)}${text.length > 6000 ? "\n\n...[truncated]" : ""}`;
+      }
+    }
+  } catch { /* fallthrough ke plain fetch */ }
+
+  // 2. Plain fetch + HTML strip (fallback untuk SSR pages)
   try {
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
       },
       signal: AbortSignal.timeout(12000),
     });
     if (!res.ok) return `Fetch gagal: HTTP ${res.status}`;
     const html = await res.text();
-
-    // Strip scripts, styles, nav, footer, ads
     const cleaned = html
       .replace(/<script[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?<\/style>/gi, "")
       .replace(/<nav[\s\S]*?<\/nav>/gi, "")
       .replace(/<footer[\s\S]*?<\/footer>/gi, "")
-      .replace(/<header[\s\S]*?<\/header>/gi, "")
-      .replace(/<aside[\s\S]*?<\/aside>/gi, "")
-      .replace(/<!--[\s\S]*?-->/g, "")
       .replace(/<[^>]+>/g, " ")
-      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-      .replace(/&nbsp;/g, " ").replace(/&#\d+;/g, " ")
-      .replace(/\s{3,}/g, "\n")
-      .trim();
-
-    // Take first 4000 chars (enough for article content)
-    const text = cleaned.slice(0, 4000);
-    return text || "Konten kosong atau tidak bisa dibaca.";
+      .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
+      .replace(/\s{3,}/g, "\n").trim();
+    const text = cleaned.slice(0, 5000);
+    return text || "Konten kosong — halaman mungkin butuh JavaScript.";
   } catch (e) {
     return `Fetch URL gagal: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+// ─── Playwright Browser (persistent singleton) ───────────────────────────────
+
+let _pwBrowser: import("playwright").Browser | null = null;
+let _pwPage:    import("playwright").Page    | null = null;
+
+async function getPwPage(): Promise<import("playwright").Page> {
+  if (!_pwBrowser || !_pwBrowser.isConnected()) {
+    const { chromium } = await import("playwright");
+    _pwBrowser = await chromium.launch({ headless: true });
+  }
+  if (!_pwPage || _pwPage.isClosed()) {
+    _pwPage = await _pwBrowser.newPage();
+    await _pwPage.setViewportSize({ width: 1280, height: 800 });
+    await _pwPage.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
+  }
+  return _pwPage;
+}
+
+async function playwrightAction(action: string, params: Record<string, unknown>): Promise<string> {
+  const path = require("path");
+  const fs   = require("fs");
+  try {
+    switch (action) {
+      case "navigate": {
+        const page = await getPwPage();
+        await page.goto(params.url as string, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await page.waitForTimeout(1800);
+        return `✅ Navigated → ${page.url()}\nTitle: ${await page.title()}`;
+      }
+      case "screenshot": {
+        const page   = await getPwPage();
+        const fname  = `pw-${Date.now()}.png`;
+        const outDir = path.join(process.cwd(), "public", "uploads");
+        fs.mkdirSync(outDir, { recursive: true });
+        await page.screenshot({ path: path.join(outDir, fname), fullPage: false });
+        return `📸 Screenshot siap:\n![page](/uploads/${fname})\nURL: ${page.url()}\nTitle: ${await page.title()}`;
+      }
+      case "get_text": {
+        const page = await getPwPage();
+        const text = await page.evaluate(() => {
+          ["script","style","nav","footer","header","aside"].forEach(t =>
+            document.querySelectorAll(t).forEach(e => e.remove())
+          );
+          return (document.body?.innerText ?? "").trim();
+        });
+        return `📄 **${page.url()}**\n\n${text.slice(0, 7000)}${text.length > 7000 ? "\n...[truncated]" : ""}`;
+      }
+      case "click": {
+        const page = await getPwPage();
+        await page.click(params.selector as string, { timeout: 10000 });
+        await page.waitForTimeout(600);
+        return `✅ Clicked: ${params.selector}`;
+      }
+      case "type": {
+        const page = await getPwPage();
+        await page.fill(params.selector as string, params.text as string);
+        return `✅ Typed into ${params.selector}: "${params.text}"`;
+      }
+      case "scroll": {
+        const page   = await getPwPage();
+        const amount = ((params.amount as number) ?? 3) * 350;
+        await page.evaluate((px: number) => window.scrollBy(0, px),
+          params.direction === "up" ? -amount : amount);
+        return `✅ Scrolled ${params.direction} ${params.amount ?? 3}x`;
+      }
+      case "close": {
+        if (_pwPage && !_pwPage.isClosed()) await _pwPage.close();
+        _pwPage = null;
+        return "✅ Browser tab closed";
+      }
+      default:
+        return `❌ Unknown action: ${action}`;
+    }
+  } catch (e) {
+    return `Browser error [${action}]: ${e instanceof Error ? e.message : String(e)}`;
   }
 }
 
@@ -752,36 +831,47 @@ export async function POST(req: Request) {
       content: m.content || (m.parts?.filter((p) => p.type === "text").map((p) => p.text).join("") ?? ""),
     }));
 
-  // Smart selection: ikut pilihan Commander.
-  // local  → Qwen3-8B di localhost:8080 (lite prompt, offline)
-  // groq   → Groq LPU cloud (Llama 70B, gratis, 200+ t/s)
-  // cloud  → Claude Sonnet via Bluepack (paling pintar, premium)
-  // Auto-fallback: local mati → groq; groq key kosong → cloud
-  let modelType: "local" | "groq" | "cloud" =
-    modelChoice === "cloud" ? "cloud" :
-    modelChoice === "groq"  ? "groq"  : "local";
+  // Auto-inject URL content — fetch sebelum AI baca, jadi AI gak perlu call tool
+  // Handles JS-rendered pages via Jina Reader (r.jina.ai)
+  if (userText) {
+    const urlMatches = userText.match(/https?:\/\/[^\s>\"\'<\]]+/g) ?? [];
+    if (urlMatches.length > 0) {
+      const fetched = await Promise.all(
+        urlMatches.slice(0, 2).map((url: string) =>
+          fetchUrl(url).then(c => `\n\n---\n🌐 KONTEN DARI ${url}\n${c}`).catch(() => null)
+        )
+      );
+      const injected = fetched.filter(Boolean).join("");
+      if (injected) {
+        const last = coreMessages.at(-1);
+        if (last?.role === "user") {
+          coreMessages[coreMessages.length - 1] = {
+            ...last,
+            content: last.content + injected,
+          };
+        }
+      }
+    }
+  }
+
+  // Smart selection: local → Gemma4/Qwen via llama.cpp | cloud → Claude via Bluepack
+  // Auto-fallback: local mati → cloud
+  let modelType: "local" | "cloud" = modelChoice === "cloud" ? "cloud" : "local";
 
   if (modelType === "local") {
     const localBase = process.env.LLM_BASE_URL ?? "http://localhost:8080/v1";
     const localOk = await fetch(`${localBase}/models`, {
       signal: AbortSignal.timeout(1000),
     }).then(r => r.ok).catch(() => false);
-    if (!localOk) modelType = process.env.GROQ_API_KEY ? "groq" : "cloud";
+    if (!localOk) modelType = "cloud";
   }
 
-  if (modelType === "groq" && !process.env.GROQ_API_KEY) modelType = "cloud";
-
   const isLocal = modelType === "local";
-  const selectedModel = modelType === "local" ? buildLocalModel()
-    : modelType === "groq" ? buildGroqModel()
-    : buildCloudModel();
+  const selectedModel = modelType === "local" ? buildLocalModel() : buildCloudModel();
 
-  // Groq free tier: max 12K TPM → WAJIB lite prompt
-  // Local: lite prompt (model kecil)
-  // Cloud (Claude): full prompt
-  const systemPrompt = (isLocal || modelType === "groq")
-    ? buildSystemPromptLite(_ctxForPrompt, _memForPrompt)
-    : buildSystemPrompt(_ctxForPrompt, _memForPrompt);
+  // Gemma 4 E4B: 128K context → full prompt, bukan lite
+  // Cloud (Claude): full prompt juga
+  const systemPrompt = buildSystemPrompt(_ctxForPrompt, _memForPrompt);
 
   // Build tools with session context
   const toolsWithContext = {
@@ -1078,30 +1168,46 @@ export async function POST(req: Request) {
       }),
       execute: async ({ focus }: { focus?: string }) => agentScreenshotAndAnalyze(focus),
     }),
+
+    // ── Playwright Browser ────────────────────────────────────────────────────
+    browser: tool({
+      description: [
+        "Kontrol browser headless (Chromium/Playwright) — bisa buka URL, screenshot, klik, isi form, scroll, baca teks.",
+        "GUNAKAN untuk: buka website JS-rendered, scraping konten dinamis, cek harga real-time, baca berita, isi form pencarian.",
+        "JANGAN gunakan fetch_url jika halaman butuh JS — pakai browser ini.",
+        "WORKFLOW: navigate → get_text atau screenshot → close.",
+        "Actions: navigate=buka URL, screenshot=foto halaman, get_text=baca konten, click=klik elemen CSS, type=isi input, scroll=gulir, close=tutup tab.",
+        "Browser instance persist dalam session — navigate baru di tab yang sama.",
+      ].join(" "),
+      inputSchema: z.object({
+        action: z.enum(["navigate","screenshot","get_text","click","type","scroll","close"])
+          .describe("Aksi browser"),
+        url:       z.string().optional().describe("URL tujuan (untuk navigate)"),
+        selector:  z.string().optional().describe("CSS selector (untuk click/type)"),
+        text:      z.string().optional().describe("Teks yang diketik (untuk type)"),
+        direction: z.enum(["up","down"]).optional().describe("Arah scroll"),
+        amount:    z.number().min(1).max(20).optional().describe("Jumlah scroll step (default 3)"),
+      }),
+      execute: async ({ action, url, selector, text, direction, amount }) =>
+        playwrightAction(action, { url, selector, text, direction, amount }),
+    }),
   };
 
-  // Local: no tools
-  // Groq: minimal tools (web_search + save_memory + get_ohlc + calculate_risk)
-  // Cloud: full tools (semua 16 tools)
-  const groqMinimalTools = {
-    web_search:      toolsWithContext.web_search,
-    save_memory:     toolsWithContext.save_memory,
-    get_ohlc:        toolsWithContext.get_ohlc,
-    calculate_risk:  toolsWithContext.calculate_risk,
-  };
-
+  // Gemma 4 E4B: full tools + 10 steps + temp 0.7 (reliable tool calling)
+  // Cloud: full tools + 15 steps
   const result = streamText({
     model: selectedModel,
     system: systemPrompt,
     messages: coreMessages,
     maxOutputTokens: 4096,
+    temperature: isLocal ? 0.7 : undefined,
     ...(modelType === "cloud" ? {
       stopWhen: stepCountIs(15),
       tools: toolsWithContext,
-    } : modelType === "groq" ? {
-      stopWhen: stepCountIs(3),
-      tools: groqMinimalTools,
-    } : {}),
+    } : {
+      stopWhen: stepCountIs(10),
+      tools: toolsWithContext,
+    }),
     onFinish: async ({ text }) => {
       if (sessionId && text) {
         await db.insert(messages).values({ id: nanoid(), sessionId, role: "assistant", content: text });
