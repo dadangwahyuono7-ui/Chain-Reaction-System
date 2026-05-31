@@ -123,6 +123,13 @@ const DP_ANIM = `
 .dp-stream      { background-image: repeating-linear-gradient(90deg, var(--c) 0 8px, transparent 8px 16px); background-size: 24px 100%; animation: dp-flow .65s linear infinite; }
 .dp-breathe     { animation: dp-breathe 3s ease-in-out infinite; }
 .dp-signal      { animation: dp-signal .85s ease-in-out infinite; }
+/* lingkaran step = koin 3D muter pelan */
+@keyframes dp-coin { 0%,100% { transform: rotateY(-24deg); } 50% { transform: rotateY(24deg); } }
+.dp-coin        { animation: dp-coin 4.5s ease-in-out infinite; transform-style: preserve-3d; }
+.dp-coin:nth-child(odd) { animation-delay: -2s; }
+/* baris/kartu = miring 3D pas hover (kayak diangkat & diputar) */
+.dp-row3d       { transition: transform .4s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease; transform-style: preserve-3d; }
+.dp-row3d:hover { transform: perspective(800px) rotateX(7deg) rotateY(-3deg) translateZ(16px) scale(1.015); box-shadow: 0 16px 40px -12px rgba(99,102,241,0.42); z-index: 10; }
 .dp-grid        { background-image: linear-gradient(rgba(99,145,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(99,145,255,.04) 1px, transparent 1px); background-size: 32px 32px; animation: dp-grid 8s linear infinite; }
 .dp-flicker     { animation: dp-flicker 4s steps(1) infinite; }
 .dp-bar         { animation: dp-bar 1.4s ease-in-out infinite; }
@@ -387,7 +394,7 @@ function ChainRail({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
             <div key={tf} className="flex items-center flex-1 min-w-0">
               {/* node */}
               <div className={cn(
-                "flex-1 min-w-0 rounded-xl border px-3 py-3 text-center transition-all relative overflow-hidden",
+                "dp-row3d flex-1 min-w-0 rounded-xl border px-3 py-3 text-center transition-all relative overflow-hidden",
                 isTrigger && "border-dashed",
                 has ? (isTrigger ? "bg-slate-900/50" : "bg-gradient-to-b from-slate-800/40 to-slate-900/60") : "bg-slate-900/20 opacity-40",
                 isMaster ? "border-indigo-500/50 shadow-[0_0_12px_-4px_rgba(79,124,255,0.3)]"
@@ -475,7 +482,7 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
   }) => (
     <div className="flex flex-col items-center gap-1.5 shrink-0 w-10">
       <div className={cn(
-        "w-8 h-8 rounded-full border-2 flex items-center justify-center text-[13px] font-bold transition-all",
+        "dp-coin w-8 h-8 rounded-full border-2 flex items-center justify-center text-[13px] font-bold transition-all",
         active
           ? "border-amber-400 bg-amber-400/15 text-amber-300 dp-signal shadow-[0_0_12px_-2px_rgba(251,191,36,0.4)]"
           : done
@@ -523,7 +530,7 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
             : d.fase === 2 ? "tunggu CF" : "tunggu VR";
         return (
           <div key={d.tf} className={cn(
-            "rounded-xl border px-4 py-3 flex items-center gap-4 transition-all",
+            "dp-row3d rounded-xl border px-4 py-3 flex items-center gap-4 transition-all",
             d.fase === 3 && aligned ? "border-amber-500/35 bg-gradient-to-r from-amber-500/[0.06] to-transparent shadow-[0_0_12px_-6px_rgba(251,191,36,0.2)]"
               : cfFlipped ? "border-rose-500/25 bg-gradient-to-r from-rose-500/[0.04] to-transparent"
               : isMaster ? "border-indigo-500/25 bg-gradient-to-r from-indigo-500/[0.04] to-transparent"
