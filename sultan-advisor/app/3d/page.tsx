@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 const ThreeBg = dynamic(() => import("@/components/three-bg").then((m) => m.ThreeBg), { ssr: false });
 const Chain3D = dynamic(() => import("@/components/chain-3d").then((m) => m.Chain3D), { ssr: false });
 import { TiltCard } from "@/components/tilt-card";
+import { CursorGlow } from "@/components/cursor-glow";
 
 export default function Demo3D() {
   const cases = [
@@ -15,6 +16,7 @@ export default function Demo3D() {
   return (
     <div className="min-h-screen bg-transparent text-slate-100 p-8">
       <ThreeBg />
+      <CursorGlow />
       <h1 className="text-center text-lg font-mono tracking-widest text-slate-300 mb-1">
         CHAIN REACTION · 3D PREVIEW
       </h1>

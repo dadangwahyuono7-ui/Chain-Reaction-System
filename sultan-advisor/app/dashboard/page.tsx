@@ -16,6 +16,7 @@ import { LogOutIcon, PanelLeftIcon, ZapIcon, PlusIcon, UsersIcon, BookOpenIcon, 
 const ThreeBg = dynamic(() => import("@/components/three-bg").then(m => m.ThreeBg), { ssr: false });
 const Chain3DLive = dynamic(() => import("@/components/chain-3d").then(m => m.Chain3DLive), { ssr: false });
 import { TiltCard } from "@/components/tilt-card";
+import { CursorGlow } from "@/components/cursor-glow";
 
 const ADMIN_EMAIL = "dadangwahyuono@gmail.com";
 import { cn } from "@/lib/utils";
@@ -80,8 +81,9 @@ export default function DashboardPage() {
   return (
     <div className="flex h-screen bg-transparent text-slate-100 overflow-hidden">
 
-      {/* ── WebGL 3D wireframe background ──────────────────────── */}
+      {/* ── WebGL 3D wireframe background + cursor glow ────────── */}
       <ThreeBg />
+      <CursorGlow />
 
       {/* ── WATERMARK ─────────────────────────────────────────── */}
       <div

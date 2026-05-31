@@ -8,6 +8,7 @@ import { EyeIcon, EyeOffIcon } from "lucide-react";
 import dynamic from "next/dynamic";
 
 const ThreeBg = dynamic(() => import("@/components/three-bg").then(m => m.ThreeBg), { ssr: false });
+import { CursorGlow } from "@/components/cursor-glow";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -35,6 +36,7 @@ export default function LoginPage() {
 
       {/* WebGL 3D wireframe background */}
       <ThreeBg />
+      <CursorGlow />
 
       {/* Background grid */}
       <div
