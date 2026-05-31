@@ -132,6 +132,28 @@ const PRICE_EXPR = `(function(){
   } catch(e) { return 'N/A'; }
 })()`;
 
+// Detect current symbol/pair open in TradingView chart
+const SYMBOL_EXPR = `(function(){
+  try {
+    var chart = window.TradingViewApi._activeChartWidgetWV.value()._chartWidget;
+    var ms = chart.model().mainSeries();
+    // Try resolvedSymbol first (most reliable)
+    var info = ms.symbolInfo && ms.symbolInfo();
+    if (info) {
+      var sym = info.ticker || info.name || info.symbol || '';
+      var desc = info.description || '';
+      var exchange = info.exchange || info.listed_exchange || '';
+      return JSON.stringify({ symbol: sym, description: desc, exchange: exchange });
+    }
+    // Fallback: try chart URL or title
+    var t = document.title || '';
+    var m = t.match(/^([A-Z0-9]+(?:\\.?[A-Z0-9]+)*)/);
+    return JSON.stringify({ symbol: m ? m[1] : 'UNKNOWN', description: '', exchange: '' });
+  } catch(e) {
+    return JSON.stringify({ symbol: 'UNKNOWN', description: '', exchange: '', error: e.message });
+  }
+})()`;
+
 async function main() {
   let client;
   try {
@@ -149,7 +171,12 @@ async function main() {
       return r.result?.value;
     };
 
-    const [tables, price] = await Promise.all([ev(READ_EXPR), ev(PRICE_EXPR)]);
+    const [tables, price, symbolRaw] = await Promise.all([ev(READ_EXPR), ev(PRICE_EXPR), ev(SYMBOL_EXPR)]);
+
+    // Parse symbol info
+    let symbolInfo = { symbol: 'XAUUSD', description: '', exchange: '' };
+    try { symbolInfo = JSON.parse(symbolRaw || '{}'); } catch {}
+    const activeSymbol = symbolInfo.symbol || 'XAUUSD';
 
     // Parse rows → raw state per TF
     const rawState = {};
@@ -190,9 +217,12 @@ async function main() {
 
     ctx['HARGA']   = price || 'N/A';
     ctx['SESSION'] = detectSession();
+    ctx['TV_SYMBOL']      = activeSymbol;
+    ctx['TV_SYMBOL_DESC'] = symbolInfo.description || '';
+    ctx['TV_EXCHANGE']    = symbolInfo.exchange || '';
 
     await client.close();
-    process.stdout.write(JSON.stringify({ success: true, ctx, rawState }));
+    process.stdout.write(JSON.stringify({ success: true, ctx, rawState, activeSymbol, symbolInfo }));
     process.exit(0);
 
   } catch (err) {

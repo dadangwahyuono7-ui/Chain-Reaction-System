@@ -3,9 +3,9 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { messages, chatSessions, marketContext } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { buildSystemPrompt } from "@/lib/system-prompt";
+import { messages, chatSessions, marketContext, memories, paperAccounts, paperTrades } from "@/db/schema";
+import { eq, desc } from "drizzle-orm";
+import { buildSystemPrompt, type Memory } from "@/lib/system-prompt";
 import { headers } from "next/headers";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -252,6 +252,396 @@ async function fetchUrl(url: string): Promise<string> {
   }
 }
 
+// ─── Full Agent Capabilities ─────────────────────────────────────────────────
+
+const fs = require("fs") as typeof import("fs");
+
+async function agentShellExec(command: string, cwd?: string, timeoutMs = 30000): Promise<string> {
+  const { spawn } = require("child_process");
+  const workDir = cwd || PROJECT_ROOT;
+  return new Promise((resolve) => {
+    const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], {
+      cwd: workDir,
+      timeout: timeoutMs,
+      env: { ...process.env },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (d: Buffer) => { stdout += d.toString(); });
+    child.stderr?.on("data", (d: Buffer) => { stderr += d.toString(); });
+    child.on("close", (code: number | null) => {
+      const out = [
+        stdout.trim() && `[stdout]\n${stdout.trim()}`,
+        stderr.trim() && `[stderr]\n${stderr.trim()}`,
+        `[exit code: ${code ?? "?"}]`,
+      ].filter(Boolean).join("\n\n");
+      resolve(out || `(no output, exit ${code})`);
+    });
+    child.on("error", (err: Error) => resolve(`[spawn error] ${err.message}`));
+  });
+}
+
+async function agentReadFile(filePath: string): Promise<string> {
+  try {
+    const content = fs.readFileSync(filePath, "utf-8");
+    const lines = content.split("\n");
+    const preview = lines.length > 300 ? lines.slice(0, 300).join("\n") + `\n...[truncated, ${lines.length} total lines]` : content;
+    return `📄 ${filePath} (${lines.length} lines):\n\n${preview}`;
+  } catch (e) {
+    return `Error reading file: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function agentWriteFile(filePath: string, content: string): Promise<string> {
+  try {
+    const dir = require("path").dirname(filePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(filePath, content, "utf-8");
+    const lines = content.split("\n").length;
+    return `✅ Written: ${filePath} (${lines} lines)`;
+  } catch (e) {
+    return `Error writing file: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function agentListDir(dirPath: string): Promise<string> {
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    const lines = entries.map((e: { isDirectory: () => boolean; name: string }) => {
+      const icon = e.isDirectory() ? "📁" : "📄";
+      return `${icon} ${e.name}`;
+    });
+    return `📂 ${dirPath} (${lines.length} items):\n${lines.join("\n")}`;
+  } catch (e) {
+    return `Error listing dir: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+const ASISTEN_SCREENSHOTS = "D:\\PROJECT TRADING\\asisten dadang\\screenshots";
+const PUBLIC_UPLOADS = require("path").join(process.cwd(), "public", "uploads");
+
+async function agentScreenshotAndAnalyze(focus?: string): Promise<string> {
+  try {
+    const ts      = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const fname   = `screenshot-${ts}.png`;
+    const savePath = require("path").join(ASISTEN_SCREENSHOTS, fname);
+    const pubPath  = require("path").join(PUBLIC_UPLOADS, fname);
+
+    // 1. Take screenshot via PowerShell — simpan langsung ke asisten dadang
+    const psCmd = `
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$bitmap = New-Object System.Drawing.Bitmap($screen.Width, $screen.Height)
+$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+$graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
+New-Item -ItemType Directory -Force -Path '${ASISTEN_SCREENSHOTS.replace(/\\/g, "\\\\")}' | Out-Null
+$bitmap.Save('${savePath.replace(/\\/g, "\\\\")}')
+$graphics.Dispose(); $bitmap.Dispose()
+Write-Output 'OK'
+`.trim();
+
+    const { spawn } = require("child_process");
+    const psResult: string = await new Promise((resolve) => {
+      const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", psCmd], { timeout: 10000 });
+      let out = "";
+      child.stdout?.on("data", (d: Buffer) => { out += d.toString(); });
+      child.on("close", () => resolve(out.trim()));
+      child.on("error", (e: Error) => resolve(`error: ${e.message}`));
+    });
+
+    if (!fs.existsSync(savePath)) {
+      return `Screenshot gagal: ${psResult}. Pastikan desktop bisa diakses.`;
+    }
+
+    // 2. Copy ke public/uploads biar bisa ditampilkan di browser
+    const imgBuffer = fs.readFileSync(savePath);
+    const base64    = imgBuffer.toString("base64");
+    require("fs").mkdirSync(PUBLIC_UPLOADS, { recursive: true });
+    fs.writeFileSync(pubPath, imgBuffer);
+
+    // 3. Analisis via Claude Vision
+    const { createAnthropic: createAnthropicVision } = await import("@ai-sdk/anthropic");
+    const { generateText } = await import("ai");
+    const visionClient = createAnthropicVision({
+      apiKey:  process.env.BLUEPACK_API_KEY ?? "",
+      baseURL: process.env.BLUEPACK_BASE_URL ?? "https://ai.bluepack.my.id/v1",
+    });
+
+    const { text } = await generateText({
+      model: visionClient("claude-3-5-haiku-20241022") as import("ai").LanguageModel,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", image: base64, mediaType: "image/png" as const },
+          { type: "text", text: focus
+            ? `Analisis screenshot ini. Fokus pada: ${focus}. Deskripsikan apa yang kamu lihat secara detail.`
+            : `Deskripsikan apa yang ada di screenshot ini. Fokus pada: konten trading, chart, kode, error, atau apapun yang relevan.`
+          },
+        ],
+      }],
+      maxOutputTokens: 1024,
+    });
+
+    // Return analisis + URL gambar (ditampilkan di chat bubble)
+    const imgUrl = `/uploads/${fname}`;
+    return `📸 **Screenshot diambil** — tersimpan di \`asisten dadang\\screenshots\\${fname}\`\n\n![Screenshot](${imgUrl})\n\n---\n${text}`;
+  } catch (e) {
+    return `Screenshot/vision error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+// ─── Engine Execution (scoped, safe commands) ───────────────────────────────
+
+const PROJECT_ROOT = "D:\\PROJECT TRADING";
+const PYTHON_EXE  = `${PROJECT_ROOT}\\venv\\Scripts\\python.exe`;
+const SETTINGS_PATH = `${PROJECT_ROOT}\\chain_settings.json`;
+
+function spawnCommand(cmd: string, args: string[], timeoutMs = 15000): Promise<{ stdout: string; stderr: string; code: number | null }> {
+  const { spawn } = require("child_process");
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, {
+      timeout: timeoutMs,
+      cwd: PROJECT_ROOT,
+      env: { ...process.env },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (d: Buffer) => { stdout += d.toString(); });
+    child.stderr?.on("data", (d: Buffer) => { stderr += d.toString(); });
+    child.on("close", (code: number | null) => resolve({ stdout, stderr, code }));
+    child.on("error", (err: Error) => resolve({ stdout, stderr: err.message, code: -1 }));
+  });
+}
+
+async function runEngineCheck(): Promise<string> {
+  const script = `
+import sys
+sys.path.insert(0, r'${PROJECT_ROOT}')
+try:
+    from engine.connection import connect_mt5
+    from engine.core import SacredDoctrineAnalyst, DailyDeployAnalyst
+    import MetaTrader5 as mt5
+    if not connect_mt5():
+        print("MT5 CONNECTION FAILED — pastikan MetaTrader 5 running dan login.")
+        sys.exit(0)
+    a = SacredDoctrineAnalyst('XAUUSD', master_tf='H4')
+    d = DailyDeployAnalyst('XAUUSD')
+    a.update(); d.update(a)
+    print("=== ENGINE STATE ===")
+    for n in ['D1','H4','H1','M30','M15','M5']:
+        st = a.states[n]
+        vr = 'YA' if st.vr_occurred else 'BELUM'
+        cf = 'YA' if st.cf_occurred else 'BELUM'
+        print(f'{n}: CMP={st.cmp} SUP={st.sup:.2f} RES={st.res:.2f} VR={vr} CF={cf}')
+    print("\\n=== DAILY DEPLOY SIGNALS ===")
+    sigs = d.active_signals
+    if sigs:
+        for s in sigs:
+            print(f"  [{s.get('layer','?')}] {s.get('type','?')} {s.get('action','?')} — conf={s.get('confidence','?')}")
+    else:
+        print("  Tidak ada signal aktif.")
+    price = mt5.symbol_info_tick('XAUUSD')
+    if price:
+        print(f"\\nHarga: bid={price.bid} ask={price.ask} spread={price.ask-price.bid:.2f}")
+    mt5.shutdown()
+except Exception as e:
+    print(f"ERROR: {e}")
+`;
+  const { stdout, stderr, code } = await spawnCommand(PYTHON_EXE, ["-c", script], 20000);
+  if (code !== 0 && !stdout) return `Engine check gagal: ${stderr.slice(0, 300)}`;
+  return stdout || stderr || "Tidak ada output dari engine.";
+}
+
+async function readSettings(): Promise<string> {
+  try {
+    const fs = require("fs");
+    const raw = fs.readFileSync(SETTINGS_PATH, "utf-8");
+    const settings = JSON.parse(raw);
+    const lines = Object.entries(settings).map(([k, v]) => {
+      if (typeof v === "object") return `${k}: ${JSON.stringify(v)}`;
+      return `${k}: ${v}`;
+    });
+    return `📋 chain_settings.json:\n\n${lines.join("\n")}`;
+  } catch (e) {
+    return `Gagal baca settings: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function updateSettings(key: string, value: unknown): Promise<string> {
+  try {
+    const fs = require("fs");
+    const raw = fs.readFileSync(SETTINGS_PATH, "utf-8");
+    const settings = JSON.parse(raw);
+
+    // Whitelist — hanya key yang aman boleh diubah
+    const ALLOWED = [
+      "auto_trade", "lot_size", "max_layers", "barrier_limit",
+      "be_protect_pips", "trail_stop_pips", "max_spread_points",
+      "news_blackout_minutes", "session_filter", "enable_daily_deploy",
+      "ninja_enabled", "ninja_be_pips", "ninja_sl_buffer",
+      "risk_per_trade_percent", "drawdown_block_percent",
+    ];
+    if (!ALLOWED.includes(key)) {
+      return `⛔ Key "${key}" tidak boleh diubah via AI. Allowed: ${ALLOWED.join(", ")}`;
+    }
+
+    const oldVal = settings[key];
+    settings[key] = value;
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 4), "utf-8");
+    return `✅ chain_settings.json updated:\n  ${key}: ${JSON.stringify(oldVal)} → ${JSON.stringify(value)}\n\n⚠️ Perubahan berlaku saat engine restart atau reload next cycle.`;
+  } catch (e) {
+    return `Gagal update settings: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function runBacktest(): Promise<string> {
+  const { stdout, stderr, code } = await spawnCommand(
+    PYTHON_EXE,
+    [`${PROJECT_ROOT}\\backtest\\run.py`],
+    60000  // backtest bisa lama
+  );
+  if (code !== 0 && !stdout) return `Backtest gagal: ${stderr.slice(0, 500)}`;
+  // Ambil summary akhir saja (biasanya di 30 baris terakhir)
+  const lines = (stdout || stderr).split("\n");
+  const summary = lines.slice(-30).join("\n");
+  return `📊 BACKTEST RESULT (last 30 lines):\n\n${summary}`;
+}
+
+// ─── TradingView Sync (AI can trigger sync itself) ──────────────────────────
+
+async function triggerTVSync(): Promise<string> {
+  try {
+    const scriptPath = require("path").join(process.cwd(), "scripts", "tv-snapshot.mjs");
+    const { spawn } = require("child_process");
+
+    const result: { success: boolean; ctx?: Record<string, string>; error?: string } = await new Promise((resolve) => {
+      const child = spawn(process.execPath, [scriptPath], {
+        timeout: 12000,
+        env: { ...process.env },
+      });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
+      child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+      child.on("close", () => {
+        try { resolve(JSON.parse(stdout.trim())); }
+        catch { resolve({ success: false, error: stderr.slice(0, 200) || "Parse error" }); }
+      });
+      child.on("error", (err: Error) => resolve({ success: false, error: err.message }));
+    });
+
+    if (!result.success || !result.ctx) {
+      return `Sync gagal: ${result.error ?? "Unknown error"}. Minta Commander cek TradingView.`;
+    }
+
+    // Upsert ke DB
+    const { eq: eqOp } = await import("drizzle-orm");
+    const existing = await db.select().from(marketContext);
+    const byName = new Map(existing.map(r => [r.variableName, r]));
+
+    for (const [key, value] of Object.entries(result.ctx)) {
+      if (value === undefined || value === null) continue;
+      const row = byName.get(key);
+      if (row) {
+        await db.update(marketContext).set({ value: String(value) }).where(eqOp(marketContext.variableName, key));
+      } else {
+        const label = key.endsWith('_CF_COUNT') ? `${key.replace('_CF_COUNT', '')} CF Count`
+          : key.endsWith('_CF_TYPE') ? `${key.replace('_CF_TYPE', '')} CF Type` : key;
+        await db.insert(marketContext).values({
+          id: nanoid(), variableName: key, label, value: String(value),
+        });
+      }
+    }
+
+    // Format summary
+    const TFS = ["DAILY", "H4", "H1", "M30", "M15", "M5"];
+    const lines = TFS.map(tf => {
+      const cmp = result.ctx![`${tf}_CMP`] || "—";
+      const vr = result.ctx![`${tf}_VR`] || "—";
+      const cf = result.ctx![`${tf}_CF`] || "—";
+      return `${tf}: CMP=${cmp} VR=${vr} CF=${cf}`;
+    }).filter(l => !l.includes("CMP=—"));
+
+    return `✅ TradingView sync berhasil!\n\nState terbaru:\n${lines.join("\n")}\n\nHarga: ${result.ctx!["HARGA"] ?? "N/A"}\nSession: ${result.ctx!["SESSION"] ?? "N/A"}\n\nData sudah diupdate — analisis sekarang pakai state terbaru.`;
+  } catch (e) {
+    return `Sync error: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+// ─── Risk Calculator ─────────────────────────────────────────────────────────
+
+function calculateRisk(
+  direction: "BUY" | "SELL",
+  entry: number,
+  sl: number,
+  tp1: number,
+  tp2: number | undefined,
+  lotSize: number
+): string {
+  const pipValue = 0.1; // XAUUSD: 1 pip = $0.1 per 0.01 lot (per point)
+  const slPips = Math.abs(entry - sl);
+  const tp1Pips = Math.abs(tp1 - entry);
+  const tp2Pips = tp2 ? Math.abs(tp2 - entry) : 0;
+
+  const riskUSD = slPips * (lotSize / 0.01) * pipValue;
+  const tp1USD = tp1Pips * (lotSize / 0.01) * pipValue;
+  const tp2USD = tp2Pips ? tp2Pips * (lotSize / 0.01) * pipValue : 0;
+
+  const rr1 = slPips > 0 ? (tp1Pips / slPips).toFixed(2) : "N/A";
+  const rr2 = (slPips > 0 && tp2Pips > 0) ? (tp2Pips / slPips).toFixed(2) : "N/A";
+
+  // Validasi arah
+  const dirOk = direction === "BUY"
+    ? (sl < entry && tp1 > entry && (!tp2 || tp2 > entry))
+    : (sl > entry && tp1 < entry && (!tp2 || tp2 < entry));
+
+  const lines = [
+    `📐 RISK CALCULATOR — ${direction} XAUUSD`,
+    ``,
+    `Entry : ${entry.toFixed(2)}`,
+    `SL    : ${sl.toFixed(2)} (${slPips.toFixed(1)} pts)`,
+    `TP1   : ${tp1.toFixed(2)} (${tp1Pips.toFixed(1)} pts) → R:R ${rr1}`,
+    tp2 ? `TP2   : ${tp2.toFixed(2)} (${tp2Pips.toFixed(1)} pts) → R:R ${rr2}` : null,
+    ``,
+    `Lot   : ${lotSize}`,
+    `Risk  : $${riskUSD.toFixed(2)}`,
+    `TP1 $  : $${tp1USD.toFixed(2)}`,
+    tp2USD ? `TP2 $  : $${tp2USD.toFixed(2)}` : null,
+    ``,
+    dirOk ? `✅ Arah SL/TP valid untuk ${direction}` : `⚠️ PERINGATAN: Arah SL/TP tidak valid untuk ${direction}! Cek ulang.`,
+  ].filter(Boolean);
+
+  return lines.join("\n");
+}
+
+// ─── Memory functions ────────────────────────────────────────────────────────
+
+async function saveMemory(content: string, category: string, importance: number, tags?: string, sessionId?: string): Promise<string> {
+  const id = nanoid();
+  await db.insert(memories).values({
+    id,
+    content,
+    category,
+    importance,
+    tags: tags || null,
+    sessionId: sessionId || null,
+  });
+  return `Memori tersimpan [${category}] importance:${importance}${tags ? ` tags:${tags}` : ""}: "${content.slice(0, 80)}..."`;
+}
+
+async function recallMemories(limit = 30): Promise<Memory[]> {
+  const rows = await db.select().from(memories).orderBy(desc(memories.importance), desc(memories.createdAt)).limit(limit);
+  return rows.map(r => ({
+    id: r.id,
+    content: r.content,
+    category: r.category,
+    importance: r.importance,
+    tags: r.tags,
+    createdAt: r.createdAt,
+  }));
+}
+
 // ─── Tools definition ─────────────────────────────────────────────────────────
 
 const searchTools = {
@@ -308,12 +698,13 @@ export async function POST(req: Request) {
   const body = await req.json();
   const { messages: chatMessages, id: sessionId, model: modelChoice } = body;
 
-  // Build system prompt from market context
+  // Build system prompt from market context + persistent memories
   const ctxRows = await db.select().from(marketContext);
   const ctx = Object.fromEntries(
     ctxRows.map((r) => [r.variableName, { label: r.label, value: r.value }])
   );
-  const systemPrompt = buildSystemPrompt(ctx);
+  const recentMemories = await recallMemories(30);
+  const systemPrompt = buildSystemPrompt(ctx, recentMemories);
 
   // Upsert session
   if (sessionId) {
@@ -344,26 +735,324 @@ export async function POST(req: Request) {
       content: m.content || (m.parts?.filter((p) => p.type === "text").map((p) => p.text).join("") ?? ""),
     }));
 
-  // Auto-detect: kalau local minta → cek dulu apakah server hidup
-  // Kalau mati → auto-fallback ke cloud (biar tidak perlu manual switch)
+  // Smart selection: ikut pilihan Commander.
+  // Tapi kalau LOCAL dipilih dan server Qwen3 tidak hidup → auto-fallback ke cloud (API premium).
+  // Kalau CLOUD dipilih → langsung cloud, tidak cek local sama sekali.
   let useCloud = modelChoice === "cloud";
   if (!useCloud) {
     const localBase = process.env.LLM_BASE_URL ?? "http://localhost:8080/v1";
     const localOk = await fetch(`${localBase}/models`, {
-      signal: AbortSignal.timeout(1500),
+      signal: AbortSignal.timeout(1000),
     }).then(r => r.ok).catch(() => false);
-    if (!localOk) useCloud = true; // fallback ke cloud
+    if (!localOk) useCloud = true; // Qwen3 tidak jalan → pakai cloud otomatis
   }
 
   const selectedModel = useCloud ? buildCloudModel() : buildLocalModel();
+
+  // Build tools with session context
+  const toolsWithContext = {
+    ...searchTools,
+
+    // ── Memory: Save ──────────────────────────────────────────────────────────
+    save_memory: tool({
+      description: [
+        "Simpan informasi penting ke memori jangka panjang yang PERSISTEN lintas sesi chat.",
+        "WAJIB digunakan saat: (1) trade selesai win/loss — simpan detail entry/SL/TP/result,",
+        "(2) insight penting tentang market ditemukan, (3) pola berulang terdeteksi,",
+        "(4) Commander kasih feedback/pelajaran, (5) Commander minta kamu ingat sesuatu.",
+        "JANGAN simpan hal trivial — hanya insight yang berguna untuk analisis masa depan.",
+      ].join(" "),
+      inputSchema: z.object({
+        content: z.string().describe("Isi memori — deskriptif dan spesifik"),
+        category: z.enum(["trade_result", "market_insight", "pattern", "lesson", "preference", "general"])
+          .describe("Kategori memori"),
+        importance: z.number().min(1).max(4).optional()
+          .describe("1=rendah, 2=sedang, 3=tinggi, 4=kritis. Default 2."),
+        tags: z.string().optional()
+          .describe("Tags dipisah koma. Contoh: 'H1,SELL,CF2,win'"),
+      }),
+      execute: async ({ content, category, importance = 2, tags }: { content: string; category: string; importance?: number; tags?: string }) => {
+        return saveMemory(content, category, importance, tags, sessionId);
+      },
+    }),
+
+    // ── Memory: Search ────────────────────────────────────────────────────────
+    search_memories: tool({
+      description: [
+        "Cari memori lama berdasarkan keyword atau kategori.",
+        "Gunakan untuk: recall insight lama, cek trade history, cari pola yang pernah terjadi.",
+        "Contoh: search 'H1 SELL' untuk cari semua trade SELL H1 sebelumnya.",
+      ].join(" "),
+      inputSchema: z.object({
+        keyword: z.string().optional().describe("Kata kunci untuk dicari di content/tags"),
+        category: z.enum(["trade_result", "market_insight", "pattern", "lesson", "preference", "general"]).optional()
+          .describe("Filter berdasarkan kategori"),
+        limit: z.number().min(1).max(20).optional().describe("Jumlah hasil (default 10)"),
+      }),
+      execute: async ({ keyword, category, limit = 10 }: { keyword?: string; category?: string; limit?: number }) => {
+        let rows = await db.select().from(memories).orderBy(desc(memories.createdAt)).limit(50);
+        if (category) rows = rows.filter(r => r.category === category);
+        if (keyword) {
+          const kw = keyword.toLowerCase();
+          rows = rows.filter(r =>
+            r.content.toLowerCase().includes(kw) ||
+            (r.tags && r.tags.toLowerCase().includes(kw))
+          );
+        }
+        rows = rows.slice(0, limit);
+        if (rows.length === 0) return `Tidak ada memori yang cocok dengan "${keyword ?? category ?? "all"}".`;
+        return `📚 ${rows.length} memori ditemukan:\n\n${rows.map((r, i) => {
+          const date = r.createdAt instanceof Date ? r.createdAt.toLocaleDateString("id-ID") : "?";
+          return `${i + 1}. [${r.category}] ${date} — ${r.content}${r.tags ? ` #${r.tags}` : ""}`;
+        }).join("\n")}`;
+      },
+    }),
+
+    // ── TradingView Sync ──────────────────────────────────────────────────────
+    trigger_sync: tool({
+      description: [
+        "Trigger sync TradingView untuk mendapatkan data CMP/VR/CF terbaru langsung dari chart.",
+        "Gunakan SEBELUM analisis kalau data terasa stale, atau Commander minta update.",
+        "Setelah sync, state market di system prompt akan terupdate otomatis untuk pesan berikutnya.",
+      ].join(" "),
+      inputSchema: z.object({}),
+      execute: async () => triggerTVSync(),
+    }),
+
+    // ── Risk Calculator ───────────────────────────────────────────────────────
+    calculate_risk: tool({
+      description: [
+        "Hitung risk/reward ratio, risk dalam USD, dan validasi arah SL/TP.",
+        "WAJIB digunakan sebelum present trade plan ke Commander — pastikan R:R masuk akal.",
+        "Input: arah trade, entry, SL, TP1, TP2 (opsional), lot size.",
+      ].join(" "),
+      inputSchema: z.object({
+        direction: z.enum(["BUY", "SELL"]).describe("Arah trade"),
+        entry: z.number().describe("Harga entry"),
+        sl: z.number().describe("Harga stop loss"),
+        tp1: z.number().describe("Harga take profit 1"),
+        tp2: z.number().optional().describe("Harga take profit 2 (opsional)"),
+        lot_size: z.number().optional().describe("Ukuran lot (default 0.01)"),
+      }),
+      execute: async ({ direction, entry, sl, tp1, tp2, lot_size = 0.01 }: {
+        direction: "BUY" | "SELL"; entry: number; sl: number; tp1: number; tp2?: number; lot_size?: number;
+      }) => calculateRisk(direction, entry, sl, tp1, tp2, lot_size),
+    }),
+
+    // ── Paper Trading Performance (buat AI belajar) ───────────────────────────
+    get_paper_performance: tool({
+      description: [
+        "Baca rekam jejak paper trading (autopilot). Ada 2 akun: 'engine' (entry otomatis murni doktrin CF) dan 'ai' (diputus AI).",
+        "Gunakan untuk: belajar dari hasil trade nyata, lihat win rate / total R / saldo, evaluasi setup mana yang sering profit/loss,",
+        "bandingkan performa engine vs AI. Panggil sebelum kasih insight performa atau saat Commander tanya soal hasil autopilot.",
+      ].join(" "),
+      inputSchema: z.object({
+        account: z.enum(["engine", "ai"]).optional().describe("Filter akun. Kosongkan untuk lihat dua-duanya."),
+      }),
+      execute: async ({ account }: { account?: string }) => {
+        try {
+          const accs = await db.select().from(paperAccounts);
+          const allTrades = await db.select().from(paperTrades).orderBy(desc(paperTrades.openedAt)).limit(100);
+          const lines: string[] = [];
+          for (const a of accs) {
+            if (account && a.id !== account) continue;
+            const t = allTrades.filter(x => x.accountId === a.id);
+            const closed = t.filter(x => x.status !== "OPEN");
+            const wins = closed.filter(x => x.status === "WIN").length;
+            const losses = closed.filter(x => x.status === "LOSS").length;
+            const totalR = closed.reduce((s, x) => s + (x.rMultiple ?? 0), 0);
+            const wr = closed.length ? (wins / closed.length * 100).toFixed(1) : "0";
+            const pnl = a.balance - a.initialBalance;
+            lines.push(`【${a.label}】 saldo Rp${Math.round(a.balance).toLocaleString("id-ID")} (P&L ${pnl >= 0 ? "+" : ""}Rp${Math.round(pnl).toLocaleString("id-ID")}) | closed:${closed.length} W:${wins} L:${losses} | winrate:${wr}% | total ${totalR >= 0 ? "+" : ""}${totalR.toFixed(2)}R | open:${t.filter(x => x.status === "OPEN").length}`);
+            const recent = t.slice(0, 8).map(x => `  - ${x.direction} ${x.instrument}${x.setupTf ? `·${x.setupTf}` : ""} @${x.entryPrice.toFixed(2)} → ${x.status}${x.rMultiple != null ? ` ${x.rMultiple >= 0 ? "+" : ""}${x.rMultiple.toFixed(2)}R` : ""}${x.closeReason ? ` (${x.closeReason})` : ""}`);
+            if (recent.length) lines.push(...recent);
+          }
+          return lines.length ? lines.join("\n") : "Belum ada data paper trading. Autopilot mungkin belum dinyalakan.";
+        } catch (e) {
+          return `Gagal baca paper performance: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      },
+    }),
+
+    // ── Paper Trade: buka manual dari AI ────────────────────────────────────
+    open_paper_trade: tool({
+      description: [
+        "Buka paper trade di akun AI (buat lo sendiri yang mutusin, bukan engine otomatis).",
+        "WAJIB pakai ini kalau Commander minta 'buka trade', 'entry paper', 'masuk posisi AI', dll.",
+        "Sebelum panggil: WAJIB sudah jalankan get_ohlc untuk SL presisi + calculate_risk untuk validasi R:R.",
+        "Tool ini HANYA buka di akun 'ai' — jangan dipakai untuk akun 'engine'.",
+      ].join(" "),
+      inputSchema: z.object({
+        instrument:  z.string().describe("Simbol instrumen, misal XAUUSD atau BTCUSD"),
+        direction:   z.enum(["BUY","SELL"]).describe("Arah trade"),
+        entryPrice:  z.number().describe("Harga entry"),
+        slPrice:     z.number().describe("Harga stop loss (dari OHLC VR, bukan angka bulat)"),
+        tp1Price:    z.number().describe("Harga TP1"),
+        tp2Price:    z.number().optional().describe("Harga TP2 (opsional)"),
+        setupTf:     z.string().optional().describe("TF setup, misal H4 atau M30"),
+        grade:       z.enum(["A+","A","B","C"]).optional().describe("Grade setup"),
+        openReason:  z.string().describe("Alasan entry singkat (wajib)"),
+      }),
+      execute: async ({ instrument, direction, entryPrice, slPrice, tp1Price, tp2Price, setupTf, grade, openReason }) => {
+        try {
+          const id = nanoid();
+          await db.insert(paperTrades).values({
+            id, accountId: "ai", instrument, direction,
+            setupTf: setupTf ?? null, grade: grade ?? null,
+            entryPrice, slPrice, tp1Price, tp2Price: tp2Price ?? null,
+            status: "OPEN",
+            openReason: `[AI-Manual] ${openReason}`,
+          });
+          const risk = Math.abs(entryPrice - slPrice);
+          const rr = tp1Price ? (Math.abs(tp1Price - entryPrice) / risk).toFixed(2) : "?";
+          return `✅ Paper trade dibuka di akun AI:\n${direction} ${instrument} @ ${entryPrice}\nSL: ${slPrice} | TP1: ${tp1Price}${tp2Price ? ` | TP2: ${tp2Price}` : ""}\nR:R TP1 = ${rr} | Grade: ${grade ?? "—"}\nAlasan: ${openReason}`;
+        } catch (e) {
+          return `Gagal buka trade: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      },
+    }),
+
+    // ── Read Market Context ───────────────────────────────────────────────────
+    get_market_context: tool({
+      description: [
+        "Baca ulang market context terbaru dari database (harga, SNR, state CMP/VR/CF).",
+        "Gunakan kalau perlu double-check data yang sudah ada di system prompt,",
+        "atau setelah trigger_sync untuk memastikan data sudah update.",
+      ].join(" "),
+      inputSchema: z.object({}),
+      execute: async () => {
+        const rows = await db.select().from(marketContext);
+        const relevant = rows.filter(r => r.value && r.value.trim());
+        if (relevant.length === 0) return "Belum ada market context. Minta Commander sync TradingView dulu.";
+        return relevant.map(r => `${r.label}: ${r.value}`).join("\n");
+      },
+    }),
+
+    // ── Engine Execution Tools ────────────────────────────────────────────────
+
+    run_engine_check: tool({
+      description: [
+        "DISABLED — Commander sedang tidak pakai MT5. Gunakan trigger_sync untuk data dari TradingView.",
+        "Tool ini akan memberitahu user bahwa MT5 tidak aktif saat ini.",
+      ].join(" "),
+      inputSchema: z.object({}),
+      execute: async () => "⚠️ MT5 sedang tidak dipakai Commander. Gunakan trigger_sync untuk sync data dari TradingView, atau get_market_context untuk baca data yang sudah ada.",
+    }),
+
+    read_settings: tool({
+      description: [
+        "Baca chain_settings.json — konfigurasi runtime engine.",
+        "Isinya: auto_trade, lot_size, max_layers, barrier_limit, spread max, news blackout, dll.",
+        "Gunakan kalau Commander tanya soal setting saat ini atau mau review sebelum ubah.",
+      ].join(" "),
+      inputSchema: z.object({}),
+      execute: async () => readSettings(),
+    }),
+
+    update_settings: tool({
+      description: [
+        "Ubah setting di chain_settings.json. HANYA key yang di-whitelist yang boleh diubah.",
+        "Allowed: auto_trade, lot_size, max_layers, barrier_limit, be_protect_pips, trail_stop_pips,",
+        "max_spread_points, news_blackout_minutes, session_filter, enable_daily_deploy, ninja_enabled, dll.",
+        "SELALU konfirmasi dengan Commander sebelum ubah setting. Jangan ubah tanpa izin.",
+      ].join(" "),
+      inputSchema: z.object({
+        key: z.string().describe("Nama setting yang mau diubah, misal 'lot_size' atau 'auto_trade'"),
+        value: z.union([z.string(), z.number(), z.boolean()]).describe("Nilai baru untuk setting tersebut"),
+      }),
+      execute: async ({ key, value }: { key: string; value: unknown }) => updateSettings(key, value),
+    }),
+
+    run_backtest: tool({
+      description: [
+        "Jalankan backtest engine (backtest/run.py) untuk test strategi secara historical.",
+        "Output: hasil backtest termasuk win rate, total trades, profit factor, dll.",
+        "PERINGATAN: Ini bisa makan waktu hingga 60 detik. Gunakan hanya kalau Commander minta.",
+      ].join(" "),
+      inputSchema: z.object({}),
+      execute: async () => runBacktest(),
+    }),
+
+    // ── Full Agent Tools ──────────────────────────────────────────────────────
+
+    shell_exec: tool({
+      description: [
+        "Jalankan PowerShell command apapun di komputer Commander. Tool PALING POWERFUL.",
+        "Bisa: install npm/pip package, build app, git commit/push, jalankan script Python/Node, rename file, dll.",
+        "Contoh: 'npm install axios', 'npx next build', 'git status', 'pip install pandas', 'Get-Process'.",
+        "Untuk command destructive (rm, delete, format) → tanya Commander dulu.",
+        "Default cwd: D:\\PROJECT TRADING\\sultan-advisor",
+      ].join(" "),
+      inputSchema: z.object({
+        command: z.string().describe("PowerShell command yang dijalankan"),
+        cwd: z.string().optional().describe("Working directory. Default: sultan-advisor folder"),
+        timeout_seconds: z.number().min(1).max(300).optional().describe("Timeout detik (default 30)"),
+      }),
+      execute: async ({ command, cwd, timeout_seconds = 30 }: { command: string; cwd?: string; timeout_seconds?: number }) => {
+        const workDir = cwd ?? `${PROJECT_ROOT}\\sultan-advisor`;
+        return agentShellExec(command, workDir, timeout_seconds * 1000);
+      },
+    }),
+
+    read_file: tool({
+      description: [
+        "Baca isi file apapun di komputer Commander.",
+        "Gunakan untuk: baca source code, config, log, atau file apapun yang perlu dilihat.",
+        "Contoh path: D:\\PROJECT TRADING\\sultan-advisor\\components\\dashboard-pro.tsx",
+        "Otomatis truncate di 300 baris untuk file besar.",
+      ].join(" "),
+      inputSchema: z.object({
+        path: z.string().describe("Path lengkap file yang dibaca"),
+      }),
+      execute: async ({ path }: { path: string }) => agentReadFile(path),
+    }),
+
+    write_file: tool({
+      description: [
+        "Tulis atau overwrite file di komputer Commander.",
+        "Gunakan untuk: edit source code React/TypeScript, update config JSON, buat file baru.",
+        "Ini bisa langsung edit komponen dashboard, API routes, system prompt, dll.",
+        "Untuk file yang sudah ada: tunjukkan perubahan ke Commander sebelum write jika significant.",
+      ].join(" "),
+      inputSchema: z.object({
+        path: z.string().describe("Path lengkap file yang ditulis"),
+        content: z.string().describe("Konten lengkap file (akan overwrite seluruh file)"),
+      }),
+      execute: async ({ path, content }: { path: string; content: string }) => agentWriteFile(path, content),
+    }),
+
+    list_dir: tool({
+      description: [
+        "List isi direktori — lihat file dan folder.",
+        "Gunakan untuk navigasi filesystem, cek struktur project, atau cari file yang akan dibaca/diedit.",
+      ].join(" "),
+      inputSchema: z.object({
+        path: z.string().describe("Path direktori yang ingin dilihat"),
+      }),
+      execute: async ({ path }: { path: string }) => agentListDir(path),
+    }),
+
+    screenshot_analyze: tool({
+      description: [
+        "Ambil screenshot layar Commander SEKARANG dan analisis dengan AI vision (Claude).",
+        "Bisa lihat: chart TradingView, MetaTrader 5, web dashboard, terminal error, apapun yang tampil di layar.",
+        "Gunakan untuk: cek visual dashboard, debug error yang terlihat, verifikasi chart, lihat kondisi MT5.",
+        "Output: deskripsi detail apa yang ada di layar beserta analisis.",
+      ].join(" "),
+      inputSchema: z.object({
+        focus: z.string().optional().describe("Apa yang difokuskan? Contoh: 'chart TradingView H1', 'error di terminal', 'MT5 open positions'"),
+      }),
+      execute: async ({ focus }: { focus?: string }) => agentScreenshotAndAnalyze(focus),
+    }),
+  };
 
   const result = streamText({
     model: selectedModel,
     system: systemPrompt,
     messages: coreMessages,
     maxOutputTokens: 4096,
-    stopWhen: stepCountIs(5),  // max 5 tool call rounds (web search → answer)
-    tools: searchTools,        // AI bisa browse web + fetch URL
+    stopWhen: stepCountIs(15), // max 15 tool rounds — full agent can chain: sync→read→write→build→verify
+    tools: toolsWithContext,   // AI bisa browse web + fetch URL + save memory
     onFinish: async ({ text }) => {
       if (sessionId && text) {
         await db.insert(messages).values({ id: nanoid(), sessionId, role: "assistant", content: text });

@@ -16,6 +16,7 @@
     "@tailwindcss/typography": "^0.5.19",
     "@types/better-sqlite3": "^7.6.13",
     "ai": "^6.0.191",
+    "axios": "^1.16.1",
     "better-auth": "^1.6.11",
     "better-sqlite3": "^12.10.0",
     "chrome-remote-interface": "^0.34.0",

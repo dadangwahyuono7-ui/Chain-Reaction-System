@@ -3,7 +3,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useSession } from "@/lib/auth-client";
-import { MessagesSquareIcon, SendIcon, XIcon, VideoIcon, UsersIcon, MicIcon, ImageIcon, Loader2Icon } from "lucide-react";
+import { MessagesSquareIcon, SendIcon, XIcon, VideoIcon, UsersIcon, MicIcon, ImageIcon, Loader2Icon, Trash2Icon } from "lucide-react";
+
+const ADMIN_EMAIL = "dadangwahyuono@gmail.com";
 import { cn } from "@/lib/utils";
 
 type ChatMessage = {
@@ -110,16 +112,26 @@ export function TeamChat() {
   // ── Draggable position (persist localStorage) ──────────────────────────
   type Pos = { x: number; y: number };
   const [panelPos, setPanelPos] = useState<Pos | null>(null);
-  const [btnPos, setBtnPos]     = useState<Pos | null>(null);
+  const [btnPos,   setBtnPos]   = useState<Pos | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const btnRef   = useRef<HTMLButtonElement>(null);
   const dragRef  = useRef<{ sx: number; sy: number; ox: number; oy: number; moved: boolean; kind: "panel" | "btn" } | null>(null);
 
-  // load saved positions
+  // load saved positions — clamp to screen so button never goes off-screen
   useEffect(() => {
     try {
-      const p = localStorage.getItem("teamChatPanelPos"); if (p) setPanelPos(JSON.parse(p));
-      const b = localStorage.getItem("teamChatBtnPos");   if (b) setBtnPos(JSON.parse(b));
+      const W = window.innerWidth; const H = window.innerHeight;
+      const safe = (pos: Pos | null, w: number, h: number): Pos | null => {
+        if (!pos) return null;
+        if (pos.x < 0 || pos.y < 0 || pos.x + w > W || pos.y + h > H) {
+          return null; // reset — was off screen
+        }
+        return pos;
+      };
+      const p = localStorage.getItem("teamChatPanelPos");
+      if (p) { const parsed = JSON.parse(p); setPanelPos(safe(parsed, 380, 520)); }
+      const b = localStorage.getItem("teamChatBtnPos");
+      if (b) { const parsed = JSON.parse(b); setBtnPos(safe(parsed, 56, 56)); }
     } catch { /* ignore */ }
   }, []);
 
@@ -253,6 +265,10 @@ export function TeamChat() {
             else delete next[data.userName];
             return next;
           });
+        } else if (data.type === "clear") {
+          // Admin cleared all messages — wipe UI
+          setMessages([]);
+          seenIds.current.clear();
         } else if (data.type === "message" && data.message) {
           const m: ChatMessage = data.message;
           if (seenIds.current.has(m.id)) return;
@@ -444,6 +460,23 @@ export function TeamChat() {
             >
               <VideoIcon className="w-3 h-3" /> Meeting
             </button>
+
+            {/* Clear chat — admin only */}
+            {session?.user?.email === ADMIN_EMAIL && (
+              <button
+                onClick={async () => {
+                  if (!confirm("Hapus semua pesan chat? Tidak bisa dikembalikan.")) return;
+                  await fetch("/api/team-chat", { method: "DELETE" });
+                  setMessages([]);
+                  seenIds.current.clear();
+                }}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 text-[10px] font-bold transition-all"
+                title="Hapus semua pesan (admin only)"
+              >
+                <Trash2Icon className="w-3 h-3" /> Clear
+              </button>
+            )}
+
             <button onClick={() => setOpen(false)} className="text-zinc-500 hover:text-zinc-300 p-1">
               <XIcon className="w-4 h-4" />
             </button>

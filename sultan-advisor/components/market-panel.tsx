@@ -1,9 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { DEFAULT_MARKET_CONTEXT } from "@/lib/system-prompt";
 import { cn } from "@/lib/utils";
 import { DashboardPro } from "@/components/dashboard-pro";
+import { PaperPerformance } from "@/components/paper-performance";
 import {
   RefreshCwIcon, WifiIcon, WifiOffIcon,
   ZapIcon, ClockIcon, PencilIcon, CheckIcon, XIcon,
@@ -13,12 +14,13 @@ import {
 type CtxVar = { id: string; variableName: string; label: string; value: string };
 
 interface Props {
-  onAutoAnalysis?: (prompt: string) => void;
-  onPriceUpdate?:  (price: string) => void;
+  onAutoAnalysis?:     (prompt: string) => void;
+  onPriceUpdate?:      (price: string) => void;
+  onInstrumentUpdate?: (symbol: string) => void;
   layout?: "panel" | "dashboard";
 }
 
-// ── CSS animations injected once ─────────────────────────────────────────────
+// -- CSS animations injected once ---------------------------------------------
 const ANIM_CSS = `
 @keyframes scan-h {
   0%   { transform: translateX(-100%); opacity: 0; }
@@ -137,7 +139,7 @@ const ANIM_CSS = `
 .anim-price-glow-up { animation: price-glow-up 1.5s ease-in-out infinite; }
 .anim-price-glow-dn { animation: price-glow-dn 1.5s ease-in-out infinite; }
 
-/* ══ 2-TIER MOTION SYSTEM ══════════════════════════════════════════════
+/* -- 2-TIER MOTION SYSTEM === ====== ====== ====== ====== ====== ====== ===-=== 
    AMBIENT = kalem, nemenin nunggu (anti-bosen, gak bikin mata capek)
    SIGNAL  = tajam & terang, CUMA buat yang actionable (entry valid) */
 @keyframes ambient-breathe {
@@ -172,7 +174,7 @@ const ANIM_CSS = `
 .anim-signal-pulse    { animation: signal-pulse 0.85s ease-in-out infinite; }
 .anim-signal-pop      { animation: signal-pop 0.4s ease-out; }
 
-/* ── 27-inch / large screen scaling (≥1536px) ────────────────────────── */
+/* -- 27-inch / large screen scaling (≥1536px) -------------------------- */
 @media (min-width: 1536px) {
   .cr-price-display   { font-size: 54px !important; }
   .cr-panel-header    { padding: 5px 16px !important; }
@@ -198,7 +200,7 @@ const ANIM_CSS = `
 }
 `;
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// -- Constants -----------------------------------------------------------------
 const BLOCKS = "▁▂▃▄▅▆▇█";
 
 const STORYLINE_MAP: Record<string, { vrFrom: string; cfLow: string; cfHigh: string | null; tradeTF: string }> = {
@@ -220,11 +222,36 @@ const SNR_AUTO_GROUPS = [
   { label: "Round",   keys: [{ key: "ROUND_ABOVE", short: "↑Rnd", stars: 4 }, { key: "ROUND_BELOW", short: "↓Rnd", stars: 4 }] },
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// -- Helpers -------------------------------------------------------------------
 function getFase(vr: string, cf: string): 1 | 2 | 3 {
   if (vr === "YA" && cf === "YA") return 3;
   if (vr === "YA") return 2;
   return 1;
+}
+
+// -- Autopilot: hitung SL/TP otomatis dari SNR context (instrument-agnostic) --
+// BUY  : SL = SNR terdekat DI BAWAH entry, TP = SNR terdekat DI ATAS entry.
+// SELL : kebalikannya. Fallback pakai persentase harga kalau SNR tidak ada.
+const SNR_LEVEL_KEYS = ["PDH","PDL","DAILY_OPEN","PWH","PWL","WEEKLY_OPEN","PMH","PML",
+  "ASIA_H","ASIA_L","LONDON_H","LONDON_L","ROUND_ABOVE","ROUND_BELOW"];
+function computeAutoLevels(
+  get: (k: string) => string, dir: "BUY" | "SELL", entry: number
+): { sl: number; tp1: number; tp2: number | null } {
+  const levels = SNR_LEVEL_KEYS.map(k => parseFloat(get(k))).filter(v => !isNaN(v) && v > 0);
+  const above = levels.filter(v => v > entry).sort((a, b) => a - b);
+  const below = levels.filter(v => v < entry).sort((a, b) => b - a);
+  const pct = entry * 0.003; // fallback 0.3% jarak risk
+  if (dir === "BUY") {
+    const sl  = below[0] ?? (entry - pct);
+    const tp1 = above[0] ?? (entry + pct * 2);
+    const tp2 = above[1] ?? null;
+    return { sl, tp1, tp2 };
+  } else {
+    const sl  = above[0] ?? (entry + pct);
+    const tp1 = below[0] ?? (entry - pct * 2);
+    const tp2 = below[1] ?? null;
+    return { sl, tp1, tp2 };
+  }
 }
 
 function timeAgo(ts: number | null) {
@@ -242,8 +269,11 @@ function buildAutoPrompt(vars: Record<string, CtxVar>, events?: FiredEvent[]): s
   const harga   = get("HARGA");
   const session = get("SESSION");
   const spread  = get("SPREAD");
+  // Instrumen aktif = chart yang Commander buka di TradingView. Sistem IKUT chart.
+  const instrument = get("TV_SYMBOL") || "XAUUSD";
+  const notGold    = !/XAU|GOLD/i.test(instrument);
 
-  // ── TF table rows ──────────────────────────────────────────────────────────
+  // -- TF table rows ----------------------------------------------------------
   const tfLines: string[] = [];
   const primeTFs: string[] = [];
   for (const tf of TF_ROWS) {
@@ -263,7 +293,7 @@ function buildAutoPrompt(vars: Record<string, CtxVar>, events?: FiredEvent[]): s
     if (fase === "F3⚡PRIME") primeTFs.push(`${tf} ${dir.trim()}`);
   }
 
-  // ── conflict check ─────────────────────────────────────────────────────────
+  // -- conflict check ---------------------------------------------------------
   const dailyCMP = get("DAILY_CMP");
   const h4CMP    = get("H4_CMP");
   const conflict  = dailyCMP && h4CMP && dailyCMP !== h4CMP;
@@ -273,16 +303,41 @@ function buildAutoPrompt(vars: Record<string, CtxVar>, events?: FiredEvent[]): s
       ? `Daily & H4 searah: ${dailyCMP} → bias aligned`
       : "";
 
-  // ── SNR ───────────────────────────────────────────────────────────────────
+  // -- SNR -------------------------------------------------------------------
   const SNR_KEYS = ["PDH","PDL","DAILY_OPEN","PWH","PWL","WEEKLY_OPEN","PMH","PML",
                     "ASIA_H","ASIA_L","LONDON_H","LONDON_L","ROUND_ABOVE","ROUND_BELOW"];
   const snrLines = SNR_KEYS.filter(k => get(k)).map(k => `  ${k}: ${get(k)}`);
   const tpLines  = ["TP_ABOVE_1","TP_ABOVE_2","TP_BELOW_1","TP_BELOW_2"]
     .filter(k => get(k)).map(k => `  ${k}: ${get(k)}`);
 
+  // -- CONTI territory detection ----------------------------------------------
+  // CONTI = TF besar sudah CMP tapi belum VR → tiap BO searah di TF kecil = entry valid
+  // Ini beda dari "CONTI yang dilarang" (CF tanpa VR di TF yang sama).
+  // CONTI yang valid = ikut arah TF besar SEBELUM TF besar itu di-VR, pakai siklus penuh di TF kecil.
+  type ContiOpp = { master: string; masterDir: string; entryTf: string; sopTf: string; tp: string; note: string };
+  const contiOpps: ContiOpp[] = [];
+  const contiMap: Array<{ master: string; entryTf: string; sopTf: string; tp: string }> = [
+    { master: "DAILY", entryTf: "H1",  sopTf: "M30→CF M30/M15", tp: "H1/H4 barrier" },
+    { master: "H4",    entryTf: "M30", sopTf: "M15→CF M15/M5",  tp: "M30/H1 barrier" },
+    { master: "H1",    entryTf: "M15", sopTf: "M5→CF M5",       tp: "M15/M30 (10-20pts, TP cepat!)" },
+  ];
+  for (const c of contiMap) {
+    const cmp = get(`${c.master}_CMP`);
+    const vr  = get(`${c.master}_VR`);
+    if (!cmp || vr === "YA") continue; // master belum CMP atau sudah di-VR → bukan CONTI
+    const dir = cmp === "BULLISH" ? "BUY" : "SELL";
+    // Cek apakah TF entry searah master
+    const entryTfCmp = get(`${c.entryTf}_CMP`);
+    const entryAligned = entryTfCmp === cmp;
+    const note = entryAligned
+      ? `⚡ ${c.entryTf} CMP sudah searah — tunggu VR ${c.sopTf.split("→")[0]} dulu baru CF`
+      : `${c.entryTf} belum BO searah — tunggu ${c.entryTf} BO ${dir} dulu`;
+    contiOpps.push({ master: c.master, masterDir: dir, entryTf: c.entryTf, sopTf: c.sopTf, tp: c.tp, note });
+  }
+
   const lines: string[] = [];
 
-  // ── Event-specific header ─────────────────────────────────────────────────
+  // -- Event-specific header -------------------------------------------------
   const cfEvents = events?.filter(e => e.type === "CF") ?? [];
   const vrEvents = events?.filter(e => e.type === "VR") ?? [];
 
@@ -300,18 +355,32 @@ function buildAutoPrompt(vars: Record<string, CtxVar>, events?: FiredEvent[]): s
     lines.push(`[AUTO-SYNC] Data market baru dari TradingView. Baca tabel berikut SECARA LITERAL.`);
   }
 
+  lines.push(`INSTRUMEN: ${instrument} (chart aktif TradingView) — analisis pakai doktrin CMP/VR/CF untuk ${instrument}.${notGold ? ` ⚠️ ${instrument} BUKAN emas: abaikan fundamental gold (COMEX/DXY/yield) & jangan pakai get_ohlc; SL/TP dari level chart/SNR.` : ""}`);
   lines.push(`Harga sekarang: ${harga || "—"} | Session: ${session || "—"} | Spread: ${spread || "—"}`);
   lines.push("");
-  lines.push("═══ STATE PER TF (BACA LITERAL — JANGAN UBAH ATAU ASUMSI) ═══");
+  lines.push("=== STATE PER TF (BACA LITERAL — JANGAN UBAH ATAU ASUMSI) === ");
   lines.push("TF    ★| CMP     | VR       | CF           | FASE");
   lines.push("-------+--------+----------+--------------+---------");
   lines.push(...tfLines);
   lines.push("");
   if (biasNote)    lines.push(biasNote);
   if (primeTFs.length) lines.push(`PRIME ENTRY AKTIF: ${primeTFs.join(", ")} → siklus CMP→VR→CF SELESAI`);
+
+  // -- CONTI territory (selalu tampilkan kalau ada) --------------------------
+  if (contiOpps.length > 0) {
+    lines.push("");
+    lines.push("=== CONTI TERRITORY (TF BESAR BELUM VR → SCALP SEARAH) ===");
+    lines.push("PENTING: CONTI ini VALID (beda dari CONTI yg dilarang). Ini ikut arah TF besar SEBELUM TF besar di-VR.");
+    for (const c of contiOpps) {
+      lines.push(`▸ ${c.master} CONTI ${c.masterDir} → entry tiap ${c.entryTf} BO ${c.masterDir} | SOP: ${c.sopTf} | TP: ${c.tp}`);
+      lines.push(`  Status: ${c.note}`);
+    }
+    lines.push("CONTI RULES: Valid SELAMA TF master belum VR. Begitu master VR → CONTI STOP. Size lebih kecil dari setup VR+CF normal.");
+  }
+
   if (snrLines.length) {
     lines.push("");
-    lines.push("═══ FUNDAMENTAL SNR ═══");
+    lines.push("=== FUNDAMENTAL SNR === ");
     lines.push(...snrLines);
   }
   if (tpLines.length) {
@@ -319,31 +388,43 @@ function buildAutoPrompt(vars: Record<string, CtxVar>, events?: FiredEvent[]): s
     lines.push(...tpLines);
   }
   lines.push("");
+
   if (cfEvents.length > 0) {
-    // CF fired — minta trade plan lengkap langsung
     lines.push("INSTRUKSI: CF baru saja FIRE. LANGSUNG berikan TRADE PLAN lengkap tanpa basa-basi:");
     lines.push("1. KONFIRMASI STATE (tulis ulang H4, M30, Daily dari tabel)");
     lines.push("2. GRADE setup (A+/A/B/C) + alasan singkat");
     lines.push("3. TRADE PLAN: Arah | Entry zone | SL (puncak VR) | TP1 | TP2 | Size");
     lines.push("4. GUARD CHECK cepat: spread / news blackout / barrier");
+    lines.push("5. CEK CONTI AKTIF: ada CONTI territory yang sedang jalan? kalau iya, sebutkan.");
     lines.push("INGAT: Entry berlawanan Daily = Grade C SKIP. SL = puncak VR, bukan round number.");
   } else if (vrEvents.length > 0) {
-    // VR fired — minta watchlist & scenario CF
     lines.push("INSTRUKSI: VR baru saja TERKONFIRMASI. Berikan WATCHLIST & SCENARIO:");
     lines.push("1. KONFIRMASI STATE + VR yang baru fire (TF mana, arah mana)");
     lines.push("2. Entry zone CF berikutnya: area harga berapa, TF entry mana (LowRisk / HighRisk)");
     lines.push("3. Level kritis yang harus DIJAGA: barrier VR, SNR yang tidak boleh ditembus");
     lines.push("4. Perkiraan kekuatan momentum: VR dari TF apa? → berapa kuat gerakan CF expected?");
-    lines.push("JANGAN entry sekarang — ini fase nunggu CF. Analisis kapan dan di mana CF akan muncul.");
+    lines.push("5. CONTI status setelah VR ini: TF mana yang masih dalam CONTI territory vs yang sudah masuk siklus VR+CF?");
+    lines.push("JANGAN entry sekarang — ini fase nunggu CF.");
   } else {
-    lines.push("INSTRUKSI: Mulai dengan KONFIRMASI STATE (tulis ulang H4, M30, Daily dari tabel).");
-    lines.push("Lalu berikan analisis STORYLINE + GRADE + TRADE PLAN lengkap.");
-    lines.push("INGAT: SL = puncak VR (bukan round number). Entry berlawanan Daily = Grade C SKIP.");
+    lines.push("INSTRUKSI: Berikan STORYLINE LENGKAP dalam format berikut:");
+    lines.push("");
+    lines.push("1. KONFIRMASI STATE: tulis ulang H4★, M30, Daily (literal dari tabel)");
+    lines.push("2. STORYLINE FRACTAL: sambungkan relasi parent→child:");
+    lines.push("   - TF mana yang jadi VR untuk TF di atasnya?");
+    lines.push("   - TF mana yang masih CONTI territory (master belum VR)?");
+    lines.push("   - TF mana yang sudah masuk siklus VR→CF (tunggu CF)?");
+    lines.push("3. PELUANG SEKARANG — dua jalur (sebutkan dua-duanya kalau ada):");
+    lines.push("   JALUR A — CONTI SCALP: ikut arah TF besar tanpa tunggu VR master");
+    lines.push("             Sebutkan: master TF mana, entry di TF mana, SOP VR→CF TF kecil, TP target");
+    lines.push("   JALUR B — SETUP PRIME: tunggu siklus VR+CF TF besar selesai");
+    lines.push("             Sebutkan: TF mana yang sudah F2/F3, kapan entry valid");
+    lines.push("4. GRADE + TRADE PLAN untuk peluang terbaik sekarang");
+    lines.push("INGAT: SL = puncak VR. Untuk CONTI → size kecil, TP terbatas ke barrier TF kecil.");
   }
   return lines.join("\n");
 }
 
-// ── Auto-grade calculator (doctrine: Daily+H4 aligned → M30/M15 F3 → A+/A) ──
+// -- Auto-grade calculator (doctrine: Daily+H4 aligned → M30/M15 F3 → A+/A) --
 type GradeResult = { grade: "A+" | "A" | "B" | "C" | "SKIP" | "—"; reason: string };
 function computeAutoGrade(
   tfData: { tf: string; cmp: string; vr: string; cf: string; fase: number }[],
@@ -397,7 +478,7 @@ function computeAutoGrade(
   return { grade: "C", reason: "Belum ada F3 TF kecil searah master" };
 }
 
-// ── Audio alert + browser notification ───────────────────────────────────────
+// -- Audio alert + browser notification ---------------------------------------
 
 function playBeep(type: "cf" | "vr") {
   try {
@@ -451,7 +532,7 @@ async function sendTelegramAlert(message: string) {
   } catch { /* Telegram offline — non-fatal */ }
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// -- Sub-components ------------------------------------------------------------
 
 function PanelBox({ title, children, cls = "", extra, scanV = false }: {
   title: React.ReactNode; children: React.ReactNode; cls?: string; extra?: React.ReactNode; scanV?: boolean;
@@ -480,8 +561,8 @@ function PanelTitle({ label, live = false }: { label: string; live?: boolean }) 
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
-export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }: Props) {
+// -- Main component ------------------------------------------------------------
+export function MarketPanel({ onAutoAnalysis, onPriceUpdate, onInstrumentUpdate, layout = "panel" }: Props) {
   const isDashboard = layout === "dashboard";
 
   const [vars,        setVars]        = useState<CtxVar[]>([]);
@@ -497,9 +578,16 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const [tvError,      setTvError]      = useState<string | null>(null);
   const [snrError,     setSnrError]     = useState<string | null>(null);
   const [newsError,    setNewsError]    = useState<string | null>(null);
-  const [autoSync,    setAutoSync]    = useState(true);   // ← ON by default
+  const [autoSync,  setAutoSync]  = useState(true);
+  // Autopilot = SELALU ON — ini paper trading, tujuannya train AI jadi master trader.
+  // Tidak ada alasan matiin. Tidak ada toggle.
+  const autopilot    = true;
+  const setAutopilot = (_: boolean | ((p: boolean) => boolean)) => {}; // no-op
+  const openTradesRef = useRef<Array<{
+    id: string; direction: "BUY" | "SELL"; slPrice: number; tp1Price: number;
+  }>>([]); // posisi OPEN akun engine, buat cek SL/TP tiap tick
 
-  // ── CF / VR alert state ────────────────────────────────────────────────────
+  // -- CF / VR alert state ----------------------------------------------------
   type Alert = { id: string; text: string; level: "vr" | "cf" };
   const [cfAlerts,        setCfAlerts]    = useState<Alert[]>([]);
   const prevTFStateRef    = useRef<Record<string, string>>({});  // delta detection
@@ -512,7 +600,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const [blinkFast,   setBlinkFast]   = useState(true);   // 350ms — for F3 sniper alerts
   const [priceFlash,  setPriceFlash]  = useState<"up"|"dn"|null>(null);
 
-  // ── TICK DELTA STATE ────────────────────────────────────────────────────────
+  // -- TICK DELTA STATE --------------------------------------------------------
   // tickDeltas[i] = price change for that tick (positive = buy, negative = sell)
   const [tickDeltas, setTickDeltas]   = useState<number[]>([]);
   const prevPriceRef    = useRef<number>(0);
@@ -537,7 +625,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
     return () => clearInterval(t);
   }, []);
 
-  // ── Alert timer cleanup on unmount ──────────────────────────────────────────
+  // -- Alert timer cleanup on unmount ------------------------------------------
   useEffect(() => {
     const ref = alertDismissRef.current;
     return () => { ref.forEach(t => clearTimeout(t)); };
@@ -576,7 +664,65 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
     setVars(await r.json());
   }
 
-  const syncTV = useCallback(async () => {
+  // -- Autopilot: refresh daftar posisi OPEN akun engine (buat cek SL/TP) -----
+  const refreshOpenTrades = useCallback(async () => {
+    try {
+      const r = await fetch("/api/paper?account=engine");
+      const j = await r.json();
+      openTradesRef.current = (j.trades || [])
+        .filter((t: { status: string }) => t.status === "OPEN")
+        .map((t: { id: string; direction: "BUY" | "SELL"; slPrice: number; tp1Price: number }) =>
+          ({ id: t.id, direction: t.direction, slPrice: t.slPrice, tp1Price: t.tp1Price }));
+    } catch { /* offline — non-fatal */ }
+  }, []);
+
+  // -- Autopilot: buka paper trade otomatis pas CF fire (akun engine) ---------
+  const autopilotRef = useRef(autopilot);
+  useEffect(() => { autopilotRef.current = autopilot; }, [autopilot]);
+
+  const openAutoTrade = useCallback(async (args: {
+    get: (k: string) => string; tf: string; dir: "BUY" | "SELL"; cfType: string; cfCount: number;
+  }) => {
+    if (!autopilotRef.current) return;
+    const { get, tf, dir, cfType, cfCount } = args;
+    const entry = parseFloat(get("HARGA"));
+    if (!entry || isNaN(entry)) return;
+    const instrument = get("TV_SYMBOL") || "XAUUSD";
+    const { sl, tp1, tp2 } = computeAutoLevels(get, dir, entry);
+    const reason = `CF fire ${tf} ${dir}${cfType ? ` ${cfType}` : ""}${cfCount ? ` #${cfCount}` : ""}`;
+    try {
+      // ENGINE: selalu masuk langsung — murni doktrin, tanpa filter
+      await fetch("/api/paper", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "open", accountId: "engine", instrument, direction: dir,
+          entryPrice: entry, slPrice: sl, tp1Price: tp1, tp2Price: tp2,
+          setupTf: tf, cfType, cfCount,
+          openReason: `[Engine] ${reason}`,
+        }),
+      });
+      pushAlert(`⚙ ENGINE ENTRY — ${dir} ${instrument} @ ${entry.toFixed(2)}`, "cf");
+
+      // AI: evaluasi dulu, baru decide masuk atau skip
+      const aiRes = await fetch("/api/paper/ai-decide", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tf, direction: dir, instrument, entryPrice: entry,
+          cfType, cfCount, slPrice: sl, tp1Price: tp1, tp2Price: tp2,
+        }),
+      });
+      const aiDecision = await aiRes.json();
+      if (aiDecision.decision === "ENTER") {
+        pushAlert(`🧠 AI ENTER [${aiDecision.grade}] — ${aiDecision.reason?.slice(0, 50)}`, "cf");
+      } else {
+        pushAlert(`🧠 AI SKIP [${aiDecision.grade}] — ${aiDecision.reason?.slice(0, 50)}`, "vr");
+      }
+
+      await refreshOpenTrades();
+    } catch { /* non-fatal */ }
+  }, [refreshOpenTrades, pushAlert]);
+
+  const syncTV = useCallback(async (manual = false) => {
     setSyncing(true); setTvError(null);
     try {
       const r = await fetch("/api/tv-sync", { method: "POST" });
@@ -587,7 +733,11 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
 
         const byName = Object.fromEntries(freshVars.map(v => [v.variableName, v]));
 
-        // ── Delta detection: compare VR/CF state per TF ────────────────────
+        // Notify parent soal instrumen aktif (biar header & subtitle ikut chart TV)
+        const freshSym = byName["TV_SYMBOL"]?.value?.trim();
+        if (freshSym && onInstrumentUpdate) onInstrumentUpdate(freshSym);
+
+        // -- Delta detection: compare VR/CF state per TF --------------------
         const newState: Record<string, string> = {};
         for (const tf of TF_ROWS) {
           const cmp = byName[`${tf}_CMP`]?.value || "";
@@ -613,6 +763,16 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
               // CF just fired — entry signal! (count diambil dari indikator v4)
               hasCFChange = true;
               firedEvents.push({ tf, type: "CF", dir });
+              // AUTOPILOT ENGINE — auto-open paper trade (akun "engine", doktrin murni).
+              // Mekanis: CF fire + arah jelas → buka posisi pakai SL/TP dari SNR context.
+              if (dir === "BUY" || dir === "SELL") {
+                void openAutoTrade({
+                  get: (k: string) => byName[k]?.value?.trim() || "",
+                  tf, dir,
+                  cfType:  byName[`${tf}_CF_TYPE`]?.value || "",
+                  cfCount: parseInt(byName[`${tf}_CF_COUNT`]?.value || "0", 10) || 0,
+                });
+              }
               pushAlert(`⚡ CF FIRED — ${tf} ${dir} · PRIME ENTRY`, "cf");
               playBeep("cf");
               void tryBrowserNotify(`⚡ Chain Reaction — ${tf} CF`, `${dir} setup active on ${tf}. Check SL/TP.`);
@@ -689,11 +849,13 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
 
         prevTFStateRef.current = newState;
 
-        // Auto-analysis: fire on first load OR when VR/CF state changes
-        if (onAutoAnalysis && (wasEmpty || hasCFChange || hasVRChange)) {
+        // Auto-analysis: HANYA fire kalau Commander klik SYNC manual, ATAU ada
+        // event CF/VR beneran. Reload / auto-sync background → cuma update panel,
+        // AI TIDAK ikut analisa (sesuai permintaan Commander).
+        if (onAutoAnalysis && (manual || hasCFChange || hasVRChange)) {
           if (TF_ROWS.some(tf => byName[`${tf}_CMP`]?.value)) {
             // Pass fired events so AI gets event-specific prompt (CF→trade plan, VR→watchlist)
-            onAutoAnalysis(buildAutoPrompt(byName, wasEmpty ? [] : firedEvents));
+            onAutoAnalysis(buildAutoPrompt(byName, (manual && !hasCFChange && !hasVRChange) ? [] : firedEvents));
           }
         }
       } else { setTvStatus("error"); setTvError(json.error || "Gagal sync"); }
@@ -755,7 +917,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
 
   useEffect(() => { onPriceUpdateRef.current = onPriceUpdate; }, [onPriceUpdate]);
 
-  // ── SSE price stream + tick delta accumulation ───────────────────────────────
+  // -- SSE price stream + tick delta accumulation -------------------------------
   useEffect(() => {
     const es = new EventSource("/api/price-stream");
     es.onmessage = (e) => {
@@ -777,10 +939,43 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
           }
         }
         if (priceNum) prevPriceRef.current = priceNum;
+
+        // -- AUTOPILOT: cek SL/TP tiap tick, auto-close yang kena ------------
+        if (priceNum && openTradesRef.current.length > 0) {
+          const hitList = openTradesRef.current.filter(t => {
+            if (t.direction === "BUY")  return priceNum <= t.slPrice || priceNum >= t.tp1Price;
+            return priceNum >= t.slPrice || priceNum <= t.tp1Price; // SELL
+          });
+          if (hitList.length > 0) {
+            // optimistic: buang dari ref biar gak double-close
+            const hitIds = new Set(hitList.map(t => t.id));
+            openTradesRef.current = openTradesRef.current.filter(t => !hitIds.has(t.id));
+            for (const t of hitList) {
+              const hitSL = t.direction === "BUY" ? priceNum <= t.slPrice : priceNum >= t.slPrice;
+              void fetch("/api/paper", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "close", tradeId: t.id, exitPrice: priceNum,
+                  closeReason: hitSL ? "SL hit" : "TP1 hit",
+                }),
+              }).then(() => pushAlert(
+                `${hitSL ? "🔴 SL" : "🟢 TP"} HIT — ${t.direction} closed @ ${priceNum.toFixed(2)}`,
+                hitSL ? "vr" : "cf"));
+            }
+          }
+        }
       } catch { /* ignore */ }
     };
     return () => es.close();
-  }, []);
+  }, [pushAlert]);
+
+  // -- Autopilot: load posisi OPEN pas dinyalain + poll tiap 20s --------------
+  useEffect(() => {
+    if (!autopilot) { openTradesRef.current = []; return; }
+    refreshOpenTrades();
+    const t = setInterval(refreshOpenTrades, 20_000);
+    return () => clearInterval(t);
+  }, [autopilot, refreshOpenTrades]);
 
   async function save(variableName: string, label: string, value: string) {
     await fetch("/api/context", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -794,8 +989,11 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const displayPrice = livePrice || dbHarga;
   const spread       = byName["SPREAD"]?.value || "—";
   const sess         = byName["SESSION"]?.value || "—";
+  // Active pair detected from TradingView
+  const tvSymbol     = byName["TV_SYMBOL"]?.value     || "XAUUSD";
+  const tvSymbolDesc = byName["TV_SYMBOL_DESC"]?.value || "";
 
-  // ── Computed heatmap + chain data ─────────────────────────────────────────
+  // -- Computed heatmap + chain data -----------------------------------------
   const tfData = TF_ROWS.map(tf => ({
     tf, cmp: byName[`${tf}_CMP`]?.value || "",
     vr: byName[`${tf}_VR`]?.value  || "",
@@ -811,7 +1009,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const h4Fase       = h4?.fase || 0;
   const hasAnyF3     = tfData.some(d => d.fase === 3);
 
-  // ── Scalp cycle computations ───────────────────────────────────────────────
+  // -- Scalp cycle computations -----------------------------------------------
   const h1d         = tfData.find(d => d.tf === "H1");
   const m30d        = tfData.find(d => d.tf === "M30");
   const m15d        = tfData.find(d => d.tf === "M15");
@@ -852,7 +1050,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
     isMaster: id === "H4",
   }));
 
-  // ── Tick delta computations ────────────────────────────────────────────────
+  // -- Tick delta computations ------------------------------------------------
   const N_TICKS      = tickDeltas.length;
   const buyTicks     = tickDeltas.filter(d => d > 0).length;
   const sellTicks    = tickDeltas.filter(d => d < 0).length;
@@ -860,7 +1058,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const sellPct      = N_TICKS ? Math.round(sellTicks / N_TICKS * 100) : 50;
   const cumDelta     = parseFloat(tickDeltas.reduce((a, b) => a + b, 0).toFixed(3));
   const momentum     = N_TICKS < 5 ? "SCANNING" : buyPct >= 65 ? "BULL" : buyPct <= 35 ? "BEAR" : "NEUTRAL";
-  const momentumStr  = momentum === "BULL" ? "▲ BULLISH" : momentum === "BEAR" ? "▼ BEARISH" : momentum === "SCANNING" ? "○ SCANNING" : "── NEUTRAL";
+  const momentumStr  = momentum === "BULL" ? "▲ BULLISH" : momentum === "BEAR" ? "▼ BEARISH" : momentum === "SCANNING" ? "○ SCANNING" : "-- NEUTRAL";
   const momentumCol  = momentum === "BULL" ? "text-emerald-400" : momentum === "BEAR" ? "text-red-400" : "text-zinc-500";
 
   // Group ticks into 8 "candles" of ~5 ticks each for mini chart
@@ -877,10 +1075,10 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const earlyBuyPct   = tickDeltas.slice(0, 8).filter(d => d > 0).length  / Math.max(Math.min(8, N_TICKS), 1) * 100;
   const divergence    = N_TICKS >= 16 && Math.abs(recentBuyPct - earlyBuyPct) > 40;
 
-  // ── Auto-grade ────────────────────────────────────────────────────────────
+  // -- Auto-grade ------------------------------------------------------------
   const autoGrade   = hasTFData ? computeAutoGrade(tfData, byName) : { grade: "—" as const, reason: "" };
 
-  // ── News blackout countdown ────────────────────────────────────────────────
+  // -- News blackout countdown ------------------------------------------------
   const nextEpoch         = parseInt(byName["NEXT_EVENT_EPOCH"]?.value || "0");
   const nextEventName     = byName["NEXT_EVENT_NAME"]?.value     || "";
   const nextEventTimeWIB  = byName["NEXT_EVENT_TIME_WIB"]?.value || "";
@@ -888,11 +1086,11 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const newsBlackout      = minutesUntilNews !== null && minutesUntilNews >= 0 && minutesUntilNews <= 30;
   const newsApproaching   = minutesUntilNews !== null && minutesUntilNews > 30 && minutesUntilNews <= 60;
 
-  // ── SITREP computation ─────────────────────────────────────────────────────
+  // -- SITREP computation -----------------------------------------------------
   const sitrep = (() => {
     if (!hasTFData) return null;
     const biasDir   = h4Dir || "";
-    const biasLabel = biasDir === "BULLISH" ? "▲ BUY" : biasDir === "BEARISH" ? "▼ SELL" : "─";
+    const biasLabel = biasDir === "BULLISH" ? "▲ BUY" : biasDir === "BEARISH" ? "▼ SELL" : "-";
     const f3List    = tfData.filter(d => d.fase === 3 && d.cmp).map(d => d.tf);
     const primeLabel = f3List.length ? `${f3List[0]}${f3List.length > 1 ? `+${f3List.length - 1}` : ""} F3` : tfData.some(d => d.fase === 2) ? `${tfData.find(d => d.fase === 2)!.tf} F2` : "F1";
     const scalpLabel  = !scalpActive ? "—"
@@ -909,7 +1107,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
     return { biasLabel, primeLabel, scalpLabel, newsLabel, gradeLabel, biasDir };
   })();
 
-  // ── SNR data ─────────────────────────────────────────────────────────────
+  // -- SNR data -------------------------------------------------------------
   const cmpFloat = parseFloat(displayPrice.replace(",", ".")) || 0;
   const allLevels: { key: string; short: string; price: number; stars: number }[] = [];
   for (const group of SNR_AUTO_GROUPS)
@@ -925,7 +1123,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
   const tp1Dn = byName["TP_BELOW_1"]?.value;
   const tp2Dn = byName["TP_BELOW_2"]?.value;
 
-  // ── Render helpers ────────────────────────────────────────────────────────
+  // -- Render helpers --------------------------------------------------------
   function CmpBadge({ cmp, pulse = false }: { cmp: string; pulse?: boolean }) {
     if (cmp === "BULLISH") return (
       <span className={cn(
@@ -951,7 +1149,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         {pulse && blinkFast ? "◉" : "▣"} SELL
       </span>
     );
-    return <span className="cr-label-sm text-[10px] font-mono text-zinc-700">────</span>;
+    return <span className="cr-label-sm text-[10px] font-mono text-zinc-700">----</span>;
   }
 
   function FasePill({ fase }: { fase: number }) {
@@ -974,10 +1172,10 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         F1
       </span>
     );
-    return <span className="cr-label-xs text-[9px] text-zinc-800 font-mono">──</span>;
+    return <span className="cr-label-xs text-[9px] text-zinc-800 font-mono">--</span>;
   }
 
-  // ── ALERT TOAST JSX (shared, fixed-position, both modes) ────────────────────
+  // -- ALERT TOAST JSX (shared, fixed-position, both modes) --------------------
   const alertToasts = cfAlerts.length > 0 ? (
     <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
       {cfAlerts.map(alert => (
@@ -1008,7 +1206,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
     </div>
   ) : null;
 
-  // ── PANEL MODE (narrow right sidebar) ─────────────────────────────────────
+  // -- PANEL MODE (narrow right sidebar) -------------------------------------
   if (!isDashboard) {
     return (
       <div className="px-3 py-3 space-y-3">
@@ -1033,7 +1231,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
           "bg-zinc-900 border-amber-500/20"
         )}>
           <div>
-            <div className="text-[9px] text-amber-500 font-mono font-black">XAUUSD · {sess}</div>
+            <div className="text-[9px] text-amber-500 font-mono font-black">{tvSymbol} · {sess}</div>
             <div className="text-[9px] text-zinc-600 font-mono">SPR:{spread}</div>
           </div>
           <div className="text-right">
@@ -1044,7 +1242,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
           </div>
         </div>
 
-        <button onClick={syncTV} disabled={syncing} className={cn("w-full py-2 rounded-lg text-[10px] font-black font-mono tracking-wider border transition-all",
+        <button onClick={() => syncTV(true)} disabled={syncing} className={cn("w-full py-2 rounded-lg text-[10px] font-black font-mono tracking-wider border transition-all",
           syncing ? "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"
           : tvStatus === "connected" ? "bg-emerald-950/20 border-emerald-700/40 text-emerald-400"
           : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-amber-500/40 hover:text-amber-400"
@@ -1052,6 +1250,10 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
           <RefreshCwIcon className={cn("w-3 h-3 inline mr-1.5", syncing && "animate-spin")} />
           {syncing ? "READING..." : "⚡ SYNC TV"}
         </button>
+
+        <div className="w-full py-2 rounded-lg text-[10px] font-black font-mono tracking-wider border bg-emerald-950/40 border-emerald-600/60 text-emerald-300 anim-row-fire text-center">
+          🤖 AUTOPILOT ON · AI LEARNING
+        </div>
 
         {hasTFData && (
           <div className="bg-zinc-900/60 rounded-lg border border-zinc-800 overflow-hidden">
@@ -1062,13 +1264,68 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
               )}>
                 <span className={cn("text-[10px] font-black font-mono w-8 shrink-0", tf === "H4" ? "text-amber-400" : "text-cyan-500")}>{tf}{tf === "H4" ? "★" : ""}</span>
                 <span className={cn("text-[10px] font-black font-mono flex-1", cmp === "BULLISH" ? "text-emerald-400" : cmp === "BEARISH" ? "text-red-400" : "text-zinc-600")}>
-                  {cmp === "BULLISH" ? "BUY" : cmp === "BEARISH" ? "SELL" : "─"}
+                  {cmp === "BULLISH" ? "BUY" : cmp === "BEARISH" ? "SELL" : "-"}
                 </span>
                 <FasePill fase={fase} />
               </div>
             ))}
           </div>
         )}
+
+        {/* VR Scalp compact — sambil nunggu setup besar */}
+        {hasTFData && (() => {
+          const TP_M: Record<string, string> = { M5:"M15", M15:"M30", M30:"H1", H1:"H4" };
+          const PAIRS = [
+            { scalp:"H1", parent:"H4", guard:"M30", sub:"M5" },
+            { scalp:"M30", parent:"H1", guard:"M15", sub:null },
+            { scalp:"M15", parent:"M30", guard:"M5", sub:null },
+          ];
+          type O = { scalp:string; scalpDir:string; parentDir:string; status:"VALID"|"STOP";
+                     signal:string|null; entryTF:string|null; tpTF:string|null };
+          const opps: O[] = [];
+          for (const p of PAIRS) {
+            const sd = tfData.find(d=>d.tf===p.scalp), pd = tfData.find(d=>d.tf===p.parent);
+            const gd = tfData.find(d=>d.tf===p.guard), sub = p.sub ? tfData.find(d=>d.tf===p.sub) : null;
+            if (!sd?.cmp||!pd?.cmp||sd.cmp===pd.cmp) continue;
+            const scalpDir=sd.cmp, parentDir=pd.cmp;
+            if (gd?.cmp===parentDir) { opps.push({scalp:p.scalp,scalpDir,parentDir,status:"STOP",signal:null,entryTF:null,tpTF:null}); continue; }
+            let signal="CONTI", entryTF:string|null=null;
+            if (gd?.cmp===scalpDir) {
+              if (gd.fase===3) { signal="CF_LOW"; entryTF=p.guard; }
+              else if (gd.fase===2&&sub?.cmp===scalpDir) { signal="CF_HIGH"; entryTF=p.sub??null; }
+              else if (gd.fase===2) signal="WAITING_CF";
+            }
+            opps.push({scalp:p.scalp,scalpDir,parentDir,status:"VALID",signal,entryTF,tpTF:entryTF?TP_M[entryTF]??null:null});
+          }
+          if (!opps.length) return null;
+          return (
+            <div className="bg-zinc-900/60 rounded-lg border border-zinc-800 overflow-hidden">
+              <div className="px-2 py-1 border-b border-zinc-800 text-[9px] font-black font-mono text-violet-400 tracking-widest">[ VR.SCALP ]</div>
+              {opps.map(o => {
+                const sc = o.scalpDir==="BULLISH"?"text-emerald-400":"text-red-400";
+                const sw = o.scalpDir==="BULLISH"?"BUY":"SELL";
+                const pw = o.parentDir==="BULLISH"?"BUY":"SELL";
+                const badge = o.status==="STOP" ? <span className="text-[8px] text-zinc-600">STOP</span>
+                  : o.signal==="CF_LOW"||o.signal==="CF_HIGH" ? <span className={cn("text-[8px] font-black",sc)}>⚡{o.signal}</span>
+                  : o.signal==="WAITING_CF" ? <span className="text-[8px] text-blue-400">WAIT CF</span>
+                  : <span className="text-[8px] text-zinc-600">CONTI</span>;
+                return (
+                  <div key={o.scalp} className={cn("flex items-center gap-1 px-2 py-1 border-b border-zinc-800/50 last:border-0",
+                    o.status==="STOP"?"opacity-40":o.signal==="CF_LOW"||o.signal==="CF_HIGH"?"anim-row-fire":""
+                  )}>
+                    <span className={cn("text-[9px] font-black font-mono w-8 shrink-0",sc)}>{o.scalp}</span>
+                    <span className={cn("text-[9px] font-mono flex-1",sc)}>{sw}</span>
+                    {badge}
+                    {o.entryTF&&o.tpTF&&<span className="text-[8px] text-amber-400/80 font-mono shrink-0">→TP:{o.tpTF}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {/* Paper trading performance — Engine vs AI */}
+        <PaperPerformance />
 
         {/* Compact delta */}
         {N_TICKS >= 5 && (
@@ -1100,10 +1357,10 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════════
+  // ====== ====== ====== ====== ====== ====== ====== ====== ====== ====== ====== ====== ====== 
   // DASHBOARD MODE — PRO (Clean Institutional, port 3003)
   // Visual baru total. Logika & data tetap dari atas (tidak diubah).
-  // ══════════════════════════════════════════════════════════════════════════════
+  // ====== ====== ====== ====== ====== ====== ====== ====== ====== ====== ====== ====== ===---
   return (
     <>
       <style>{ANIM_CSS}</style>
@@ -1140,7 +1397,7 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         newsApproaching={newsApproaching}
         nextEventName={nextEventName}
         nextEventTimeWIB={nextEventTimeWIB}
-        syncTV={syncTV}
+        syncTV={() => syncTV(true)}
         syncing={syncing}
         tvStatus={tvStatus}
         lastSync={lastSync}
@@ -1150,8 +1407,12 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, layout = "panel" }:
         syncingNews={syncingNews}
         autoSync={autoSync}
         setAutoSync={setAutoSync}
+        autopilot={autopilot}
+        setAutopilot={setAutopilot}
         blink={blink}
         blinkFast={blinkFast}
+        tvSymbol={tvSymbol}
+        tvSymbolDesc={tvSymbolDesc}
       />
     </>
   );

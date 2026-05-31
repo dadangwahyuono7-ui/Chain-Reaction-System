@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signIn } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 import { LogoLogin } from "@/components/logo";
+import { EyeIcon, EyeOffIcon } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,6 +12,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
   const [loading,  setLoading]  = useState(false);
+  const [showPw,   setShowPw]   = useState(false);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -73,15 +75,25 @@ export default function LoginPage() {
               <label className="text-xs text-zinc-400 uppercase tracking-wider font-medium">
                 Access Code
               </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full bg-zinc-800/80 border border-zinc-700 text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-amber-600 focus:bg-zinc-800 transition-all placeholder:text-zinc-600"
-                placeholder="••••••••"
-                autoComplete="current-password"
-              />
+              <div className="relative">
+                <input
+                  type={showPw ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="w-full bg-zinc-800/80 border border-zinc-700 text-white rounded-xl px-4 py-2.5 pr-11 text-sm focus:outline-none focus:border-amber-600 focus:bg-zinc-800 transition-all placeholder:text-zinc-600"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-amber-400 transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPw ? <EyeOffIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             {error && (

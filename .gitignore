@@ -55,3 +55,22 @@ node_modules/
 
 # Old/deprecated
 sultan_live_engine.py
+
+# Local/personal
+.claude/
+asisten dadang/
+sultan-advisor-redesign/
+_OLD_BAT/
+photo_*.jpg
+photo_*.png
+
+# Sultan-advisor local
+sultan-advisor/.claude/
+sultan-advisor/agent-browser/
+sultan-advisor/agent-test.md
+sultan-advisor/test-axios.js
+sultan-advisor/next
+sultan-advisor/public/uploads/
+
+# Runtime uploads/screenshots
+sultan-advisor/screenshots/

@@ -6,6 +6,8 @@ import { desc } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { broadcast, type ChatMessage } from "@/lib/team-chat-bus";
 
+const ADMIN_EMAIL = "dadangwahyuono@gmail.com";
+
 export const dynamic = "force-dynamic";
 
 // Ambil 100 pesan terakhir (urutan lama → baru)
@@ -74,4 +76,18 @@ export async function POST(req: Request) {
   broadcast({ type: "message", message });
 
   return Response.json({ ok: true, message });
+}
+
+// Clear all messages — admin only
+export async function DELETE() {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) return new Response("Unauthorized", { status: 401 });
+  if (session.user.email !== ADMIN_EMAIL) return new Response("Forbidden", { status: 403 });
+
+  await db.delete(teamMessages);
+
+  // Broadcast clear event so all clients clear their UI
+  broadcast({ type: "clear" } as never);
+
+  return Response.json({ ok: true });
 }

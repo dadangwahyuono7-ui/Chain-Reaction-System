@@ -1136,6 +1136,196 @@ class SacredDoctrineAnalyst:
             "monitor_tf_status": monitor_st.status,
         }
 
+    # TP Rules baku per doktrin: CF dari TF ini → target SNR di TF atasnya
+    TP_MAP = {
+        "M5":  "M15",
+        "M15": "M30",
+        "M30": "H1",
+        "H1":  "H4",
+        "H4":  "D1",
+    }
+
+    def get_scalp_while_waiting(self) -> list:
+        """
+        Doktrin: VR adalah CMP di TF-nya sendiri.
+
+        Setiap TF yang sedang VR ke parent-nya bisa dijadikan CMP baru untuk scalp
+        di arah berlawanan main setup — sambil menunggu setup utama selesai.
+
+        Contoh:
+          H4 BUY + H1 VR (SELL) → scalp SELL valid
+          Syarat: M30 BELUM VR BUY (M30 masih SELL = CONTI H1 SELL)
+          Entry:  M15 SELL → M5 VR BUY → M5 CF SELL
+          TP:     SNR M15 (CF M5) atau SNR M30 (CF M15)
+          STOP:   M30 VR BUY terjadi → H1 mau CF BUY → stop scalp SELL
+
+        TP Rules baku:
+          CF M5  → SNR M15  |  CF M15 → SNR M30  |  CF M30 → SNR H1
+          CF H1  → SNR H4   |  CF H4  → SNR Daily
+
+        Returns list sorted by scalp_master_tf level (H1 > M30 > M15):
+        [
+          {
+            "scalp_master_tf" : str   — TF yang VR = CMP scalp
+            "parent_tf"       : str   — TF di atas (main setup direction)
+            "scalp_dir"       : str   — arah scalp (= arah VR)
+            "parent_dir"      : str   — arah main setup (nanti mau ke sini)
+            "status"          : str   — "SCALP_VALID" | "STOP_SCALP"
+            "guard_tf"        : str   — TF penjaga (1 level bawah scalp master)
+            "guard_condition" : str   — kondisi yang harus terpenuhi (BELUM VR)
+            "signal"          : str   — "CF_LOW" | "CF_HIGH" | "WAITING_CF" | None
+            "entry_tf"        : str   — TF entry jika signal siap, else None
+            "tp_tf"           : str   — TP target per TP_MAP
+            "sl_tf"           : str   — SL reference TF
+            "danger_level"    : int   — berapa TF atas yang counter scalp_dir
+            "reason"          : str   — narasi singkat
+          }
+        ]
+        """
+        HIERARCHY = ["D1", "H4", "H1", "M30", "M15", "M5"]
+
+        # Pasangan: (scalp_master, parent) — TF yang bisa jadi CMP scalp
+        VR_PAIRS = [
+            ("H1",  "H4"),
+            ("M30", "H1"),
+            ("M15", "M30"),
+        ]
+
+        results = []
+
+        for scalp_master_tf, parent_tf in VR_PAIRS:
+            scalp_st  = self.states[scalp_master_tf]
+            parent_st = self.states[parent_tf]
+
+            if scalp_st.cmp == "WAIT" or parent_st.cmp == "WAIT":
+                continue
+
+            # Harus VR: scalp_master berlawanan parent
+            if scalp_st.cmp == parent_st.cmp:
+                continue
+
+            # Time Law: VR harus terjadi SETELAH parent CMP terbentuk
+            if scalp_st.cmp_change_time <= parent_st.cmp_change_time:
+                continue
+
+            scalp_dir  = scalp_st.cmp   # arah scalp (= arah VR TF)
+            parent_dir = parent_st.cmp  # arah main setup yang sedang ditunggu
+
+            scalp_idx = HIERARCHY.index(scalp_master_tf)
+
+            # Guard TF (1 level bawah scalp master)
+            # Kunci: guard BELUM VR ke parent_dir = scalp masih valid
+            # Jika guard SUDAH VR ke parent_dir → scalp master mau CF parent_dir → STOP
+            if scalp_idx + 1 >= len(HIERARCHY):
+                continue
+            guard_tf = HIERARCHY[scalp_idx + 1]
+            guard_st = self.states[guard_tf]
+
+            guard_vr_to_parent = (
+                guard_st.cmp == parent_dir and
+                guard_st.cmp != "WAIT" and
+                guard_st.cmp_change_time > scalp_st.cmp_change_time
+            )
+
+            if guard_vr_to_parent:
+                results.append({
+                    "scalp_master_tf": scalp_master_tf,
+                    "parent_tf":       parent_tf,
+                    "scalp_dir":       scalp_dir,
+                    "parent_dir":      parent_dir,
+                    "status":          "STOP_SCALP",
+                    "guard_tf":        guard_tf,
+                    "guard_condition": f"{guard_tf} sudah VR {parent_dir}",
+                    "signal":          None,
+                    "entry_tf":        None,
+                    "tp_tf":           None,
+                    "sl_tf":           None,
+                    "danger_level":    0,
+                    "reason": (
+                        f"[STOP SCALP] {guard_tf} sudah VR {parent_dir} ke {scalp_master_tf} "
+                        f"→ {scalp_master_tf} mau CF {parent_dir} "
+                        f"→ Jangan scalp {scalp_dir} lagi | Tunggu CF {parent_dir} di {scalp_master_tf}"
+                    ),
+                })
+                continue
+
+            # Sub TF (2 level bawah scalp master) — untuk CF_HIGH
+            sub_tf = HIERARCHY[scalp_idx + 2] if scalp_idx + 2 < len(HIERARCHY) else None
+            sub_st = self.states[sub_tf] if sub_tf else None
+
+            # ── CF_LOW: guard_tf sudah VR (parent_dir) lalu balik ke scalp_dir ──
+            cf_low_ok = (
+                guard_st.cmp == scalp_dir and
+                guard_st.vr_occurred and
+                guard_st.cmp_change_time > getattr(guard_st, "vr_change_time", 0) and
+                guard_st.cmp_change_time > scalp_st.cmp_change_time and
+                guard_st.cmp_change_time > getattr(guard_st, "cf_fail_time", 0)
+            )
+
+            # ── CF_HIGH: guard_tf masih VR (parent_dir), sub_tf CF scalp_dir ──
+            cf_high_ok = False
+            if sub_st and not cf_low_ok:
+                guard_is_vr = (
+                    guard_st.cmp == parent_dir and
+                    guard_st.cmp_change_time > scalp_st.cmp_change_time
+                )
+                if guard_is_vr:
+                    cf_high_ok = (
+                        sub_st.cmp == scalp_dir and
+                        sub_st.cmp_change_time > guard_st.cmp_change_time and
+                        sub_st.cmp_change_time > getattr(sub_st, "cf_fail_time", 0)
+                    )
+
+            if cf_low_ok:
+                signal   = "CF_LOW"
+                entry_tf = guard_tf
+                tp_tf    = self.TP_MAP.get(guard_tf)
+                sl_tf    = sub_tf if sub_tf else guard_tf
+            elif cf_high_ok:
+                signal   = "CF_HIGH"
+                entry_tf = sub_tf
+                tp_tf    = self.TP_MAP.get(sub_tf)
+                sl_tf    = sub_tf
+            else:
+                signal   = "WAITING_CF"
+                entry_tf = None
+                tp_tf    = self.TP_MAP.get(guard_tf)   # TP target jika signal terjadi
+                sl_tf    = None
+
+            # Danger: berapa TF di atas scalp_master yang counter scalp_dir
+            danger = sum(
+                1 for anc in HIERARCHY[:scalp_idx]
+                if self.states[anc].cmp not in ("WAIT", scalp_dir)
+            )
+
+            entry_hint = (
+                f"Entry {scalp_dir} di {entry_tf} | TP: {tp_tf} SNR | SL: {sl_tf} SNR"
+                if signal != "WAITING_CF" else
+                f"Tunggu CF {scalp_dir} di {guard_tf}"
+                + (f" atau {sub_tf}" if sub_tf else "")
+            )
+
+            results.append({
+                "scalp_master_tf": scalp_master_tf,
+                "parent_tf":       parent_tf,
+                "scalp_dir":       scalp_dir,
+                "parent_dir":      parent_dir,
+                "status":          "SCALP_VALID",
+                "guard_tf":        guard_tf,
+                "guard_condition": f"{guard_tf} BELUM VR {parent_dir}",
+                "signal":          signal,
+                "entry_tf":        entry_tf,
+                "tp_tf":           tp_tf,
+                "sl_tf":           sl_tf,
+                "danger_level":    danger,
+                "reason": (
+                    f"{parent_tf} {parent_dir} | {scalp_master_tf} VR ({scalp_dir}) = CMP scalp | "
+                    f"{entry_hint}"
+                ),
+            })
+
+        return results
+
     def get_total_sentiment(self):
         """Calculates the total alignment across all timeframes."""
         buy_score = 0

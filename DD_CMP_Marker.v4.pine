@@ -1,0 +1,388 @@
+// ═══════════════════════════════════════════════════════════════════════════
+//  DD — CMP Marker v4  |  Daily Deploy System by Dadang Wahyuono
+//  Pelengkap CMP Engine v6.3 — visual CMP lines + dashboard
+//
+//  PERUBAHAN v4 dari v3:
+//    [1] M1 bukan SETUP — CF terkecil sekarang M5
+//        (M1 sering bolak-balik VR/CF/VR/CF = terlalu noise UNTUK setup)
+//        Konsekuensi: M15 setup tidak lagi punya CF HIGH (karena CF HIGH M15
+//        butuh M1). M15 hanya punya CF LOW dari M5.
+//        M1 TETAP ADA sebagai MONITOR — buat baca momentum & pullback.
+//
+//    [2] CF bisa FLIP — phase bisa TURUN dari 3/4 ke 2 kalau sub-TF reverse arah
+//        Di v3 phase pakai math.max → cuma bisa naik. Sekali CF kena, status "ENTRI"
+//        nempel terus sampai CMP flip. Padahal kalau M5 udah balik lawan arah,
+//        CF udah batal — harus nunggu CF berikutnya.
+//
+//    [3] CF COUNTER — track berapa kali CF udah fire dalam 1 siklus CMP
+//        Phase 3/4 nampilin "ENTRI ⚡ HIGH #2" atau "ENTRI ✅ LOW #3"
+//        Phase 2 nampilin "MENUNGGU CF #2" (kalau CF #1 udah flip)
+//        Reset ke 0 ketika CMP flip
+//
+//  DOKTRIN ABSOLUT (Commander Dadang):
+//    "SETIAP CMP HANYA 1 KALI VR TAPI CF BISA BERKALI KALI"
+//
+//  FASE PER TF:
+//    0 = WAIT (no CMP)
+//    1 = CMP active, VR belum
+//    2 = VR happened, CF tidak aktif sekarang (belum atau udah flip)
+//    3 = CF HIGH active (sub-TF-2 searah, sub-TF-1 belum) — risk lebih tinggi
+//    4 = CF LOW active (sub-TF-1 searah) — aman
+//
+//  CF LOWRISK = TF yang bagi VR kembali searah CMP (aman)
+//  CF HIGHRISK = TF 1 level lebih bawah searah CMP (lebih awal, lebih risiko)
+// ═══════════════════════════════════════════════════════════════════════════
+//@version=5
+indicator("DD — CMP Marker v4", shorttitle="DD·CMP·v4", overlay=true, max_lines_count=200, max_labels_count=100)
+
+// ─── INPUTS ──────────────────────────────────────────────────────────────
+i_tbl  = input.bool(true,  "Dashboard Skenario",  group="Tampilan")
+i_d    = input.bool(true,  "Garis CMP Daily",      group="Tampilan")
+i_h4   = input.bool(true,  "Garis CMP H4",         group="Tampilan")
+i_h1   = input.bool(true,  "Garis CMP H1",         group="Tampilan")
+i_m30  = input.bool(true,  "Garis CMP M30",        group="Tampilan")
+i_m15  = input.bool(true,  "Garis CMP M15",        group="Tampilan")
+
+// ─── CORE FUNCTION — SAMA PERSIS DENGAN CMP ENGINE v6.3 ─────────────────
+// JANGAN DIUBAH — ini fondasi yang udah profitable
+f_get_data() =>
+    var float sup1   = na
+    var float res1   = na
+    var string arah  = "WAIT"
+    var float cmpLvl = na
+
+    isMinorSup = close[1] < open[1] and close > open
+    isMinorRes = close[1] > open[1] and close < open
+
+    if isMinorSup
+        sup1 := math.min(close[1], open[1])
+    if isMinorRes
+        res1 := math.max(close[1], open[1])
+
+    if barstate.isconfirmed
+        if arah == "WAIT"
+            if not na(res1) and close > res1
+                arah   := "BUY"
+                cmpLvl := res1
+            else if not na(sup1) and close < sup1
+                arah   := "SELL"
+                cmpLvl := sup1
+        else if arah == "BUY"
+            if not na(sup1) and close < sup1
+                arah   := "SELL"
+                cmpLvl := sup1
+        else if arah == "SELL"
+            if not na(res1) and close > res1
+                arah   := "BUY"
+                cmpLvl := res1
+
+    [arah, cmpLvl]
+
+// ─── REQUEST SECURITY ────────────────────────────────────────────────────
+// M5 & M1 = trigger/monitor (bukan setup). M1 buat baca momentum & pullback.
+[arah_D,   cmpD]   = request.security(syminfo.tickerid, "D",   f_get_data(), lookahead=barmerge.lookahead_off)
+[arah_H4,  cmpH4]  = request.security(syminfo.tickerid, "240", f_get_data(), lookahead=barmerge.lookahead_off)
+[arah_H1,  cmpH1]  = request.security(syminfo.tickerid, "60",  f_get_data(), lookahead=barmerge.lookahead_off)
+[arah_M30, cmpM30] = request.security(syminfo.tickerid, "30",  f_get_data(), lookahead=barmerge.lookahead_off)
+[arah_M15, cmpM15] = request.security(syminfo.tickerid, "15",  f_get_data(), lookahead=barmerge.lookahead_off)
+[arah_M5,  cmpM5]  = request.security(syminfo.tickerid, "5",   f_get_data(), lookahead=barmerge.lookahead_off)
+[arah_M1,  cmpM1]  = request.security(syminfo.tickerid, "1",   f_get_data(), lookahead=barmerge.lookahead_off)
+
+// ─── HELPERS (semua fungsi WAJIB di global scope di Pine v5) ─────────────
+
+// Derive phase dari current state.
+// Phase di-recompute tiap bar — BISA TURUN kalau CF flip (sub-TF reverse).
+// has_high: apakah TF punya CF HIGH option (M15 has_high=false karena M1 dihapus)
+f_derivePhase(arah_self, vrSeen, arah_vr, arah_high, has_high) =>
+    if arah_self == "WAIT"
+        0
+    else if not vrSeen
+        1
+    else if arah_vr == arah_self
+        4
+    else if has_high and arah_high == arah_self
+        3
+    else
+        2
+
+// CF string untuk dashboard
+f_cfStr(phase, count, dir) =>
+    if phase == 4
+        dir + " LOW #" + str.tostring(count)
+    else if phase == 3
+        dir + " HIGH #" + str.tostring(count)
+    else
+        "–"
+
+// ACTION string untuk dashboard
+f_actStr(phase, count) =>
+    if phase == 1
+        "MENUNGGU VR"
+    else if phase == 2
+        count > 0 ? "MENUNGGU CF #" + str.tostring(count + 1) : "MENUNGGU CF"
+    else if phase == 3
+        "ENTRI ⚡ HIGH #" + str.tostring(count)
+    else if phase == 4
+        "ENTRI ✅ LOW #" + str.tostring(count)
+    else
+        "–"
+
+// ─── PERSISTENT STATE (VR latch + CF counter) ────────────────────────────
+var string prevArah_D   = "WAIT"
+var string prevArah_H4  = "WAIT"
+var string prevArah_H1  = "WAIT"
+var string prevArah_M30 = "WAIT"
+var string prevArah_M15 = "WAIT"
+
+var int  phase_D    = 0
+var int  phase_H4   = 0
+var int  phase_H1   = 0
+var int  phase_M30  = 0
+var int  phase_M15  = 0
+
+var int  cfCnt_D    = 0
+var int  cfCnt_H4   = 0
+var int  cfCnt_H1   = 0
+var int  cfCnt_M30  = 0
+var int  cfCnt_M15  = 0
+
+var bool vrSeen_D   = false
+var bool vrSeen_H4  = false
+var bool vrSeen_H1  = false
+var bool vrSeen_M30 = false
+var bool vrSeen_M15 = false
+
+if barstate.isconfirmed
+
+    // ── DAILY setup: vr_TF=H4, cf_high_TF=H1 ──
+    if arah_D != prevArah_D
+        prevArah_D := arah_D
+        vrSeen_D   := false
+        cfCnt_D    := 0
+        phase_D    := arah_D == "WAIT" ? 0 : 1
+    if arah_D != "WAIT"
+        if not vrSeen_D and arah_H4 != "WAIT" and arah_H4 != arah_D
+            vrSeen_D := true
+        np_D = f_derivePhase(arah_D, vrSeen_D, arah_H4, arah_H1, true)
+        if phase_D <= 2 and np_D >= 3
+            cfCnt_D := cfCnt_D + 1
+        phase_D := np_D
+
+    // ── H4 setup: vr_TF=H1, cf_high_TF=M30 ──
+    if arah_H4 != prevArah_H4
+        prevArah_H4 := arah_H4
+        vrSeen_H4   := false
+        cfCnt_H4    := 0
+        phase_H4    := arah_H4 == "WAIT" ? 0 : 1
+    if arah_H4 != "WAIT"
+        if not vrSeen_H4 and arah_H1 != "WAIT" and arah_H1 != arah_H4
+            vrSeen_H4 := true
+        np_H4 = f_derivePhase(arah_H4, vrSeen_H4, arah_H1, arah_M30, true)
+        if phase_H4 <= 2 and np_H4 >= 3
+            cfCnt_H4 := cfCnt_H4 + 1
+        phase_H4 := np_H4
+
+    // ── H1 setup: vr_TF=M30, cf_high_TF=M15 ──
+    if arah_H1 != prevArah_H1
+        prevArah_H1 := arah_H1
+        vrSeen_H1   := false
+        cfCnt_H1    := 0
+        phase_H1    := arah_H1 == "WAIT" ? 0 : 1
+    if arah_H1 != "WAIT"
+        if not vrSeen_H1 and arah_M30 != "WAIT" and arah_M30 != arah_H1
+            vrSeen_H1 := true
+        np_H1 = f_derivePhase(arah_H1, vrSeen_H1, arah_M30, arah_M15, true)
+        if phase_H1 <= 2 and np_H1 >= 3
+            cfCnt_H1 := cfCnt_H1 + 1
+        phase_H1 := np_H1
+
+    // ── M30 setup: vr_TF=M15, cf_high_TF=M5 ──
+    if arah_M30 != prevArah_M30
+        prevArah_M30 := arah_M30
+        vrSeen_M30   := false
+        cfCnt_M30    := 0
+        phase_M30    := arah_M30 == "WAIT" ? 0 : 1
+    if arah_M30 != "WAIT"
+        if not vrSeen_M30 and arah_M15 != "WAIT" and arah_M15 != arah_M30
+            vrSeen_M30 := true
+        np_M30 = f_derivePhase(arah_M30, vrSeen_M30, arah_M15, arah_M5, true)
+        if phase_M30 <= 2 and np_M30 >= 3
+            cfCnt_M30 := cfCnt_M30 + 1
+        phase_M30 := np_M30
+
+    // ── M15 setup: vr_TF=M5, cf_high_TF=NONE (M1 dihapus) ──
+    if arah_M15 != prevArah_M15
+        prevArah_M15 := arah_M15
+        vrSeen_M15   := false
+        cfCnt_M15    := 0
+        phase_M15    := arah_M15 == "WAIT" ? 0 : 1
+    if arah_M15 != "WAIT"
+        if not vrSeen_M15 and arah_M5 != "WAIT" and arah_M5 != arah_M15
+            vrSeen_M15 := true
+        np_M15 = f_derivePhase(arah_M15, vrSeen_M15, arah_M5, "WAIT", false)
+        if phase_M15 <= 2 and np_M15 >= 3
+            cfCnt_M15 := cfCnt_M15 + 1
+        phase_M15 := np_M15
+
+// ─── CMP LINE DRAWING (sama dengan v3) ───────────────────────────────────
+var string prev_D   = "WAIT"
+var string prev_H4  = "WAIT"
+var string prev_H1  = "WAIT"
+var string prev_M30 = "WAIT"
+var string prev_M15 = "WAIT"
+
+var line ln_D   = na
+var line ln_H4  = na
+var line ln_H1  = na
+var line ln_M30 = na
+var line ln_M15 = na
+
+f_drawCmp(arah, cmpLvl, prevArah, ln, colBuy, colSell, w) =>
+    var line myLn = ln
+    changed = arah != prevArah and arah != "WAIT" and not na(cmpLvl)
+    if changed
+        if not na(myLn)
+            line.set_color(myLn, color.new(#888888, 60))
+            line.set_width(myLn, 1)
+            line.set_style(myLn, line.style_dashed)
+            line.set_extend(myLn, extend.none)
+        col = arah == "BUY" ? colBuy : colSell
+        myLn := line.new(bar_index, cmpLvl, bar_index, cmpLvl, color=col, width=w, style=line.style_solid, extend=extend.right)
+    myLn
+
+if i_d
+    ln_D   := f_drawCmp(arah_D,   cmpD,   prev_D,   ln_D,   #FFD700, #FF6B6B, 3)
+if i_h4
+    ln_H4  := f_drawCmp(arah_H4,  cmpH4,  prev_H4,  ln_H4,  #00E676, #FF3B30, 2)
+if i_h1
+    ln_H1  := f_drawCmp(arah_H1,  cmpH1,  prev_H1,  ln_H1,  #00C7BE, #FF9F0A, 2)
+if i_m30
+    ln_M30 := f_drawCmp(arah_M30, cmpM30, prev_M30, ln_M30, #30D158, #FF453A, 1)
+if i_m15
+    ln_M15 := f_drawCmp(arah_M15, cmpM15, prev_M15, ln_M15, #64D2FF, #BF5AF2, 1)
+
+if barstate.isconfirmed
+    prev_D   := arah_D
+    prev_H4  := arah_H4
+    prev_H1  := arah_H1
+    prev_M30 := arah_M30
+    prev_M15 := arah_M15
+
+// ─── DASHBOARD ───────────────────────────────────────────────────────────
+if i_tbl and barstate.islast
+
+    // VR — label "BREAK <TF>" kalau vrSeen, tampil dari awal sampai CMP flip
+    string vr_D   = vrSeen_D   ? "BREAK H4"  : "–"
+    string vr_H4  = vrSeen_H4  ? "BREAK H1"  : "–"
+    string vr_H1  = vrSeen_H1  ? "BREAK M30" : "–"
+    string vr_M30 = vrSeen_M30 ? "BREAK M15" : "–"
+    string vr_M15 = vrSeen_M15 ? "BREAK M5"  : "–"
+
+    // CF — live current state, hilang kalau phase turun ke 2 (pakai f_cfStr global)
+    string cf_D   = f_cfStr(phase_D,   cfCnt_D,   arah_D)
+    string cf_H4  = f_cfStr(phase_H4,  cfCnt_H4,  arah_H4)
+    string cf_H1  = f_cfStr(phase_H1,  cfCnt_H1,  arah_H1)
+    string cf_M30 = f_cfStr(phase_M30, cfCnt_M30, arah_M30)
+    string cf_M15 = f_cfStr(phase_M15, cfCnt_M15, arah_M15)
+
+    // ACTION — phase + counter hint (pakai f_actStr global)
+    string act_D   = f_actStr(phase_D,   cfCnt_D)
+    string act_H4  = f_actStr(phase_H4,  cfCnt_H4)
+    string act_H1  = f_actStr(phase_H1,  cfCnt_H1)
+    string act_M30 = f_actStr(phase_M30, cfCnt_M30)
+    string act_M15 = f_actStr(phase_M15, cfCnt_M15)
+
+    // Warna CMP
+    color cD   = arah_D   == "BUY" ? color.green : arah_D   == "SELL" ? color.red : color.gray
+    color cH4  = arah_H4  == "BUY" ? color.green : arah_H4  == "SELL" ? color.red : color.gray
+    color cH1  = arah_H1  == "BUY" ? color.green : arah_H1  == "SELL" ? color.red : color.gray
+    color cM30 = arah_M30 == "BUY" ? color.green : arah_M30 == "SELL" ? color.red : color.gray
+    color cM15 = arah_M15 == "BUY" ? color.green : arah_M15 == "SELL" ? color.red : color.gray
+
+    // Warna ACTION
+    color aD   = phase_D   >= 4 ? (arah_D   == "BUY" ? color.green : color.red) : phase_D   == 3 ? color.orange : phase_D   == 2 ? #FFD60A : color.gray
+    color aH4  = phase_H4  >= 4 ? (arah_H4  == "BUY" ? color.green : color.red) : phase_H4  == 3 ? color.orange : phase_H4  == 2 ? #FFD60A : color.gray
+    color aH1  = phase_H1  >= 4 ? (arah_H1  == "BUY" ? color.green : color.red) : phase_H1  == 3 ? color.orange : phase_H1  == 2 ? #FFD60A : color.gray
+    color aM30 = phase_M30 >= 4 ? (arah_M30 == "BUY" ? color.green : color.red) : phase_M30 == 3 ? color.orange : phase_M30 == 2 ? #FFD60A : color.gray
+    color aM15 = phase_M15 >= 4 ? (arah_M15 == "BUY" ? color.green : color.red) : phase_M15 == 3 ? color.orange : phase_M15 == 2 ? #FFD60A : color.gray
+
+    // Kekuatan VR (live, sekarang mulai dari M1 — paling granular)
+    string vrFrom   = arah_M1 != "WAIT" and arah_M1 != arah_M5 ? "M1" : arah_M5 != "WAIT" and arah_M5 != arah_M15 ? "M5" : arah_M15 != "WAIT" and arah_M15 != arah_M30 ? "M15" : arah_M30 != "WAIT" and arah_M30 != arah_H1 ? "M30" : arah_H1 != "WAIT" and arah_H1 != arah_H4 ? "H1" : "–"
+    string kekuatan = vrFrom == "M1" ? "⚡⚡⚡ MAX" : vrFrom == "M5" ? "⚡⚡ KUAT" : vrFrom == "M15" ? "⚡ MODERAT" : vrFrom == "M30" ? "MELEMAH" : vrFrom == "H1" ? "LEMAH" : "–"
+
+    // Warna M5/M1 monitor
+    color cM5  = arah_M5  == "BUY" ? color.green : arah_M5  == "SELL" ? color.red : color.gray
+    color cM1  = arah_M1  == "BUY" ? color.green : arah_M1  == "SELL" ? color.red : color.gray
+
+    // Table 5 col × 10 row (5 setup + 2 trigger monitor + VR-dari + footer)
+    var table tbl = table.new(position.top_left, 5, 10, bgcolor=color.new(color.black, 10), border_color=color.blue, border_width=2, frame_color=color.blue, frame_width=2)
+
+    // Header
+    table.cell(tbl, 0, 0, "⏱ TF",      text_color=color.white, bgcolor=color.navy,    text_size=size.small)
+    table.cell(tbl, 1, 0, "📊 CMP",    text_color=color.white, bgcolor=color.maroon,  text_size=size.small)
+    table.cell(tbl, 2, 0, "🔄 VR",     text_color=color.white, bgcolor=color.orange,  text_size=size.small)
+    table.cell(tbl, 3, 0, "✅ CF",     text_color=color.white, bgcolor=color.teal,    text_size=size.small)
+    table.cell(tbl, 4, 0, "🚀 ACTION", text_color=color.white, bgcolor=color.purple,  text_size=size.small)
+
+    // Daily
+    table.cell(tbl, 0, 1, "Daily",   text_color=color.white, bgcolor=color.navy,    text_size=size.small)
+    table.cell(tbl, 1, 1, arah_D,    text_color=color.white, bgcolor=cD,            text_size=size.small)
+    table.cell(tbl, 2, 1, vr_D,      text_color=vr_D  == "–" ? #555555 : #FFD60A,   bgcolor=color.new(color.black, 30), text_size=size.tiny)
+    table.cell(tbl, 3, 1, cf_D,      text_color=cf_D  == "–" ? #555555 : str.contains(cf_D,"LOW") ? #00E676 : #FF9F0A, bgcolor=color.new(color.black, 30), text_size=size.tiny)
+    table.cell(tbl, 4, 1, act_D,     text_color=color.white, bgcolor=aD,            text_size=size.tiny)
+
+    // H4
+    table.cell(tbl, 0, 2, "H4",      text_color=color.white, bgcolor=color.purple,  text_size=size.small)
+    table.cell(tbl, 1, 2, arah_H4,   text_color=color.white, bgcolor=cH4,           text_size=size.small)
+    table.cell(tbl, 2, 2, vr_H4,     text_color=vr_H4  == "–" ? #555555 : #FFD60A,  bgcolor=color.new(color.black, 30), text_size=size.tiny)
+    table.cell(tbl, 3, 2, cf_H4,     text_color=cf_H4  == "–" ? #555555 : str.contains(cf_H4,"LOW") ? #00E676 : #FF9F0A, bgcolor=color.new(color.black, 30), text_size=size.tiny)
+    table.cell(tbl, 4, 2, act_H4,    text_color=color.white, bgcolor=aH4,           text_size=size.tiny)
+
+    // H1
+    table.cell(tbl, 0, 3, "H1",      text_color=color.white, bgcolor=color.teal,    text_size=size.small)
+    table.cell(tbl, 1, 3, arah_H1,   text_color=color.white, bgcolor=cH1,           text_size=size.small)
+    table.cell(tbl, 2, 3, vr_H1,     text_color=vr_H1  == "–" ? #555555 : #FFD60A,  bgcolor=color.new(color.black, 30), text_size=size.tiny)
+    table.cell(tbl, 3, 3, cf_H1,     text_color=cf_H1  == "–" ? #555555 : str.contains(cf_H1,"LOW") ? #00E676 : #FF9F0A, bgcolor=color.new(color.black, 30), text_size=size.tiny)
+    table.cell(tbl, 4, 3, act_H1,    text_color=color.white, bgcolor=aH1,           text_size=size.tiny)
+
+    // M30
+    table.cell(tbl, 0, 4, "M30",     text_color=color.white, bgcolor=color.orange,  text_size=size.small)
+    table.cell(tbl, 1, 4, arah_M30,  text_color=color.white, bgcolor=cM30,          text_size=size.small)
+    table.cell(tbl, 2, 4, vr_M30,    text_color=vr_M30 == "–" ? #555555 : #FFD60A,  bgcolor=color.new(color.black, 30), text_size=size.tiny)
+    table.cell(tbl, 3, 4, cf_M30,    text_color=cf_M30 == "–" ? #555555 : str.contains(cf_M30,"LOW") ? #00E676 : #FF9F0A, bgcolor=color.new(color.black, 30), text_size=size.tiny)
+    table.cell(tbl, 4, 4, act_M30,   text_color=color.white, bgcolor=aM30,          text_size=size.tiny)
+
+    // M15 (highlighted — entry TF utama)
+    table.cell(tbl, 0, 5, "M15 ★",   text_color=color.white, bgcolor=color.fuchsia, text_size=size.small)
+    table.cell(tbl, 1, 5, arah_M15,  text_color=color.white, bgcolor=cM15,          text_size=size.normal)
+    table.cell(tbl, 2, 5, vr_M15,    text_color=vr_M15 == "–" ? #555555 : #FFD60A,  bgcolor=color.new(cM15, 70), text_size=size.tiny)
+    table.cell(tbl, 3, 5, cf_M15,    text_color=cf_M15 == "–" ? #555555 : str.contains(cf_M15,"LOW") ? #00E676 : #FF9F0A, bgcolor=color.new(cM15, 70), text_size=size.tiny)
+    table.cell(tbl, 4, 5, act_M15,   text_color=color.white, bgcolor=aM15,          text_size=size.small)
+
+    // ── M5 TRIGGER (monitor — breakout/pullback M15 CF) ──
+    table.cell(tbl, 0, 6, "M5",      text_color=#FFD60A, bgcolor=color.new(color.black, 30), text_size=size.small)
+    table.cell(tbl, 1, 6, arah_M5,   text_color=color.white, bgcolor=cM5,            text_size=size.small)
+    table.cell(tbl, 2, 6, "–",       text_color=#555555, bgcolor=color.new(color.black, 30), text_size=size.tiny)
+    table.cell(tbl, 3, 6, "–",       text_color=#555555, bgcolor=color.new(color.black, 30), text_size=size.tiny)
+    table.cell(tbl, 4, 6, "MONITOR", text_color=#FFD60A, bgcolor=color.new(color.black, 30), text_size=size.tiny)
+
+    // ── M1 TRIGGER (monitor — momentum read) ──
+    table.cell(tbl, 0, 7, "M1",      text_color=#FFD60A, bgcolor=color.new(color.black, 30), text_size=size.small)
+    table.cell(tbl, 1, 7, arah_M1,   text_color=color.white, bgcolor=cM1,            text_size=size.small)
+    table.cell(tbl, 2, 7, "–",       text_color=#555555, bgcolor=color.new(color.black, 30), text_size=size.tiny)
+    table.cell(tbl, 3, 7, "–",       text_color=#555555, bgcolor=color.new(color.black, 30), text_size=size.tiny)
+    table.cell(tbl, 4, 7, "MONITOR", text_color=#FFD60A, bgcolor=color.new(color.black, 30), text_size=size.tiny)
+
+    // VR dari (live, sekarang sampai M1 — paling granular)
+    table.cell(tbl, 0, 8, "VR dari:", text_color=#AAAAAA, bgcolor=color.new(color.black, 20), text_size=size.tiny)
+    table.cell(tbl, 1, 8, vrFrom,     text_color=#FFD60A, bgcolor=color.new(color.black, 20), text_size=size.small)
+    table.cell(tbl, 2, 8, kekuatan,   text_color=#FFD60A, bgcolor=color.new(color.black, 20), text_size=size.tiny)
+    table.cell(tbl, 3, 8, "",         text_color=color.gray, bgcolor=color.new(color.black, 20), text_size=size.tiny)
+    table.cell(tbl, 4, 8, "",         text_color=color.gray, bgcolor=color.new(color.black, 20), text_size=size.tiny)
+
+    // Footer — v4 markers
+    table.cell(tbl, 0, 9, "v4",       text_color=#FFD60A, bgcolor=color.new(color.black, 20), text_size=size.tiny)
+    table.cell(tbl, 1, 9, "M1 MON",   text_color=#FFD60A, bgcolor=color.new(color.black, 20), text_size=size.tiny)
+    table.cell(tbl, 2, 9, "CF flip✓", text_color=#00E676, bgcolor=color.new(color.black, 20), text_size=size.tiny)
+    table.cell(tbl, 3, 9, "CF count", text_color=#FFD60A, bgcolor=color.new(color.black, 20), text_size=size.tiny)
+    table.cell(tbl, 4, 9, "",         text_color=color.gray, bgcolor=color.new(color.black, 20), text_size=size.tiny)

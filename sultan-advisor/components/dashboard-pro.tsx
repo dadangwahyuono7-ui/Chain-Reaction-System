@@ -75,95 +75,107 @@ export interface DashboardProProps {
   syncSNR: () => void; syncingSNR: boolean;
   syncNews: () => void; syncingNews: boolean;
   autoSync: boolean; setAutoSync: (b: boolean) => void;
+  autopilot?: boolean; setAutopilot?: (b: boolean) => void;
   blink: boolean; blinkFast: boolean;
+  // active TV symbol (pair)
+  tvSymbol?: string; tvSymbolDesc?: string;
 }
 
-// ── MOTION: 2 lapis (AMBIENT kalem · SIGNAL sangar) — vibe hacker ────────────
+// ── MOTION SYSTEM: Premium Fintech 2026 ─────────────────────────────────────
 const DP_ANIM = `
-/* data stream mengalir di konektor (ambient) */
+/* ═══ CORE KEYFRAMES ═══ */
 @keyframes dp-flow { from { background-position: 0 0; } to { background-position: 24px 0; } }
-/* napas pelan untuk step yang lagi DITUNGGU */
 @keyframes dp-breathe {
-  0%,100% { box-shadow: 0 0 0 0 rgba(79,124,255,0.0); border-color: rgba(79,124,255,0.5); }
-  50%     { box-shadow: 0 0 0 5px rgba(79,124,255,0.12); border-color: rgba(79,124,255,0.95); }
+  0%,100% { box-shadow: 0 0 0 0 rgba(99,145,255,0.0); border-color: rgba(99,145,255,0.45); }
+  50%     { box-shadow: 0 0 0 6px rgba(99,145,255,0.08), 0 0 20px rgba(99,145,255,0.06); border-color: rgba(99,145,255,0.9); }
 }
-/* SIGNAL: tajam + terang, cuma pas entry valid (CF fase-3) */
 @keyframes dp-signal {
-  0%,100% { box-shadow: 0 0 8px rgba(251,191,36,0.45); }
-  50%     { box-shadow: 0 0 22px rgba(251,191,36,0.95), 0 0 44px rgba(251,191,36,0.4); }
+  0%,100% { box-shadow: 0 0 10px rgba(251,191,36,0.4), inset 0 0 30px rgba(251,191,36,0.03); }
+  50%     { box-shadow: 0 0 28px rgba(251,191,36,0.85), 0 0 56px rgba(251,191,36,0.3), inset 0 0 30px rgba(251,191,36,0.06); }
 }
-/* scanline nyapu (hacker) */
-@keyframes dp-scan { 0% { transform: translateX(-30%); opacity: 0; } 12% { opacity: .9; } 88% { opacity: .9; } 100% { transform: translateX(560%); opacity: 0; } }
-/* grid hidup di hero */
-@keyframes dp-grid { from { background-position: 0 0, 0 0; } to { background-position: 24px 24px, 24px 24px; } }
-/* gradient border bergerak pas GO */
+@keyframes dp-scan { 0% { transform: translateX(-30%); opacity: 0; } 12% { opacity: .7; } 88% { opacity: .7; } 100% { transform: translateX(560%); opacity: 0; } }
+@keyframes dp-grid { from { background-position: 0 0, 0 0; } to { background-position: 32px 32px, 32px 32px; } }
 @keyframes dp-slide { from { background-position: 0 0; } to { background-position: 200% 0; } }
-/* flicker halus angka harga (CRT) */
-@keyframes dp-flicker { 0%,96%,100% { opacity: 1; } 97% { opacity: .82; } 98% { opacity: 1; } 99% { opacity: .9; } }
-/* radar blip dot */
+@keyframes dp-flicker { 0%,96%,100% { opacity: 1; } 97% { opacity: .85; } 98% { opacity: 1; } 99% { opacity: .92; } }
 @keyframes dp-blip { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(2.6); opacity: 0; } }
-/* SNR proximity — baris menyala saat harga mendekat level (warna via --gc) */
 @keyframes dp-approach-glow {
   0%,100% { box-shadow: inset 0 0 0 1px var(--gc-dim), 0 0 0 0 transparent; }
-  50%     { box-shadow: inset 0 0 0 1px var(--gc), 0 0 16px -3px var(--gc); }
+  50%     { box-shadow: inset 0 0 0 1px var(--gc), 0 0 20px -3px var(--gc); }
 }
-/* sweep tipis melintas baris yang lagi HOT */
 @keyframes dp-approach-sweep { 0% { transform: translateX(-120%); } 100% { transform: translateX(420%); } }
-/* sparkline bar denyut */
-@keyframes dp-bar { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+@keyframes dp-bar { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+@keyframes dp-ping-k { 0% { transform: scale(.6); opacity: .85; } 100% { transform: scale(2.6); opacity: 0; } }
+/* ═══ PREMIUM: shimmer overlay untuk hero ═══ */
+@keyframes dp-shimmer {
+  0% { transform: translateX(-100%) rotate(12deg); }
+  100% { transform: translateX(200%) rotate(12deg); }
+}
+/* ═══ PREMIUM: ambient glow pulse di background ═══ */
+@keyframes dp-ambient {
+  0%,100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.05); }
+}
+/* ═══ PREMIUM: gradient hue rotate untuk border aktif ═══ */
+@keyframes dp-hue { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(30deg); } }
 
-.dp-stream      { background-image: repeating-linear-gradient(90deg, var(--c) 0 7px, transparent 7px 14px); background-size: 24px 100%; animation: dp-flow .7s linear infinite; }
-.dp-breathe     { animation: dp-breathe 3.2s ease-in-out infinite; }
-.dp-signal      { animation: dp-signal .9s ease-in-out infinite; }
-.dp-grid        { background-image: linear-gradient(rgba(79,124,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(79,124,255,.05) 1px, transparent 1px); background-size: 24px 24px; animation: dp-grid 7s linear infinite; }
+/* ═══ CLASS MAPPINGS ═══ */
+.dp-stream      { background-image: repeating-linear-gradient(90deg, var(--c) 0 8px, transparent 8px 16px); background-size: 24px 100%; animation: dp-flow .65s linear infinite; }
+.dp-breathe     { animation: dp-breathe 3s ease-in-out infinite; }
+.dp-signal      { animation: dp-signal .85s ease-in-out infinite; }
+.dp-grid        { background-image: linear-gradient(rgba(99,145,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(99,145,255,.04) 1px, transparent 1px); background-size: 32px 32px; animation: dp-grid 8s linear infinite; }
 .dp-flicker     { animation: dp-flicker 4s steps(1) infinite; }
 .dp-bar         { animation: dp-bar 1.4s ease-in-out infinite; }
 .dp-approach    { animation: dp-approach-glow 1.6s ease-in-out infinite; }
-.dp-approach-hot { animation: dp-approach-glow .85s ease-in-out infinite; }
-.dp-sweep       { position:absolute; top:0; bottom:0; width:38px; pointer-events:none;
+.dp-approach-hot { animation: dp-approach-glow .8s ease-in-out infinite; }
+.dp-sweep       { position:absolute; top:0; bottom:0; width:40px; pointer-events:none;
                   background: linear-gradient(90deg, transparent, var(--gc), transparent);
-                  opacity:.35; animation: dp-approach-sweep 1.8s ease-in-out infinite; }
-.dp-scanline    { position: absolute; top: 0; bottom: 0; width: 90px; pointer-events: none;
-                  background: linear-gradient(90deg, transparent, rgba(79,124,255,0.10), transparent);
-                  animation: dp-scan 5.5s ease-in-out infinite; }
-.dp-border-go::before {
-  content: ''; position: absolute; inset: 0; border-radius: 1rem; padding: 1px;
-  background: linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24, #f59e0b); background-size: 200% 100%;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude; animation: dp-slide 2s linear infinite; pointer-events: none;
-}
-/* radar ping (dipakai via class biar bisa dimatikan reduced-motion) */
-@keyframes dp-ping-k { 0% { transform: scale(.6); opacity: .85; } 100% { transform: scale(2.6); opacity: 0; } }
+                  opacity:.3; animation: dp-approach-sweep 1.8s ease-in-out infinite; }
+.dp-scanline    { position: absolute; top: 0; bottom: 0; width: 120px; pointer-events: none;
+                  background: linear-gradient(90deg, transparent, rgba(99,145,255,0.07), transparent);
+                  animation: dp-scan 6s ease-in-out infinite; }
 .dp-ping { animation: dp-ping-k 1.1s ease-out infinite; }
-
-/* ── DESIGN TOKENS (satu sumber) ─────────────────────────────────────────── */
-.dp-scope {
-  /* elevation */
-  --dp-sh-1: 0 1px 0 0 rgba(255,255,255,.025) inset, 0 8px 24px -14px rgba(0,0,0,.66);
-  --dp-sh-2: 0 1px 0 0 rgba(255,255,255,.04) inset, 0 16px 44px -18px rgba(0,0,0,.78);
-  /* skala spasi 4pt */
-  --dp-1: 4px; --dp-2: 8px; --dp-3: 12px; --dp-4: 16px; --dp-5: 24px; --dp-6: 32px;
+.dp-border-go::before {
+  content: ''; position: absolute; inset: 0; border-radius: 1rem; padding: 1.5px;
+  background: linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24, #ef4444, #fbbf24); background-size: 200% 100%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; animation: dp-slide 1.8s linear infinite; pointer-events: none;
 }
-/* ── TYPE SCALE (ganti px ad-hoc — 1 tangga konsisten) ───────────────────── */
-.dp-micro { font-size: 9px;    line-height: 1.2;  letter-spacing: .14em; }
-.dp-label { font-size: 10.5px; line-height: 1.25; letter-spacing: .12em; }
-.dp-cap   { font-size: 11.5px; line-height: 1.35; }
-.dp-body  { font-size: 13px;   line-height: 1.4; }
-.dp-sub   { font-size: 15px;   line-height: 1.3; }
-.dp-h     { font-size: 20px;   line-height: 1.15; }
-.dp-xl    { font-size: 28px;   line-height: 1.05; }
-.dp-num   { font-variant-numeric: tabular-nums; }
-/* ── MATERIAL ────────────────────────────────────────────────────────────── */
-.dp-card  { box-shadow: var(--dp-sh-1); transition: box-shadow .25s ease, border-color .25s ease; }
-.dp-card:hover { box-shadow: var(--dp-sh-2); }
+/* hero shimmer */
+.dp-shimmer::after {
+  content: ''; position: absolute; inset: -50%; width: 50%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+  animation: dp-shimmer 4s ease-in-out infinite; pointer-events: none;
+}
 
-/* ── REDUCED MOTION: nemenin nunggu lama / device lemah / aksesibilitas ──── */
+/* ═══ DESIGN TOKENS ═══ */
+.dp-scope {
+  --dp-sh-1: 0 1px 0 0 rgba(255,255,255,.03) inset, 0 8px 32px -16px rgba(0,0,0,.7);
+  --dp-sh-2: 0 1px 0 0 rgba(255,255,255,.05) inset, 0 20px 60px -20px rgba(0,0,0,.85);
+  --dp-sh-glow: 0 0 40px -12px;
+  --dp-glass: rgba(15,23,42,0.6);
+  --dp-glass-border: rgba(148,163,184,0.08);
+}
+/* ═══ TYPE SCALE — optimised for 27" monitor ═══ */
+.dp-micro { font-size: 11px;   line-height: 1.2;  letter-spacing: .12em; }
+.dp-label { font-size: 12px;   line-height: 1.25; letter-spacing: .10em; }
+.dp-cap   { font-size: 13px;   line-height: 1.35; }
+.dp-body  { font-size: 14.5px; line-height: 1.4; }
+.dp-sub   { font-size: 16px;   line-height: 1.3; }
+.dp-h     { font-size: 22px;   line-height: 1.15; }
+.dp-xl    { font-size: 32px;   line-height: 1.05; }
+.dp-num   { font-variant-numeric: tabular-nums; }
+/* ═══ GLASS MATERIAL ═══ */
+.dp-card  { box-shadow: var(--dp-sh-1); transition: box-shadow .3s ease, border-color .3s ease, transform .3s ease; }
+.dp-card:hover { box-shadow: var(--dp-sh-2); transform: translateY(-1px); }
+.dp-glass { background: var(--dp-glass); backdrop-filter: blur(16px) saturate(1.5); -webkit-backdrop-filter: blur(16px) saturate(1.5); }
+
+/* ═══ REDUCED MOTION ═══ */
 @media (prefers-reduced-motion: reduce) {
   .dp-stream, .dp-breathe, .dp-signal, .dp-grid, .dp-flicker, .dp-bar,
   .dp-approach, .dp-approach-hot, .dp-ping, .animate-pulse,
-  .dp-border-go::before { animation: none !important; }
+  .dp-border-go::before, .dp-shimmer::after { animation: none !important; }
   .dp-sweep, .dp-scanline { display: none !important; }
-  .dp-card { transition: none !important; }
+  .dp-card { transition: none !important; transform: none !important; }
 }
 `;
 
@@ -231,15 +243,19 @@ function Card({ title, icon, right, children, className, glow }: {
 }) {
   return (
     <div className={cn(
-      "dp-card relative rounded-2xl border border-slate-800/70 bg-slate-900/50 backdrop-blur-sm",
-      glow === "go" && "ring-1 ring-amber-400/40",
+      "dp-card dp-glass relative rounded-2xl border overflow-hidden",
+      glow === "go" ? "ring-1 ring-amber-400/30 border-amber-500/25" : "border-slate-700/30",
       className
     )}>
+      {/* glass top edge */}
+      <div className="absolute top-0 left-[8%] right-[8%] h-px bg-gradient-to-r from-transparent via-white/[0.07] to-transparent" />
       {title && (
-        <div className="flex items-center justify-between px-4 pt-3.5 pb-2">
-          <div className="flex items-center gap-2 text-slate-400">
-            {icon}
-            <span className="dp-label font-semibold uppercase">{title}</span>
+        <div className="flex items-center justify-between px-5 pt-4 pb-2.5">
+          <div className="flex items-center gap-2.5 text-slate-400">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-slate-700/40 to-slate-800/30 border border-slate-600/20 flex items-center justify-center shadow-sm">
+              {icon}
+            </div>
+            <span className="dp-label font-bold uppercase tracking-[0.15em]">{title}</span>
           </div>
           {right}
         </div>
@@ -281,16 +297,18 @@ function GradeRing({ grade }: { grade: string }) {
   const R = 34, C = 2 * Math.PI * R;
   const off = C * (1 - g.pct);
   return (
-    <div className="relative w-[92px] h-[92px] shrink-0">
-      <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
-        <circle cx="40" cy="40" r={R} fill="none" stroke="#1e293b" strokeWidth="7" />
-        <circle cx="40" cy="40" r={R} fill="none" stroke={g.ring} strokeWidth="7"
+    <div className="relative w-[100px] h-[100px] shrink-0">
+      {/* ambient glow behind ring */}
+      <div className="absolute inset-2 rounded-full opacity-20 blur-md" style={{ background: g.ring }} />
+      <svg viewBox="0 0 80 80" className="relative w-full h-full -rotate-90">
+        <circle cx="40" cy="40" r={R} fill="none" stroke="rgba(30,41,59,0.8)" strokeWidth="5" />
+        <circle cx="40" cy="40" r={R} fill="none" stroke={g.ring} strokeWidth="5.5"
           strokeLinecap="round" strokeDasharray={C} strokeDashoffset={off}
-          style={{ transition: "stroke-dashoffset 0.7s ease" }} />
+          style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(.4,0,.2,1)", filter: `drop-shadow(0 0 8px ${g.ring}50)` }} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[26px] font-bold leading-none tabular-nums" style={{ color: g.color }}>{grade}</span>
-        <span className="dp-micro uppercase text-slate-500 mt-0.5">grade</span>
+        <span className="text-[30px] font-black leading-none tabular-nums" style={{ color: g.color, textShadow: `0 0 20px ${g.color}30` }}>{grade}</span>
+        <span className="text-[13px] uppercase text-slate-500/70 mt-1.5 font-bold tracking-[0.25em]">grade</span>
       </div>
     </div>
   );
@@ -302,11 +320,13 @@ function PhaseDots({ fase, color }: { fase: number; color: string }) {
     <div className="flex items-center gap-1">
       {[1, 2, 3].map(n => (
         <span key={n} className={cn(
-          "h-1.5 rounded-full transition-all",
-          n <= fase ? "w-4" : "w-1.5",
+          "h-[6px] rounded-full transition-all duration-300",
+          n <= fase ? "w-[18px]" : "w-[6px]",
           n <= fase
-            ? color === "emerald" ? "bg-emerald-400" : color === "rose" ? "bg-rose-400" : "bg-indigo-400"
-            : "bg-slate-700"
+            ? color === "emerald" ? "bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.4)]"
+              : color === "rose" ? "bg-rose-400 shadow-[0_0_4px_rgba(251,113,133,0.4)]"
+              : "bg-indigo-400 shadow-[0_0_4px_rgba(129,140,248,0.4)]"
+            : "bg-slate-700/60"
         )} />
       ))}
     </div>
@@ -318,7 +338,7 @@ function ChainRail({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
   const nodes = RAIL_TFS.map(tf => tfData.find(d => d.tf === tf)).filter(Boolean) as TFRow[];
   const present = nodes.filter(n => n.cmp);
   return (
-    <div className="px-4 pb-4">
+    <div className="px-5 pb-5">
       <div className="flex items-stretch gap-0">
         {RAIL_TFS.map((tf, i) => {
           const d = tfData.find(x => x.tf === tf);
@@ -333,74 +353,78 @@ function ChainRail({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
             <div key={tf} className="flex items-center flex-1 min-w-0">
               {/* node */}
               <div className={cn(
-                "flex-1 min-w-0 rounded-xl border px-2.5 py-2.5 text-center transition-all",
+                "flex-1 min-w-0 rounded-xl border px-3 py-3 text-center transition-all relative overflow-hidden",
                 isTrigger && "border-dashed",
-                has ? (isTrigger ? "bg-slate-900/40" : "bg-slate-900/70") : "bg-slate-900/30 opacity-50",
-                isMaster ? "border-indigo-500/50"
-                  : isTrigger ? (has ? "border-amber-500/40" : "border-amber-500/20")
-                  : has ? "border-slate-700/70" : "border-slate-800/50",
+                has ? (isTrigger ? "bg-slate-900/50" : "bg-gradient-to-b from-slate-800/40 to-slate-900/60") : "bg-slate-900/20 opacity-40",
+                isMaster ? "border-indigo-500/50 shadow-[0_0_12px_-4px_rgba(79,124,255,0.3)]"
+                  : isTrigger ? (has ? "border-amber-500/30" : "border-amber-500/15")
+                  : has ? "border-slate-700/60" : "border-slate-800/40",
                 // ring entry HANYA buat setup — M5 trigger gak pernah dianggap entry-ready
-                !isTrigger && d?.fase === 3 && aligned && "ring-1 ring-amber-400/60 dp-signal",
+                !isTrigger && d?.fase === 3 && aligned && "ring-1 ring-amber-400/60 dp-signal shadow-[0_0_16px_-4px_rgba(251,191,36,0.4)]",
                 !isTrigger && d?.fase === 2 && aligned && "dp-breathe"
               )}>
-                <div className="flex items-center justify-center gap-1">
-                  <span className={cn("text-[11px] font-bold tracking-wide",
-                    isMaster ? "text-indigo-300" : isTrigger ? "text-amber-300/90" : "text-slate-300")}>{TF_SHORT[tf]}</span>
-                  {isMaster && <span className="text-[8px] text-indigo-400">★</span>}
+                {/* subtle inner glow for entry nodes */}
+                {!isTrigger && d?.fase === 3 && aligned && (
+                  <div className="absolute inset-0 bg-gradient-to-b from-amber-500/8 to-transparent pointer-events-none" />
+                )}
+                <div className="relative flex items-center justify-center gap-1">
+                  <span className={cn("text-[14px] font-extrabold tracking-wide",
+                    isMaster ? "text-indigo-300" : isTrigger ? "text-amber-300/80" : "text-slate-200")}>{TF_SHORT[tf]}</span>
+                  {isMaster && <span className="text-[12px] text-indigo-400">★</span>}
                 </div>
                 {isTrigger && (
-                  <div className="text-[7px] font-bold uppercase tracking-[0.12em] text-amber-500/70 leading-none -mt-0.5 mb-0.5">trigger</div>
+                  <div className="relative text-[13px] font-bold uppercase tracking-[0.14em] text-amber-500/60 leading-none mt-0.5 mb-0.5">trigger</div>
                 )}
-                <div className={cn("text-[12px] font-bold tabular-nums mt-1",
+                <div className={cn("relative text-[12.5px] font-extrabold tabular-nums mt-1",
                   col === "emerald" ? "text-emerald-400" : col === "rose" ? "text-rose-400" : "text-slate-600")}>
                   {has ? dirWord(d!.cmp) : "—"}
                 </div>
                 {/* trigger = monitor momentum, gak ada fase setup → skip phase dots */}
                 {!isTrigger && (
-                  <div className="flex justify-center mt-1.5">
+                  <div className="relative flex justify-center mt-2">
                     <PhaseDots fase={d?.fase || 0} color={col} />
                   </div>
                 )}
                 {isTrigger ? (
-                  // status running vs pullback — biar tau breakout langsung jalan atau balik dulu
+                  // status running vs pullback
                   has && (
-                    <div className={cn("mt-1.5 text-[8px] font-bold uppercase tracking-wide",
-                      aligned ? "text-emerald-400/80" : "text-rose-400/80")}>
+                    <div className={cn("relative mt-1.5 text-[13px] font-bold uppercase tracking-wider",
+                      aligned ? "text-emerald-400/90" : "text-rose-400/90")}>
                       {aligned ? "running" : "pullback"}
                     </div>
                   )
                 ) : has && d!.fase === 3 ? (
-                  // ⚡ ENTRY AKTIF — CF fired, boleh entry
-                  <div className="mt-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-400/40">
-                    <span className="text-[8px] font-bold text-amber-300 tabular-nums">
+                  // ⚡ ENTRY AKTIF
+                  <div className="relative mt-2 inline-flex items-center gap-0.5 px-2 py-1 rounded-lg bg-amber-500/15 border border-amber-400/40 shadow-[0_0_8px_-2px_rgba(251,191,36,0.3)]">
+                    <span className="text-[14px] font-bold text-amber-300 tabular-nums">
                       ⚡ CF{d!.cfCount || 1}{d!.cfType ? ` ${d!.cfType}` : ""}
                     </span>
                   </div>
                 ) : has && d!.fase === 2 && (d!.cfCount || 0) > 0 ? (
-                  // 🔄 CF FLIP — entry ILANG, sub-TF balik arah. Nunggu CF berikutnya.
-                  <div className="mt-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-rose-500/10 border border-rose-500/30">
-                    <span className="text-[8px] font-bold text-rose-300 tabular-nums">
+                  // CF FLIP
+                  <div className="relative mt-2 inline-flex items-center gap-0.5 px-2 py-1 rounded-lg bg-rose-500/10 border border-rose-500/30">
+                    <span className="text-[14px] font-bold text-rose-300 tabular-nums">
                       FLIP · #{d!.cfCount + 1}
                     </span>
                   </div>
                 ) : null}
               </div>
-              {/* connector — data stream mengalir kalau selaras */}
+              {/* connector — animated data stream when aligned */}
               {i < RAIL_TFS.length - 1 && (
                 connOn ? (
-                  <div className="dp-stream w-3 sm:w-4 h-[2px] mx-0.5 shrink-0 rounded-full"
+                  <div className="dp-stream w-4 sm:w-5 h-[2px] mx-0.5 shrink-0 rounded-full"
                     style={{ ["--c" as string]: h4Dir === "BULLISH" ? "#10b981" : "#f43f5e" }} />
                 ) : (
-                  <div className="w-3 sm:w-4 h-[2px] mx-0.5 shrink-0 rounded-full bg-slate-800" />
+                  <div className="w-4 sm:w-5 h-[2px] mx-0.5 shrink-0 rounded-full bg-slate-800/60" />
                 )
               )}
             </div>
           );
         })}
       </div>
-      <div className="mt-2.5 text-center text-[10px] text-slate-500">
-        {present.filter(d => d.cmp === h4Dir).length}/{present.length} timeframe selaras H4 master
-        {h4Dir && <span className={cn("ml-1.5 font-semibold", h4Dir === "BULLISH" ? "text-emerald-400" : "text-rose-400")}>· {dirWord(h4Dir)}</span>}
+      <div className="mt-3 text-center">
+        <span className="text-[13px] text-slate-500 font-medium">{present.filter(d => d.cmp === h4Dir).length}/{present.length} timeframe selaras H4 master</span>
+        {h4Dir && <span className={cn("ml-1.5 text-[13px] font-bold", h4Dir === "BULLISH" ? "text-emerald-400" : "text-rose-400")}>· {dirWord(h4Dir)}</span>}
       </div>
     </div>
   );
@@ -415,11 +439,11 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
   const Step = ({ label, done, active, waiting, flipped, tone, sub, tfTag }: {
     label: string; done: boolean; active?: boolean; waiting?: boolean; flipped?: boolean; tone: string; sub?: string; tfTag?: string;
   }) => (
-    <div className="flex flex-col items-center gap-1 shrink-0 w-9">
+    <div className="flex flex-col items-center gap-1.5 shrink-0 w-10">
       <div className={cn(
-        "w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition-all",
+        "w-8 h-8 rounded-full border-2 flex items-center justify-center text-[13px] font-bold transition-all",
         active
-          ? "border-amber-400 bg-amber-400/15 text-amber-300 dp-signal"
+          ? "border-amber-400 bg-amber-400/15 text-amber-300 dp-signal shadow-[0_0_12px_-2px_rgba(251,191,36,0.4)]"
           : done
             ? tone === "emerald" ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
               : tone === "rose" ? "border-rose-500 bg-rose-500/15 text-rose-300"
@@ -427,30 +451,30 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
             : flipped
               ? "border-rose-500 bg-rose-500/10 text-rose-300 border-dashed"
               : waiting
-                ? "border-indigo-500 bg-indigo-500/10 text-indigo-300 dp-breathe"
-                : "border-slate-700 bg-slate-800/40 text-slate-600"
+                ? "border-indigo-500/70 bg-indigo-500/8 text-indigo-300 dp-breathe"
+                : "border-slate-700/60 bg-slate-800/30 text-slate-600"
       )}>
         {done || active ? "✓" : flipped ? "↻" : waiting ? "◌" : "○"}
       </div>
-      <span className={cn("text-[8.5px] font-semibold tracking-wide",
-        done || active || waiting ? "text-slate-300" : "text-slate-600")}>{label}</span>
-      {tfTag && <span className="text-[7.5px] font-bold tracking-wide text-slate-500 leading-none">@{tfTag}</span>}
-      {sub && <span className="text-[8px] text-amber-400/90 tabular-nums leading-none">{sub}</span>}
+      <span className={cn("text-[12px] font-semibold tracking-wide",
+        active ? "text-amber-300" : done || waiting ? "text-slate-300" : "text-slate-600")}>{label}</span>
+      {tfTag && <span className="text-[13px] font-bold tracking-wide text-slate-500/80 leading-none">@{tfTag}</span>}
+      {sub && <span className="text-[13px] text-amber-400/90 tabular-nums leading-none font-bold">{sub}</span>}
     </div>
   );
 
-  // konektor sejajar TENGAH lingkaran: circle h-7 (28px) → center 14px, line 2px → mt 13px
+  // konektor sejajar TENGAH lingkaran: circle h-8 (32px) → center 16px, line 2px → mt 15px
   const Conn = ({ on, tone }: { on: boolean; tone: string }) => (
     on ? (
-      <div className="dp-stream flex-1 h-[2px] mx-1 mt-[13px] rounded-full self-start"
+      <div className="dp-stream flex-1 h-[2px] mx-1.5 mt-[15px] rounded-full self-start"
         style={{ ["--c" as string]: tone === "emerald" ? "#10b981" : tone === "rose" ? "#f43f5e" : "#4f7cff" }} />
     ) : (
-      <div className="flex-1 h-[2px] mx-1 mt-[13px] rounded-full self-start bg-slate-800" />
+      <div className="flex-1 h-[2px] mx-1.5 mt-[15px] rounded-full self-start bg-slate-800/50 border-t border-slate-700/30" />
     )
   );
 
   return (
-    <div className="px-3 pb-3 space-y-1.5">
+    <div className="px-4 pb-4 space-y-2">
       {rows.map(d => {
         const tone = dirColor(d.cmp);
         const vrDone = d.vr === "YA";
@@ -465,19 +489,19 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
             : d.fase === 2 ? "tunggu CF" : "tunggu VR";
         return (
           <div key={d.tf} className={cn(
-            "rounded-xl border px-3 py-2.5 flex items-center gap-3",
-            d.fase === 3 && aligned ? "border-amber-500/40 bg-amber-500/[0.04]"
-              : cfFlipped ? "border-rose-500/30 bg-rose-500/[0.03]"
-              : isMaster ? "border-indigo-500/30 bg-slate-900/40"
-              : "border-slate-800/70 bg-slate-900/40"
+            "rounded-xl border px-4 py-3 flex items-center gap-4 transition-all",
+            d.fase === 3 && aligned ? "border-amber-500/35 bg-gradient-to-r from-amber-500/[0.06] to-transparent shadow-[0_0_12px_-6px_rgba(251,191,36,0.2)]"
+              : cfFlipped ? "border-rose-500/25 bg-gradient-to-r from-rose-500/[0.04] to-transparent"
+              : isMaster ? "border-indigo-500/25 bg-gradient-to-r from-indigo-500/[0.04] to-transparent"
+              : "border-slate-800/60 bg-slate-900/30 hover:bg-slate-800/20"
           )}>
             {/* TF + arah */}
             <div className="w-16 shrink-0">
               <div className="flex items-center gap-1">
-                <span className={cn("text-[12px] font-bold", isMaster ? "text-indigo-300" : "text-slate-200")}>{TF_SHORT[d.tf]}</span>
-                {isMaster && <span className="text-[8px] text-indigo-400">★</span>}
+                <span className={cn("text-[13px] font-extrabold", isMaster ? "text-indigo-300" : "text-slate-200")}>{TF_SHORT[d.tf]}</span>
+                {isMaster && <span className="text-[12px] text-indigo-400">★</span>}
               </div>
-              <div className={cn("text-[11px] font-bold",
+              <div className={cn("text-[14px] font-bold mt-0.5",
                 tone === "emerald" ? "text-emerald-400" : tone === "rose" ? "text-rose-400" : "text-slate-500")}>
                 {dirWord(d.cmp)}
               </div>
@@ -500,12 +524,14 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
                 sub={d.cfCount > 0 ? `×${d.cfCount}${d.cfType ? " " + d.cfType : ""}` : undefined} />
             </div>
             {/* status */}
-            <div className="w-24 shrink-0 text-right">
-              <div className={cn("text-[10px] font-semibold",
+            <div className="w-28 shrink-0 text-right space-y-1">
+              <div className={cn("text-[13.5px] font-bold",
                 d.fase === 3 ? "text-amber-300" : cfFlipped ? "text-rose-300" : d.fase === 2 ? "text-indigo-300" : "text-slate-400")}>
                 {faseLabel}
               </div>
-              <div className={cn("text-[8.5px]", aligned ? "text-emerald-500/80" : "text-amber-500/80")}>
+              <div className={cn("inline-flex items-center gap-1 text-[14px] font-medium px-1.5 py-0.5 rounded-md",
+                aligned ? "text-emerald-400/90 bg-emerald-500/8" : "text-amber-400/90 bg-amber-500/8")}>
+                <span className={cn("w-1 h-1 rounded-full", aligned ? "bg-emerald-400" : "bg-amber-400")} />
                 {aligned ? "selaras H4" : "lawan H4"}
               </div>
             </div>
@@ -566,9 +592,9 @@ function SnrLadder({ aboveLevels, belowLevels, atLevel, cmpFloat, displayPrice, 
         <span className="relative w-1.5 h-1.5 rounded-full shrink-0" style={{ background: `rgba(${rgb},${near ? 1 : 0.7})` }}>
           {hot && <span className="dp-ping absolute inset-0 rounded-full" style={{ background: `rgba(${rgb},0.7)` }} />}
         </span>
-        <span className={cn("relative text-[10.5px] w-12 shrink-0 truncate", near ? "text-slate-200" : "text-slate-400")}>{l.short}</span>
+        <span className={cn("relative text-[13.5px] w-12 shrink-0 truncate", near ? "text-slate-200" : "text-slate-400")}>{l.short}</span>
         <span className={cn("relative text-[12px] font-semibold tabular-nums flex-1 text-right", near ? "text-slate-50" : "text-slate-200")}>{l.price.toFixed(2)}</span>
-        <span className="relative text-[9.5px] tabular-nums w-14 text-right font-semibold" style={near ? { color: `rgb(${rgb})` } : { color: "#64748b" }}>
+        <span className="relative text-[12.5px] tabular-nums w-14 text-right font-semibold" style={near ? { color: `rgb(${rgb})` } : { color: "#64748b" }}>
           {hot ? "▸ " : ""}{dist.toFixed(1)}p
         </span>
       </div>
@@ -598,7 +624,7 @@ function SnrLadder({ aboveLevels, belowLevels, atLevel, cmpFloat, displayPrice, 
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-[12.5px] font-semibold text-slate-100 truncate">{nearest.l.short}</span>
-                <span className="text-[11px] tabular-nums text-slate-400">{nearest.l.price.toFixed(2)}</span>
+                <span className="text-[13px] tabular-nums text-slate-400">{nearest.l.price.toFixed(2)}</span>
                 <span className="ml-auto text-[13px] font-bold tabular-nums" style={{ color: nNear ? `rgb(${nRgb})` : "#94a3b8" }}>
                   {nHot ? "▸ " : ""}{nearest.dist.toFixed(1)}p
                 </span>
@@ -608,7 +634,7 @@ function SnrLadder({ aboveLevels, belowLevels, atLevel, cmpFloat, displayPrice, 
                   style={{ width: `${meterPct}%`, background: `linear-gradient(90deg, rgba(${nRgb},0.35), rgba(${nRgb},${nNear ? 0.95 : 0.4}))` }} />
               </div>
             </>
-          ) : <span className="text-[10px] text-slate-600">— belum ada level —</span>}
+          ) : <span className="text-[13px] text-slate-600">— belum ada level —</span>}
         </div>
         <button onClick={() => setMuted(m => !m)} title={muted ? "Bunyi mati" : "Bunyi nyala"}
           className={cn("shrink-0 rounded-lg p-1.5 transition-colors", muted ? "text-slate-600 hover:text-slate-400" : "text-indigo-300 hover:text-indigo-200")}>
@@ -628,15 +654,15 @@ function SnrLadder({ aboveLevels, belowLevels, atLevel, cmpFloat, displayPrice, 
           {above.map((l, i) => <Row key={`u${i}`} l={l} side="up" />)}
         </div>
         {/* current price band */}
-        <div className="my-1.5 mx-1.5 rounded-xl bg-gradient-to-r from-indigo-500/10 via-indigo-500/15 to-indigo-500/10 border border-indigo-500/30 px-3 py-2 flex items-center justify-between">
+        <div className="my-2 mx-1.5 rounded-xl bg-gradient-to-r from-indigo-500/12 via-indigo-500/18 to-indigo-500/12 border border-indigo-500/30 px-4 py-2.5 flex items-center justify-between shadow-[0_0_16px_-6px_rgba(79,124,255,0.25)]">
           <div className="flex items-center gap-2">
             <span className={cn("w-2 h-2 rounded-full", livePrice ? "bg-emerald-400 animate-pulse" : "bg-slate-600")} />
-            <span className="dp-micro uppercase text-indigo-300/80">harga</span>
+            <span className="text-[12px] font-bold uppercase tracking-[0.15em] text-indigo-300/70">harga saat ini</span>
           </div>
-          <span className="text-[17px] font-bold tabular-nums text-indigo-200">{displayPrice}</span>
+          <span className="text-[18px] font-extrabold tabular-nums text-indigo-100 tracking-tight">{displayPrice}</span>
         </div>
         {atLevel.length > 0 && (
-          <div className="mx-3 mb-1 flex items-center gap-1.5 text-[9.5px] font-semibold text-amber-300">
+          <div className="mx-3 mb-1 flex items-center gap-1.5 text-[12.5px] font-semibold text-amber-300">
             <span className="relative flex w-1.5 h-1.5">
               <span className="dp-ping absolute inset-0 rounded-full bg-amber-400" />
               <span className="relative w-1.5 h-1.5 rounded-full bg-amber-400" />
@@ -661,47 +687,391 @@ function Pressure({ buyPct, sellPct, cumDelta, momentum, barDeltas, maxBarAbs, d
 }) {
   const momCol = momentum === "BULL" ? "text-emerald-400" : momentum === "BEAR" ? "text-rose-400" : "text-slate-400";
   return (
-    <div className="px-4 pb-4">
+    <div className="px-5 pb-5">
       {nTicks < 5 ? (
         <State icon={<GaugeIcon className="w-4 h-4" />} title="Mengumpulkan tick…" sub="butuh ≥5 tick" pulse />
       ) : (
         <>
           {/* split bar */}
-          <div className="flex items-center gap-2 mb-2.5">
-            <span className="text-[11px] font-bold tabular-nums text-emerald-400 w-9">{buyPct}%</span>
-            <div className="flex-1 h-2 rounded-full overflow-hidden bg-slate-800 flex">
-              <div className="h-full bg-emerald-500/80 transition-all duration-500" style={{ width: `${buyPct}%` }} />
-              <div className="h-full bg-rose-500/80 transition-all duration-500" style={{ width: `${sellPct}%` }} />
+          <div className="flex items-center gap-2.5 mb-3">
+            <span className="text-[12px] font-extrabold tabular-nums text-emerald-400 w-10">{buyPct}%</span>
+            <div className="flex-1 h-2.5 rounded-full overflow-hidden bg-slate-800/60 flex shadow-inner">
+              <div className="h-full bg-gradient-to-r from-emerald-500/90 to-emerald-400/70 transition-all duration-500 rounded-l-full" style={{ width: `${buyPct}%` }} />
+              <div className="h-full bg-gradient-to-r from-rose-400/70 to-rose-500/90 transition-all duration-500 rounded-r-full" style={{ width: `${sellPct}%` }} />
             </div>
-            <span className="text-[11px] font-bold tabular-nums text-rose-400 w-9 text-right">{sellPct}%</span>
+            <span className="text-[12px] font-extrabold tabular-nums text-rose-400 w-10 text-right">{sellPct}%</span>
           </div>
           {/* sparkline bars */}
-          <div className="flex items-end justify-between gap-1 h-12 mb-2.5">
+          <div className="flex items-end justify-between gap-[3px] h-16 mb-3 px-0.5">
             {barDeltas.map((d, i) => {
               const h = Math.max(8, Math.abs(d) / maxBarAbs * 100);
               return (
                 <div key={i} className="flex-1 flex flex-col justify-end h-full">
-                  <div className={cn("dp-bar w-full rounded-sm transition-all", d >= 0 ? "bg-emerald-500/60" : "bg-rose-500/60")}
+                  <div className={cn("dp-bar w-full rounded-sm transition-all",
+                    d >= 0 ? "bg-gradient-to-t from-emerald-500/70 to-emerald-400/40" : "bg-gradient-to-t from-rose-500/70 to-rose-400/40")}
                     style={{ height: `${h}%`, animationDelay: `${i * 0.12}s` }} />
                 </div>
               );
             })}
           </div>
           <div className="flex items-center justify-between">
-            <span className={cn("text-[11px] font-semibold", momCol)}>
+            <span className={cn("text-[13px] font-semibold", momCol)}>
               {momentum === "BULL" ? "▲ Tekanan Beli" : momentum === "BEAR" ? "▼ Tekanan Jual" : "─ Seimbang"}
             </span>
-            <span className={cn("text-[11px] tabular-nums font-medium", cumDelta >= 0 ? "text-emerald-400" : "text-rose-400")}>
+            <span className={cn("text-[13px] tabular-nums font-medium", cumDelta >= 0 ? "text-emerald-400" : "text-rose-400")}>
               Δ {cumDelta > 0 ? "+" : ""}{cumDelta}
             </span>
           </div>
           {divergence && (
-            <div className="mt-2 text-[9.5px] text-amber-300/90 bg-amber-500/10 border border-amber-500/25 rounded-lg px-2 py-1">
+            <div className="mt-2 text-[12.5px] text-amber-300/90 bg-amber-500/10 border border-amber-500/25 rounded-lg px-2 py-1">
               ⚠ Divergence — tekanan berbalik arah
             </div>
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// ── STORYLINE + CONTI + ACTIVE CMP ───────────────────────────────────────────
+function StorylineConti({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
+  const get = (tf: string) => tfData.find(d => d.tf === tf);
+
+  // ── Active CMP Detection ─────────────────────────────────────────────────
+  // TF yang sedang di-VR (fase 2 = VR sudah tapi CF belum) = CMP yang sedang aktif diuji
+  // Priority: smallest TF first (most granular / most current)
+  const activeTF = ["M15","M30","H1","H4","DAILY"].find(tf => {
+    const d = get(tf);
+    return d?.cmp && d.vr === "YA" && d.cf !== "YA";
+  });
+  const activeD = activeTF ? get(activeTF) : null;
+  const activeDir = activeD ? dirWord(activeD.cmp) : "—";
+  const activeVrFrom: Record<string, string> = { DAILY:"H4", H4:"H1", H1:"M30", M30:"M15", M15:"M5" };
+  const activeCol = activeDir === "BUY" ? "emerald" : activeDir === "SELL" ? "rose" : "slate";
+
+  // ── CONTI Status ─────────────────────────────────────────────────────────
+  // CONTI valid = CMP ada + VR BELUM terjadi (H4/H1/M30 belum berlawanan arah)
+  // Begitu VR terjadi (vr === "YA") → CONTI window tutup → sekarang nunggu CF
+  const contiRows = [
+    {
+      name: "Daily CONTI", entry: "→ entry H1",
+      sop: "SOP H1: VR M30 → CF M30/M15",
+      tp: "150+ pts",
+      d: get("DAILY"),
+      ok: !!get("DAILY")?.cmp && get("DAILY")?.cmp !== "WAIT" && get("DAILY")?.vr !== "YA",
+    },
+    {
+      name: "H4 CONTI", entry: "→ entry M30",
+      sop: "SOP M30: VR M15 → CF M15/M5",
+      tp: "80–150 pts",
+      d: get("H4"),
+      ok: !!get("H4")?.cmp && get("H4")?.cmp !== "WAIT" && get("H4")?.vr !== "YA",
+    },
+    {
+      name: "H1 CONTI", entry: "→ entry M15",
+      sop: "SOP M15: VR M5 → CF M5",
+      tp: "10–30 pts ⚡",
+      d: get("H1"),
+      ok: !!get("H1")?.cmp && get("H1")?.cmp !== "WAIT" && get("H1")?.vr !== "YA",
+    },
+  ];
+  const anyConti = contiRows.some(c => c.ok);
+
+  return (
+    <div className="px-4 pb-4 space-y-3">
+      {/* ── Active CMP ──────────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-slate-700/30 bg-slate-900/40 px-4 py-3">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[12px] font-bold uppercase tracking-[0.18em] text-slate-500">CMP Aktif Sekarang</span>
+          <div className="flex-1 h-px bg-slate-800/60" />
+          <span className="text-[12px] text-slate-600">diuji VR</span>
+        </div>
+        {activeTF ? (
+          <div className="flex items-center gap-3">
+            <div className={cn("text-[26px] font-extrabold tabular-nums",
+              activeCol === "emerald" ? "text-emerald-400" : activeCol === "rose" ? "text-rose-400" : "text-slate-500")}>
+              {TF_SHORT[activeTF]}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className={cn("text-[13px] font-bold",
+                  activeCol === "emerald" ? "text-emerald-400" : activeCol === "rose" ? "text-rose-400" : "text-slate-400")}>
+                  {activeDir}
+                </span>
+                <span className="text-[12px] text-slate-500">CMP sedang diuji</span>
+              </div>
+              <div className="text-[13px] text-slate-500 mt-0.5">
+                VR dari <span className="font-bold text-slate-400">{activeVrFrom[activeTF] || "?"}</span>
+                {" · "}setelah VR selesai → tunggu CF searah
+              </div>
+            </div>
+            <div className="ml-auto">
+              <span className="dp-breathe inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-[13px] font-semibold text-indigo-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                F2 · Menunggu CF
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="text-[13px] text-slate-500 py-1">
+            {tfData.some(d => d.fase === 3) ? "🟢 CF sudah aktif — siap entry" : "Tidak ada VR berlangsung · Tunggu CMP breakout"}
+          </div>
+        )}
+      </div>
+
+      {/* ── CONTI Panel ─────────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-slate-700/30 bg-slate-900/40 px-4 py-3">
+        <div className="flex items-center gap-2 mb-2.5">
+          <span className="text-[12px] font-bold uppercase tracking-[0.18em] text-slate-500">Conti Entry</span>
+          <div className="flex-1 h-px bg-slate-800/60" />
+          <span className={cn("text-[12px] font-bold",
+            anyConti ? "text-emerald-400" : "text-slate-600"
+          )}>{anyConti ? `${contiRows.filter(c=>c.ok).length} valid` : "semua tutup"}</span>
+        </div>
+        <div className="space-y-2">
+          {contiRows.map(c => {
+            const dir = c.d ? dirWord(c.d.cmp) : "—";
+            const col = dir === "BUY" ? "emerald" : dir === "SELL" ? "rose" : "slate";
+            return (
+              <div key={c.name} className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 border transition-all",
+                c.ok
+                  ? col === "emerald" ? "bg-emerald-500/6 border-emerald-500/20"
+                    : col === "rose" ? "bg-rose-500/6 border-rose-500/20"
+                    : "bg-slate-800/30 border-slate-700/40"
+                  : "bg-slate-900/20 border-slate-800/30 opacity-50"
+              )}>
+                {/* status dot */}
+                <div className={cn("w-2 h-2 rounded-full shrink-0",
+                  c.ok ? col === "emerald" ? "bg-emerald-400" : "bg-rose-400" : "bg-slate-700"
+                )} />
+                {/* name + entry */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className={cn("text-[13px] font-bold",
+                      c.ok ? "text-slate-200" : "text-slate-500")}>{c.name}</span>
+                    {c.ok && (
+                      <span className={cn("text-[13px] font-semibold",
+                        col === "emerald" ? "text-emerald-400" : "text-rose-400")}>{dir}</span>
+                    )}
+                    <span className="text-[12px] text-slate-500">{c.entry}</span>
+                  </div>
+                  {c.ok && (
+                    <div className="text-[12px] text-slate-500 mt-0.5">{c.sop}</div>
+                  )}
+                </div>
+                {/* TP */}
+                <div className={cn("text-[13px] font-bold tabular-nums shrink-0",
+                  c.ok ? "text-amber-300/90" : "text-slate-700")}>
+                  {c.tp}
+                </div>
+                {/* valid/invalid badge */}
+                <div className={cn("shrink-0 text-[12px] font-bold px-1.5 py-0.5 rounded-md",
+                  c.ok ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
+                    : "bg-slate-800/40 text-slate-600 border border-slate-800/60"
+                )}>
+                  {c.ok ? "✓ VALID" : "✕ VR"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-2.5 text-[12px] text-slate-600 leading-relaxed">
+          CONTI valid selama TF parent belum VR · Begitu VR terjadi → window tutup, tunggu CF
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── VR SCALP PANEL — Scalp Sambil Nunggu Setup Besar ─────────────────────────
+// Doktrin: VR adalah CMP di TF bawahnya. Scalp searah VR sambil nunggu CF utama.
+function VrScalpPanel({ tfData }: { tfData: TFRow[] }) {
+  const get = (tf: string) => tfData.find(d => d.tf === tf);
+
+  const TP_MAP: Record<string, string> = {
+    M5: "M15", M15: "M30", M30: "H1", H1: "H4", H4: "DAILY",
+  };
+
+  // VR pairs: scalp TF berlawanan parent → scalp valid
+  // guard = TF satu level di bawah scalp (kondisi kunci "belum VR parent dir")
+  // sub   = TF untuk deteksi CF_HIGH (2 level bawah scalp)
+  const PAIRS = [
+    { scalp: "H1",  parent: "H4",  guard: "M30", sub: "M5"  },
+    { scalp: "M30", parent: "H1",  guard: "M15", sub: null   },
+    { scalp: "M15", parent: "M30", guard: "M5",  sub: null   },
+  ] as const;
+
+  type VrOpp = {
+    scalp: string; parent: string; guard: string; sub: string | null;
+    scalpDir: string; parentDir: string;
+    status: "VALID" | "STOP";
+    signal: "CF_LOW" | "CF_HIGH" | "WAITING_CF" | "CONTI" | null;
+    entryTF: string | null; tpTF: string | null;
+  };
+
+  const opps: VrOpp[] = [];
+
+  for (const pair of PAIRS) {
+    const scalpD  = get(pair.scalp);
+    const parentD = get(pair.parent);
+    const guardD  = get(pair.guard);
+    const subD    = pair.sub ? get(pair.sub) : null;
+
+    if (!scalpD?.cmp || !parentD?.cmp) continue;
+    if (scalpD.cmp === "WAIT" || parentD.cmp === "WAIT") continue;
+    if (scalpD.cmp === parentD.cmp) continue; // aligned = tidak VR
+
+    const scalpDir  = scalpD.cmp;
+    const parentDir = parentD.cmp;
+
+    // STOP: guard sudah flip ke parent direction = scalp master mau CF balik
+    if (guardD?.cmp === parentDir) {
+      opps.push({ scalp: pair.scalp, parent: pair.parent, guard: pair.guard, sub: pair.sub ?? null,
+        scalpDir, parentDir, status: "STOP", signal: null, entryTF: null, tpTF: null });
+      continue;
+    }
+
+    // Signal detection dari fase guard
+    let signal: VrOpp["signal"] = "CONTI";
+    let entryTF: string | null = null;
+
+    if (guardD?.cmp === scalpDir) {
+      if (guardD.fase === 3) {
+        // Guard complete VR→CF cycle di scalp direction = CF_LOW entry
+        signal = "CF_LOW"; entryTF = pair.guard;
+      } else if (guardD.fase === 2 && subD?.cmp === scalpDir) {
+        // Guard F2 (sub VR-ing guard), sub sudah CF balik ke scalp dir = CF_HIGH
+        signal = "CF_HIGH"; entryTF = pair.sub ?? null;
+      } else if (guardD.fase === 2) {
+        signal = "WAITING_CF";
+      }
+      // fase 1 → CONTI (guard belum VR = pre-VR territory)
+    }
+
+    const tpTF = entryTF ? (TP_MAP[entryTF] ?? null) : null;
+    opps.push({ scalp: pair.scalp, parent: pair.parent, guard: pair.guard, sub: pair.sub ?? null,
+      scalpDir, parentDir, status: "VALID", signal, entryTF, tpTF });
+  }
+
+  if (opps.length === 0) {
+    return (
+      <div className="px-5 pb-4">
+        <State icon={<ZapIcon className="w-4 h-4" />}
+          title="Semua TF aligned" sub="Tidak ada VR aktif · pakai CONTI atau tunggu setup" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-5 pb-4 space-y-2.5">
+      <div className="dp-micro uppercase text-slate-600 tracking-wider pt-1">
+        TP · CF M5→M15 · CF M15→M30 · CF M30→H1 · CF H1→H4
+      </div>
+      {opps.map(o => {
+        const scalpWord = dirWord(o.scalpDir);
+        const parentWord = dirWord(o.parentDir);
+        const isStop  = o.status === "STOP";
+        const isEntry = o.signal === "CF_LOW" || o.signal === "CF_HIGH";
+        const scalpC  = o.scalpDir === "BULLISH" ? "emerald" : "rose";
+        const parentC = o.parentDir === "BULLISH" ? "emerald" : "rose";
+
+        return (
+          <div key={`${o.scalp}-${o.parent}`} className={cn(
+            "rounded-xl border px-4 py-3 transition-all",
+            isStop  ? "bg-slate-900/30 border-slate-700/20 opacity-50"
+            : isEntry ? (scalpC === "emerald" ? "bg-emerald-500/6 border-emerald-500/20"
+                                               : "bg-rose-500/6 border-rose-500/20")
+            : "bg-slate-900/20 border-slate-800/30"
+          )}>
+            {/* ── Header row ─────────────────────────────────────────────── */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {/* parent chip */}
+                <span className={cn("dp-label font-extrabold",
+                  parentC === "emerald" ? "text-emerald-400" : "text-rose-400")}>
+                  {TF_SHORT[o.parent] || o.parent}
+                </span>
+                <span className={cn("dp-micro font-bold",
+                  parentC === "emerald" ? "text-emerald-400/70" : "text-rose-400/70")}>
+                  {parentWord}
+                </span>
+                <span className="dp-micro text-slate-600">·</span>
+                {/* scalp chip */}
+                <span className={cn("dp-label font-extrabold",
+                  scalpC === "emerald" ? "text-emerald-400" : "text-rose-400")}>
+                  {TF_SHORT[o.scalp] || o.scalp}
+                </span>
+                <span className="dp-micro text-slate-500">VR →</span>
+                <span className={cn("dp-label font-extrabold",
+                  scalpC === "emerald" ? "text-emerald-400" : "text-rose-400")}>
+                  SCALP {scalpWord}
+                </span>
+              </div>
+              {/* badge */}
+              {isStop ? (
+                <span className="shrink-0 dp-micro font-bold px-2 py-0.5 rounded-lg bg-slate-800/60 text-slate-500 border border-slate-700/40">
+                  ⛔ STOP
+                </span>
+              ) : isEntry ? (
+                <span className={cn("shrink-0 dp-micro font-bold px-2.5 py-1 rounded-lg border",
+                  scalpC === "emerald" ? "bg-emerald-500/15 text-emerald-200 border-emerald-400/30"
+                                       : "bg-rose-500/15 text-rose-200 border-rose-400/30")}>
+                  ⚡ {o.signal}
+                </span>
+              ) : o.signal === "WAITING_CF" ? (
+                <span className="shrink-0 dp-micro font-bold px-2 py-0.5 rounded-lg bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                  ⏳ WAIT CF
+                </span>
+              ) : (
+                <span className="shrink-0 dp-micro px-2 py-0.5 rounded-lg bg-slate-800/40 text-slate-600 border border-slate-700/30">
+                  CONTI
+                </span>
+              )}
+            </div>
+
+            {/* ── Detail row ─────────────────────────────────────────────── */}
+            <div className="mt-1.5 flex items-center flex-wrap gap-x-2 gap-y-1 dp-micro">
+              {isStop ? (
+                <span className="text-slate-500">
+                  {TF_SHORT[o.guard] || o.guard} flip {parentWord} → {TF_SHORT[o.scalp] || o.scalp} mau CF {parentWord} · stop scalp
+                </span>
+              ) : (
+                <>
+                  <span className={cn("font-semibold",
+                    scalpC === "emerald" ? "text-emerald-400/80" : "text-rose-400/80")}>
+                    {TF_SHORT[o.guard] || o.guard} belum VR {parentWord} ✓
+                  </span>
+                  {isEntry && o.entryTF && o.tpTF && (
+                    <>
+                      <span className="text-slate-600">·</span>
+                      <span className="text-slate-500">entry</span>
+                      <span className="font-bold text-amber-300">CF {TF_SHORT[o.entryTF] || o.entryTF}</span>
+                      <span className="text-slate-600">·</span>
+                      <span className="text-slate-500">TP</span>
+                      <span className="font-bold text-amber-300">SNR {TF_SHORT[o.tpTF] || o.tpTF}</span>
+                    </>
+                  )}
+                  {o.signal === "WAITING_CF" && (
+                    <span className="text-slate-500">
+                      {TF_SHORT[o.guard] || o.guard} F2 — tunggu CF {scalpWord}
+                      {o.sub ? ` atau ${TF_SHORT[o.sub] || o.sub} CF ${scalpWord}` : ""}
+                    </span>
+                  )}
+                  {o.signal === "CONTI" && (
+                    <span className="text-slate-500">
+                      {TF_SHORT[o.guard] || o.guard} F1 — cari CF {scalpWord} di sub-TF
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <div className="pt-1 dp-micro text-slate-600">
+        Scalp valid selama guard TF belum VR ke arah parent · Stop begitu guard flip
+      </div>
     </div>
   );
 }
@@ -728,35 +1098,35 @@ function SetupFocus({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
       : top.fase === 2 ? "F2 · tunggu CF" : "F1 · tunggu VR";
   const sl = top.sl;
   return (
-    <div className="px-4 pb-4">
-      <div className="flex items-baseline gap-2.5">
-        <span className="dp-xl font-bold tracking-tight text-slate-100">{TF_SHORT[top.tf]}</span>
-        <span className={cn("text-[18px] font-bold",
+    <div className="px-5 pb-5">
+      <div className="flex items-baseline gap-3">
+        <span className="text-[28px] font-extrabold tracking-tight text-slate-50">{TF_SHORT[top.tf]}</span>
+        <span className={cn("text-[20px] font-extrabold",
           col === "emerald" ? "text-emerald-400" : col === "rose" ? "text-rose-400" : "text-slate-500")}>
           {dirWord(top.cmp)}
         </span>
         {top.fase === 3 ? (
-          <span className="text-[11px] font-semibold text-amber-300 px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-400/40">
+          <span className="text-[13px] font-bold text-amber-300 px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-400/35 shadow-[0_0_8px_-2px_rgba(251,191,36,0.3)]">
             ⚡ CF{top.cfCount || 1}{top.cfType ? ` ${top.cfType}` : ""}
           </span>
         ) : topCfFlipped ? (
-          <span className="text-[11px] font-semibold text-rose-300 px-1.5 py-0.5 rounded-md bg-rose-500/10 border border-rose-500/30">
+          <span className="text-[13px] font-bold text-rose-300 px-2 py-0.5 rounded-lg bg-rose-500/10 border border-rose-500/30">
             FLIP · #{top.cfCount + 1}
           </span>
         ) : top.cfCount > 0 ? (
-          <span className="text-[11px] font-semibold text-amber-300 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/25">CF{top.cfCount}</span>
+          <span className="text-[13px] font-bold text-amber-300 px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/25">CF{top.cfCount}</span>
         ) : null}
       </div>
       <div className="mt-1.5 flex items-center gap-2">
         <PhaseDots fase={top.fase} color={col} />
-        <span className={cn("text-[11px]",
+        <span className={cn("text-[13px]",
           top.fase === 3 ? "text-amber-300" : topCfFlipped ? "text-rose-300" : "text-slate-400")}>{faseLabel}</span>
       </div>
-      <div className={cn("mt-2 text-[10.5px]", aligned ? "text-emerald-400/90" : "text-amber-400/90")}>
+      <div className={cn("mt-2 text-[13.5px]", aligned ? "text-emerald-400/90" : "text-amber-400/90")}>
         {aligned ? "✓ searah H4 master" : "⚠ berlawanan H4 — hati-hati"}
       </div>
       {VRCF_TF[top.tf] && (
-        <div className="mt-1.5 text-[9.5px] text-slate-500">
+        <div className="mt-1.5 text-[12.5px] text-slate-500">
           VR & CF di <span className="font-bold text-slate-400">{TF_SHORT[VRCF_TF[top.tf].vr]}</span>
           {VRCF_TF[top.tf].cfHigh && <> · CF-HIGH di <span className="font-bold text-slate-400">{TF_SHORT[VRCF_TF[top.tf].cfHigh!]}</span></>}
         </div>
@@ -765,11 +1135,11 @@ function SetupFocus({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
         <div className="mt-3 grid grid-cols-2 gap-2">
           <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 px-2.5 py-1.5">
             <div className="dp-micro uppercase text-slate-500">eksekusi</div>
-            <div className="text-[11px] font-semibold text-slate-200">{sl.tradeTF || top.tf}</div>
+            <div className="text-[13px] font-semibold text-slate-200">{sl.tradeTF || top.tf}</div>
           </div>
           <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 px-2.5 py-1.5">
             <div className="dp-micro uppercase text-slate-500">SL acuan</div>
-            <div className="text-[11px] font-semibold text-slate-200">puncak VR</div>
+            <div className="text-[13px] font-semibold text-slate-200">puncak VR</div>
           </div>
         </div>
       )}
@@ -794,12 +1164,12 @@ function NewsCard({ minutesUntilNews, newsBlackout, newsApproaching, nextEventNa
         <span className={cn("text-[20px] font-bold tabular-nums", tone)}>
           {minutesUntilNews !== null && minutesUntilNews >= 0 ? `${minutesUntilNews}m` : "—"}
         </span>
-        <span className={cn("text-[11px] font-semibold", tone)}>{icon} {label}</span>
+        <span className={cn("text-[13px] font-semibold", tone)}>{icon} {label}</span>
       </div>
       {nextEventName ? (
         <div className="mt-2">
-          <div className="text-[11px] text-slate-300 truncate">{nextEventName}</div>
-          <div className="text-[10px] text-slate-500 tabular-nums">{nextEventTimeWIB} WIB</div>
+          <div className="text-[13px] text-slate-300 truncate">{nextEventName}</div>
+          <div className="text-[13px] text-slate-500 tabular-nums">{nextEventTimeWIB} WIB</div>
         </div>
       ) : (
         <div className="mt-2 dp-cap text-slate-500">Belum ada jadwal news</div>
@@ -812,10 +1182,10 @@ function NewsCard({ minutesUntilNews, newsBlackout, newsApproaching, nextEventNa
 function SyncPill({ label, onClick, busy, ok }: { label: string; onClick: () => void; busy: boolean; ok: boolean }) {
   return (
     <button onClick={onClick} disabled={busy} className={cn(
-      "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10.5px] font-medium border transition-all",
-      busy ? "bg-slate-800/50 border-slate-700/50 text-slate-500 cursor-wait"
-        : ok ? "bg-slate-800/40 border-slate-700/60 text-slate-300 hover:border-indigo-500/50 hover:text-indigo-300"
-        : "bg-slate-800/40 border-slate-700/60 text-slate-400 hover:border-indigo-500/50"
+      "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[13.5px] font-semibold border transition-all duration-200",
+      busy ? "bg-slate-800/40 border-slate-700/40 text-slate-500 cursor-wait"
+        : ok ? "bg-slate-800/30 border-slate-700/50 text-slate-300 hover:border-indigo-500/50 hover:text-indigo-300 hover:bg-indigo-500/5"
+        : "bg-slate-800/30 border-slate-700/50 text-slate-400 hover:border-indigo-500/50 hover:bg-indigo-500/5"
     )}>
       <RefreshCwIcon className={cn("w-3 h-3", busy && "animate-spin")} />
       {label}
@@ -840,29 +1210,45 @@ export function DashboardPro(p: DashboardProProps) {
   };
 
   return (
-    <div className="dp-scope px-4 py-4 max-w-[1180px] mx-auto space-y-3.5">
+    <div className="dp-scope relative px-5 py-5 max-w-[1200px] mx-auto space-y-4">
       <style>{DP_ANIM}</style>
+
+      {/* ═══ AMBIENT BACKGROUND — subtle radial gradient orbs ═══ */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden>
+        <div className="absolute -top-[30%] -left-[20%] w-[70%] h-[70%] rounded-full opacity-[0.035]"
+          style={{ background: "radial-gradient(circle, rgba(99,145,255,1), transparent 70%)", animation: "dp-ambient 12s ease-in-out infinite" }} />
+        <div className="absolute -bottom-[20%] -right-[15%] w-[60%] h-[60%] rounded-full opacity-[0.025]"
+          style={{ background: "radial-gradient(circle, rgba(251,191,36,1), transparent 70%)", animation: "dp-ambient 15s ease-in-out infinite 3s" }} />
+      </div>
 
       {/* ══ TOP STRIP: price + session + sync ══════════════════════════════ */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className={cn(
-          "dp-card flex items-center gap-3 rounded-2xl border border-slate-800/70 bg-slate-900/50 px-4 py-2.5",
-          p.priceFlash === "up" && "border-emerald-600/40",
-          p.priceFlash === "dn" && "border-rose-600/40",
+          "dp-card dp-glass relative flex items-center gap-5 rounded-2xl border px-6 py-3.5 transition-all duration-300 overflow-hidden",
+          p.priceFlash === "up" ? "border-emerald-500/40 shadow-[0_0_30px_-8px_rgba(16,185,129,0.35)]"
+            : p.priceFlash === "dn" ? "border-rose-500/40 shadow-[0_0_30px_-8px_rgba(244,63,94,0.35)]"
+            : "border-slate-700/30",
         )}>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-semibold tracking-wide text-slate-300">XAUUSD</span>
-              <span className={cn("inline-flex items-center gap-1 text-[9px]", p.livePrice ? "text-emerald-400" : "text-slate-600")}>
-                {p.livePrice ? <WifiIcon className="w-2.5 h-2.5" /> : <WifiOffIcon className="w-2.5 h-2.5" />}
-                {p.livePrice ? "LIVE" : "OFF"}
+          {/* top edge */}
+          <div className="absolute top-0 left-[10%] right-[10%] h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2.5">
+              <span className="text-[14px] font-extrabold tracking-[0.1em] text-slate-100">{p.tvSymbol || "XAUUSD"}</span>
+              {p.tvSymbolDesc && p.tvSymbolDesc !== p.tvSymbol && (
+                <span className="text-[13px] text-slate-500 font-normal">{p.tvSymbolDesc}</span>
+              )}
+              <span className={cn(
+                "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[13px] font-bold tracking-[0.12em]",
+                p.livePrice ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" : "bg-slate-800/60 text-slate-600 border border-slate-700/30"
+              )}>
+                {p.livePrice ? <><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> LIVE</> : <><WifiOffIcon className="w-2.5 h-2.5" /> OFF</>}
               </span>
             </div>
-            <span className="text-[9px] text-slate-500 tabular-nums">{p.sess} · spr {p.spread}</span>
+            <span className="text-[12px] text-slate-500 tabular-nums font-medium tracking-wide">{p.sess} · spread {p.spread}</span>
           </div>
-          <div className={cn("text-[30px] font-bold tabular-nums leading-none",
+          <div className={cn("text-[38px] font-black tabular-nums leading-none tracking-tighter",
             p.livePrice && "dp-flicker",
-            p.priceFlash === "up" ? "text-emerald-300" : p.priceFlash === "dn" ? "text-rose-300" : "text-slate-100"
+            p.priceFlash === "up" ? "text-emerald-300" : p.priceFlash === "dn" ? "text-rose-300" : "text-white"
           )}>{p.displayPrice}</div>
         </div>
 
@@ -873,42 +1259,90 @@ export function DashboardPro(p: DashboardProProps) {
           <SyncPill label="SNR" onClick={p.syncSNR} busy={p.syncingSNR} ok />
           <SyncPill label="News" onClick={p.syncNews} busy={p.syncingNews} ok />
           <button onClick={() => p.setAutoSync(!p.autoSync)} className={cn(
-            "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10.5px] font-medium border transition-all",
+            "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13.5px] font-medium border transition-all",
             p.autoSync ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300" : "bg-slate-800/40 border-slate-700/60 text-slate-500"
           )}>
             <span className={cn("w-1.5 h-1.5 rounded-full", p.autoSync ? "bg-emerald-400 animate-pulse" : "bg-slate-600")} />
             Auto
           </button>
+          {p.setAutopilot && (
+            <button onClick={() => p.setAutopilot!(!p.autopilot)} className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13.5px] font-medium border transition-all",
+              p.autopilot ? "bg-emerald-600/20 border-emerald-500/60 text-emerald-300 animate-pulse" : "bg-slate-800/40 border-slate-700/60 text-slate-500"
+            )}>
+              <span className="text-[11px]">🤖</span>
+              {p.autopilot ? "Autopilot ON" : "Autopilot"}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* ══ HERO COMMAND CARD ══════════════════════════════════════════════ */}
+      {/* ══ HERO COMMAND CARD — Premium Glass Morphism ════════════════════ */}
       <div className={cn(
-        "relative rounded-2xl border overflow-hidden",
-        v.tone === "go" ? "border-amber-500/40 dp-border-go" : v.tone === "stop" ? "border-rose-500/30" : "border-slate-800/70",
-        "bg-slate-900/50"
+        "dp-shimmer relative rounded-2xl border overflow-hidden",
+        v.tone === "go" ? "border-amber-500/40 dp-border-go" : v.tone === "stop" ? "border-rose-500/25" : "border-slate-700/40",
+        "dp-glass"
       )}>
-        {/* grid hidup + scanline (hacker ambient) */}
-        <div className="dp-grid absolute inset-0 opacity-50 pointer-events-none" />
+        {/* living grid + scanline */}
+        <div className="dp-grid absolute inset-0 opacity-40 pointer-events-none" />
         <div className="dp-scanline" />
-        <div className={cn("absolute inset-0 bg-gradient-to-r pointer-events-none", accentBg[v.tone])} />
-        <div className="relative flex items-center gap-5 px-6 py-5">
-          <div className={cn("text-[40px] leading-none shrink-0 transition-transform duration-300",
-            v.tone === "go" ? "drop-shadow-[0_0_14px_rgba(251,191,36,0.7)]" : v.tone === "stop" ? "drop-shadow-[0_0_12px_rgba(244,63,94,0.5)]" : "",
-            v.tone === "go" && (p.blinkFast ? "scale-110" : "scale-100"),
-          )}>{v.icon}</div>
+        {/* gradient overlay per state */}
+        <div className={cn("absolute inset-0 pointer-events-none",
+          v.tone === "go" ? "bg-gradient-to-br from-amber-500/12 via-amber-500/3 to-transparent"
+            : v.tone === "stop" ? "bg-gradient-to-br from-rose-500/10 via-rose-500/3 to-transparent"
+            : "bg-gradient-to-br from-indigo-500/8 via-indigo-500/2 to-transparent")} />
+        {/* top edge glow */}
+        <div className={cn("absolute top-0 left-[10%] right-[10%] h-px",
+          v.tone === "go" ? "bg-gradient-to-r from-transparent via-amber-400/60 to-transparent"
+            : v.tone === "stop" ? "bg-gradient-to-r from-transparent via-rose-400/40 to-transparent"
+            : "bg-gradient-to-r from-transparent via-indigo-400/30 to-transparent")} />
+
+        <div className="relative flex items-center gap-7 px-8 py-7">
+          {/* icon container with ambient glow */}
+          <div className="relative shrink-0">
+            <div className={cn(
+              "w-[72px] h-[72px] rounded-2xl flex items-center justify-center text-[38px] leading-none transition-all duration-300 border",
+              v.tone === "go"
+                ? "bg-gradient-to-br from-amber-500/20 to-amber-600/10 border-amber-400/30 shadow-[0_0_32px_rgba(251,191,36,0.3)]"
+                : v.tone === "stop"
+                ? "bg-gradient-to-br from-rose-500/20 to-rose-600/10 border-rose-400/25 shadow-[0_0_24px_rgba(244,63,94,0.2)]"
+                : "bg-gradient-to-br from-indigo-500/15 to-indigo-600/5 border-indigo-400/20 shadow-[0_0_20px_rgba(99,145,255,0.15)]",
+              v.tone === "go" && (p.blinkFast ? "scale-110" : "scale-100"),
+            )}>{v.icon}</div>
+            {/* ambient ring behind icon */}
+            {v.tone === "go" && (
+              <div className="absolute -inset-2 rounded-3xl opacity-30 pointer-events-none animate-pulse"
+                style={{ background: "radial-gradient(circle, rgba(251,191,36,0.4), transparent 70%)" }} />
+            )}
+          </div>
           <div className="flex-1 min-w-0">
-            <div className={cn("dp-xl font-bold tracking-tight", accentText[v.accent])}>{v.head}</div>
-            <div className="dp-body text-slate-400 mt-0.5">{v.sub}</div>
+            <div className={cn("text-[26px] font-extrabold tracking-tight leading-none", accentText[v.accent])}>
+              {v.head}
+            </div>
+            <div className="text-[14px] text-slate-400/80 mt-2 leading-relaxed">{v.sub}</div>
+            {/* inline chips */}
+            {(() => {
+              // compute active CMP + conti for hero chips
+              const get2 = (tf: string) => p.tfData.find(d => d.tf === tf);
+              const activeTF2 = ["M15","M30","H1","H4","DAILY"].find(tf => {
+                const d = get2(tf); return d?.cmp && d.vr === "YA" && d.cf !== "YA";
+              });
+              const contiActive = (["DAILY","H4","H1"] as const).filter(tf => {
+                const d = get2(tf); return d?.cmp && d.cmp !== "WAIT" && d.vr !== "YA";
+              });
+              return (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <Chip label="BIAS" value={p.h4Dir ? dirWord(p.h4Dir) : "—"} tone={p.h4Dir === "BULLISH" ? "emerald" : p.h4Dir === "BEARISH" ? "rose" : "slate"} />
+                  <Chip label="PRIME" value={p.tfData.filter(d => d.fase === 3 && d.cmp && SETUP_TFS.includes(d.tf)).map(d => TF_SHORT[d.tf]).join("·") || "—"} tone="indigo" />
+                  <Chip label="AKTIF" value={activeTF2 ? TF_SHORT[activeTF2] : "—"} tone={activeTF2 ? "indigo" : "slate"} />
+                  <Chip label="CONTI" value={contiActive.length > 0 ? contiActive.map(tf => TF_SHORT[tf]).join("·") : "—"} tone={contiActive.length > 0 ? "amber" : "slate"} />
+                  <Chip label="MOMENTUM" value={p.momentum === "BULL" ? "Beli" : p.momentum === "BEAR" ? "Jual" : p.momentum === "SCANNING" ? "Scan" : "Netral"} tone={p.momentum === "BULL" ? "emerald" : p.momentum === "BEAR" ? "rose" : "slate"} />
+                  <Chip label="NEWS" value={p.newsBlackout ? `${p.minutesUntilNews}m ⛔` : p.minutesUntilNews !== null && p.minutesUntilNews >= 0 ? `${p.minutesUntilNews}m` : "clear"} tone={p.newsBlackout ? "rose" : "slate"} />
+                </div>
+              );
+            })()}
           </div>
           <GradeRing grade={p.autoGrade.grade} />
-        </div>
-        {/* chips */}
-        <div className="relative flex flex-wrap gap-2 px-6 pb-4">
-          <Chip label="BIAS" value={p.h4Dir ? dirWord(p.h4Dir) : "—"} tone={p.h4Dir === "BULLISH" ? "emerald" : p.h4Dir === "BEARISH" ? "rose" : "slate"} />
-          <Chip label="PRIME" value={p.tfData.filter(d => d.fase === 3 && d.cmp && SETUP_TFS.includes(d.tf)).map(d => TF_SHORT[d.tf]).join("·") || "—"} tone="indigo" />
-          <Chip label="MOMENTUM" value={p.momentum === "BULL" ? "Beli" : p.momentum === "BEAR" ? "Jual" : p.momentum === "SCANNING" ? "Scan" : "Netral"} tone={p.momentum === "BULL" ? "emerald" : p.momentum === "BEAR" ? "rose" : "slate"} />
-          <Chip label="NEWS" value={p.newsBlackout ? `${p.minutesUntilNews}m ⛔` : p.minutesUntilNews !== null && p.minutesUntilNews >= 0 ? `${p.minutesUntilNews}m` : "clear"} tone={p.newsBlackout ? "rose" : "slate"} />
         </div>
       </div>
 
@@ -919,8 +1353,20 @@ export function DashboardPro(p: DashboardProProps) {
 
       {/* ══ SEQUENCE per CMP (CMP → VR → CF) ═══════════════════════════════ */}
       <Card title="Sequence per CMP — CMP → VR → CF" icon={<ZapIcon className="w-3.5 h-3.5" />}
-        right={<span className="text-[9.5px] text-slate-500">tiap timeframe</span>}>
+        right={<span className="text-[12.5px] text-slate-500">tiap timeframe</span>}>
         <SequenceList tfData={p.tfData} h4Dir={p.h4Dir} />
+      </Card>
+
+      {/* ══ STORYLINE — Active CMP + Conti Status ═══════════════════════════ */}
+      <Card title="Storyline · Active CMP & Conti" icon={<ActivityIcon className="w-3.5 h-3.5" />}
+        right={<span className="text-[12.5px] text-slate-500">fractal · TP = left barrier</span>}>
+        <StorylineConti tfData={p.tfData} h4Dir={p.h4Dir} />
+      </Card>
+
+      {/* ══ VR SCALP — Scalp Sambil Nunggu ════════════════════════════════ */}
+      <Card title="VR Scalp — Sambil Nunggu Setup Besar" icon={<ZapIcon className="w-3.5 h-3.5" />}
+        right={<span className="text-[12.5px] text-slate-500">VR = CMP baru · scalp arah VR</span>}>
+        <VrScalpPanel tfData={p.tfData} />
       </Card>
 
       {/* ══ 3-UP GRID ══════════════════════════════════════════════════════ */}
@@ -940,13 +1386,13 @@ export function DashboardPro(p: DashboardProProps) {
 
       {/* ══ SNR LADDER ═════════════════════════════════════════════════════ */}
       <Card title="SNR Price Ladder" icon={<ActivityIcon className="w-3.5 h-3.5" />}
-        right={<span className="text-[9.5px] text-slate-500">resistance ▲ · support ▼</span>}>
+        right={<span className="text-[12.5px] text-slate-500">resistance ▲ · support ▼</span>}>
         <SnrLadder aboveLevels={p.aboveLevels} belowLevels={p.belowLevels} atLevel={p.atLevel}
           cmpFloat={p.cmpFloat} displayPrice={p.displayPrice} livePrice={p.livePrice} />
       </Card>
 
-      <div className="text-center text-[9px] text-slate-700 pt-1 pb-4">
-        ChainReaction v2 · Clean Institutional · port 3003 (eksperimen)
+      <div className="text-center text-[12px] text-slate-600/60 pt-2 pb-6 tracking-widest uppercase font-medium">
+        Chain Reaction v4.0 OVERLORD · Sultan Sniper Engine
       </div>
     </div>
   );
@@ -954,16 +1400,17 @@ export function DashboardPro(p: DashboardProProps) {
 
 function Chip({ label, value, tone }: { label: string; value: string; tone: string }) {
   const c: Record<string, string> = {
-    emerald: "text-emerald-300 border-emerald-500/30 bg-emerald-500/8",
-    rose: "text-rose-300 border-rose-500/30 bg-rose-500/8",
-    indigo: "text-indigo-300 border-indigo-500/30 bg-indigo-500/8",
-    amber: "text-amber-300 border-amber-500/30 bg-amber-500/8",
-    slate: "text-slate-300 border-slate-700/60 bg-slate-800/40",
+    emerald: "text-emerald-300 border-emerald-500/25 bg-emerald-500/8",
+    rose: "text-rose-300 border-rose-500/25 bg-rose-500/8",
+    indigo: "text-indigo-300 border-indigo-500/25 bg-indigo-500/8",
+    amber: "text-amber-300 border-amber-500/25 bg-amber-500/8",
+    slate: "text-slate-300 border-slate-700/50 bg-slate-800/30",
   };
   return (
-    <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border", c[tone] || c.slate)}>
-      <span className="dp-micro uppercase opacity-60">{label}</span>
-      <span className="dp-cap font-semibold tabular-nums">{value}</span>
+    <div className={cn("inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border backdrop-blur-sm", c[tone] || c.slate)}>
+      <span className="text-[14px] font-bold uppercase tracking-[0.15em] opacity-50">{label}</span>
+      <span className="text-[12px] font-bold tabular-nums">{value}</span>
     </div>
   );
 }
+

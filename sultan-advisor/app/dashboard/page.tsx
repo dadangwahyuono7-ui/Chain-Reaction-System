@@ -9,7 +9,9 @@ import { MarketPanel } from "@/components/market-panel";
 import { StatusBar } from "@/components/status-bar";
 import { LogoSidebar } from "@/components/logo";
 import { TeamChat } from "@/components/team-chat";
-import { LogOutIcon, PanelLeftIcon, ZapIcon, PlusIcon } from "lucide-react";
+import { LogOutIcon, PanelLeftIcon, ZapIcon, PlusIcon, UsersIcon, BookOpenIcon, BarChart2Icon } from "lucide-react";
+
+const ADMIN_EMAIL = "dadangwahyuono@gmail.com";
 import { cn } from "@/lib/utils";
 
 type Session = { id: string; title: string };
@@ -24,13 +26,10 @@ export default function DashboardPage() {
   const [sidebarOpen,   setSidebarOpen]   = useState(
     typeof window !== "undefined" ? window.innerWidth >= 1280 : true
   );
-  const [currentPrice,  setCurrentPrice]  = useState<string | undefined>();
-  const [autoPrompt,    setAutoPrompt]    = useState<string | null>(null);
-  // Setiap kali "Sesi Baru" diklik, increment ini agar ChatInterface re-mount
-  // sehingga useChat hook benar-benar fresh — tidak ada sisa state dari sesi lama
+  const [currentPrice,      setCurrentPrice]      = useState<string | undefined>();
+  const [activeInstrument,  setActiveInstrument]  = useState("XAUUSD");
+  const [autoPrompt,        setAutoPrompt]        = useState<string | null>(null);
   const [newSessionKey, setNewSessionKey] = useState(0);
-
-  // currentPrice is now fed by MarketPanel's live SSE tick — no polling needed
 
   useEffect(() => {
     if (!selectedId) { setSelectedTitle(undefined); return; }
@@ -56,7 +55,7 @@ export default function DashboardPage() {
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
 
-      {/* ── WATERMARK — subtle (clean institutional) ──────────────────── */}
+      {/* ── WATERMARK ─────────────────────────────────────────── */}
       <div
         className="fixed inset-0 pointer-events-none select-none z-50 overflow-hidden"
         aria-hidden="true"
@@ -68,7 +67,7 @@ export default function DashboardPage() {
         }} />
       </div>
 
-      {/* ── Mobile overlay ────────────────────────────────────────────── */}
+      {/* ── Mobile overlay ────────────────────────────────────── */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 xl:hidden"
@@ -76,20 +75,17 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* ══════════════════════════════════════════════════════════════
-          LEFT — Session Sidebar (narrow)
-      ══════════════════════════════════════════════════════════════ */}
+      {/* ════════════════════════════════════════════════════════
+          LEFT — Session Sidebar
+      ════════════════════════════════════════════════════════ */}
       <div className={cn(
         "flex flex-col border-r border-slate-800/60 bg-slate-950 transition-all duration-200 shrink-0 z-30",
         "fixed xl:relative h-full",
         sidebarOpen ? "w-48 2xl:w-60 left-0" : "w-0 -left-48 xl:left-0 overflow-hidden"
       )}>
-        {/* Logo */}
         <div className="px-3 py-3.5 border-b border-slate-800/60 shrink-0">
           <LogoSidebar />
         </div>
-
-        {/* New session button */}
         <div className="px-2 pt-2 shrink-0">
           <button
             onClick={() => { setNewSessionKey(k => k + 1); setSelectedId(null); setSelectedTitle(undefined); }}
@@ -99,8 +95,6 @@ export default function DashboardPage() {
             <span>Sesi Baru</span>
           </button>
         </div>
-
-        {/* Sessions list */}
         <div className="flex-1 py-2 overflow-hidden">
           <SessionSidebar
             currentId={selectedId}
@@ -111,9 +105,30 @@ export default function DashboardPage() {
             onNew={() => { setNewSessionKey(k => k + 1); setSelectedId(null); setSelectedTitle(undefined); }}
           />
         </div>
-
-        {/* Footer */}
         <div className="border-t border-slate-800/60 px-2 py-2.5 shrink-0 space-y-1.5">
+          <button
+            onClick={() => router.push("/paper-trading")}
+            className="flex items-center gap-2 text-[11px] xl:text-[13px] text-emerald-500 hover:text-emerald-300 hover:bg-emerald-500/10 transition-all w-full px-1 py-1 rounded-lg border border-transparent hover:border-emerald-500/20"
+          >
+            <BarChart2Icon className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0" />
+            <span>Paper Trading</span>
+          </button>
+          <button
+            onClick={() => router.push("/journal")}
+            className="flex items-center gap-2 text-[11px] xl:text-[13px] text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 transition-all w-full px-1 py-1 rounded-lg border border-transparent hover:border-indigo-500/20"
+          >
+            <BookOpenIcon className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0" />
+            <span>Journal</span>
+          </button>
+          {session.user.email === ADMIN_EMAIL && (
+            <button
+              onClick={() => router.push("/admin")}
+              className="flex items-center gap-2 text-[11px] xl:text-[13px] text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 transition-all w-full px-1 py-1 rounded-lg border border-transparent hover:border-purple-500/20"
+            >
+              <UsersIcon className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0" />
+              <span>Kelola Users</span>
+            </button>
+          )}
           <button
             onClick={() => { signOut(); router.push("/login"); }}
             className="flex items-center gap-2 text-[11px] xl:text-[13px] text-zinc-500 hover:text-zinc-300 transition-colors w-full px-1"
@@ -127,9 +142,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════
+      {/* ════════════════════════════════════════════════════════
           CENTER — Market Intelligence Dashboard
-      ══════════════════════════════════════════════════════════════ */}
+      ════════════════════════════════════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 border-r border-slate-800/60">
 
         {/* Top bar */}
@@ -141,10 +156,9 @@ export default function DashboardPage() {
             <PanelLeftIcon className="w-4 h-4" />
           </button>
           <span className="text-[10px] xl:text-xs text-slate-500 tracking-wide">
-            Market Intelligence · XAUUSD Daily Deploy
+            Market Intelligence · {activeInstrument} Daily Deploy
           </span>
           <div className="flex-1" />
-          {/* Owner tag — clean institutional */}
           <div className="flex items-center gap-1.5 px-2.5 py-1 xl:px-3 xl:py-1.5 rounded-lg bg-slate-900/70 border border-slate-800 shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-500/80" />
             <span className="text-[10px] xl:text-xs font-semibold text-slate-400 tracking-wide">Dadang Wahyuono</span>
@@ -157,18 +171,19 @@ export default function DashboardPage() {
           <MarketPanel
             onAutoAnalysis={(prompt) => setAutoPrompt(prompt)}
             onPriceUpdate={(price) => setCurrentPrice(price)}
+            onInstrumentUpdate={(sym) => setActiveInstrument(sym)}
             layout="dashboard"
           />
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════
+      {/* ════════════════════════════════════════════════════════
           RIGHT — AI Advisor Chat Panel
-      ══════════════════════════════════════════════════════════════ */}
-      <div className="w-[380px] xl:w-[460px] 2xl:w-[520px] flex flex-col shrink-0">
+      ════════════════════════════════════════════════════════ */}
+      <div className="w-[380px] xl:w-[460px] 2xl:w-[520px] flex flex-col shrink-0 bg-slate-950 relative z-10">
 
         {/* Chat header */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800/60 shrink-0 bg-slate-950/80 backdrop-blur-sm">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800/60 shrink-0 bg-slate-950">
           <div className="flex items-center gap-2">
             <ZapIcon className="w-3.5 h-3.5 xl:w-4 xl:h-4 text-indigo-400" />
             <span className="text-xs xl:text-sm font-semibold text-slate-200 tracking-tight">AI Advisor</span>
@@ -192,7 +207,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Team Chat + Voice Meeting (floating) ──────────────────────── */}
+
+      {/* ── Team Chat (floating) ──────────────────────────────── */}
       <TeamChat />
 
     </div>

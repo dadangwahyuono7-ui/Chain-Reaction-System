@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Textarea } from "@/components/ui/textarea";
-import { SendIcon, MicIcon, SquareIcon, ShieldCheckIcon, TrendingUpIcon, LayoutDashboardIcon, AlertOctagonIcon, CloudIcon, CpuIcon } from "lucide-react";
+import { SendIcon, MicIcon, SquareIcon, ShieldCheckIcon, TrendingUpIcon, LayoutDashboardIcon, AlertOctagonIcon, CloudIcon, CpuIcon, PaperclipIcon, XIcon, FileTextIcon, ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageBubble } from "./message-bubble";
 import type { UIMessage } from "ai";
@@ -17,6 +17,31 @@ interface Props {
   onAutoPromptConsumed?: () => void;
 }
 
+function useActiveInstrument() {
+  const [instrument, setInstrument] = useState("XAUUSD");
+  useEffect(() => {
+    fetch("/api/context")
+      .then(r => r.json())
+      .then((rows: { variableName: string; value: string }[]) => {
+        const sym = rows.find(r => r.variableName === "TV_SYMBOL")?.value?.trim();
+        if (sym) setInstrument(sym);
+      })
+      .catch(() => {});
+    // poll tiap 15s biar ikut saat chart TV di-switch
+    const t = setInterval(() => {
+      fetch("/api/context")
+        .then(r => r.json())
+        .then((rows: { variableName: string; value: string }[]) => {
+          const sym = rows.find(r => r.variableName === "TV_SYMBOL")?.value?.trim();
+          if (sym) setInstrument(sym);
+        })
+        .catch(() => {});
+    }, 15_000);
+    return () => clearInterval(t);
+  }, []);
+  return instrument;
+}
+
 const QUICK_PROMPTS = [
   {
     icon: ShieldCheckIcon,
@@ -26,12 +51,12 @@ const QUICK_PROMPTS = [
   {
     icon: LayoutDashboardIcon,
     label: "Storyline Aktif",
-    prompt: "Jelaskan storyline aktif saat ini per TF. Untuk setiap TF yang ada CMP-nya: VR dari mana, sudah terjadi belum, CF LowRisk dan HighRisk dari TF mana, dan trading di TF mana. Mana setup paling matang?",
+    prompt: "Jelaskan storyline aktif saat ini per TF. Sambungkan relasi parent→child: TF mana yang jadi VR untuk TF di atasnya, TF mana yang masih CONTI territory, TF mana yang sudah masuk siklus VR→CF. Mana setup paling matang?",
   },
   {
     icon: TrendingUpIcon,
-    label: "Bias & Momentum",
-    prompt: "Apa bias market H4 saat ini? Siapa yang bagi VR dan seberapa kuat momentumnya? Implikasinya terhadap setup di TF bawah (H1, M30)?",
+    label: "CONTI / Scalp",
+    prompt: "Cek CONTI territory sekarang. Untuk setiap TF besar yang sudah CMP tapi belum VR: (1) sebutkan arah & TF master-nya, (2) TF entry yang valid (searah master), (3) SOP entry-nya (VR TF kecil → CF), (4) TP target & size yang aman. Ini untuk scalping ikut arah TF besar.",
   },
   {
     icon: AlertOctagonIcon,
@@ -41,11 +66,24 @@ const QUICK_PROMPTS = [
 ];
 
 export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt, onAutoPromptConsumed }: Props) {
+  const instrument = useActiveInstrument();
   const [input, setInput] = useState("");
+
+  // -- Attachment state -------------------------------------------------------
+  type Attachment = {
+    name: string; size: number; kind: "image" | "file";
+    url: string;           // /uploads/... untuk preview + link
+    base64?: string;       // image only — dikirim ke AI sebagai content block
+    mimeType?: string;
+    savedPath?: string;    // file only — path lokal
+  };
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading,   setUploading]   = useState(false);
+  const fileInputRef  = useRef<HTMLInputElement>(null);
   const bottomRef    = useRef<HTMLDivElement>(null);
   const textareaRef  = useRef<HTMLTextAreaElement>(null);
   const [isListening, setIsListening] = useState(false);
-  const [modelChoice, setModelChoice] = useState<"local" | "cloud">("local");
+  const [modelChoice, setModelChoice] = useState<"local" | "cloud">("cloud");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef  = useRef<any>(null);
   const autoFiredRef    = useRef<string | null>(null);
@@ -77,16 +115,78 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  // -- Upload file/gambar ke server -----------------------------------------
+  const handleAttach = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    const newAtts: Attachment[] = [];
+    for (const file of Array.from(files)) {
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const r = await fetch("/api/chat-upload", { method: "POST", body: form });
+        const j = await r.json();
+        if (r.ok) newAtts.push(j as Attachment);
+        else alert(`Upload gagal: ${j.error}`);
+      } catch (e) { alert(`Upload error: ${e}`); }
+    }
+    setAttachments(prev => [...prev, ...newAtts]);
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  // -- Paste gambar dari clipboard (Ctrl+V / screenshot langsung) ------------
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const imgItems = items.filter(i => i.kind === "file" && i.type.startsWith("image/"));
+    if (imgItems.length === 0) return;
+    e.preventDefault();
+    const files = imgItems.map(i => i.getAsFile()).filter(Boolean) as File[];
+    const dt = new DataTransfer();
+    files.forEach(f => dt.items.add(f));
+    handleAttach(dt.files);
+  }, [handleAttach]);
+
   const handleSend = useCallback(async (text?: string) => {
     const msg = (text ?? input).trim();
-    if (!msg || isLoading) return;
+    const hasAttachments = attachments.length > 0;
+    if (!msg && !hasAttachments) return;
+    if (isLoading) return;
     if (!text) setInput("");
-    // Pass model choice per-message (AI SDK v4: body in ChatRequestOptions)
+
+    // Build multimodal content — AI SDK v4 pakai experimental_attachments
+    // untuk gambar (vision). Kita juga encode URL di text buat MessageBubble bisa render.
+    const textParts: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const experimentalAttachments: any[] = [];
+
+    for (const att of attachments) {
+      if (att.kind === "image") {
+        // Tag buat bubble render gambar
+        textParts.push(`[img:${att.url}]`);
+        // Kirim ke AI sebagai attachment (vision)
+        experimentalAttachments.push({
+          url: `data:${att.mimeType};base64,${att.base64}`,
+          name: att.name,
+          contentType: att.mimeType,
+        });
+      } else {
+        textParts.push(`[File terlampir: ${att.name} — tersimpan di: ${att.savedPath ?? att.url}. Kamu bisa baca isinya via read_file.]`);
+      }
+    }
+
+    if (msg) textParts.push(msg);
+    const fullText = textParts.join("\n");
+    setAttachments([]);
+
     await sendMessage(
-      { role: "user", parts: [{ type: "text" as const, text: msg }] },
-      { body: { model: modelChoiceRef.current } }
+      { role: "user", parts: [{ type: "text" as const, text: fullText }] },
+      {
+        body: { model: modelChoiceRef.current },
+        ...(experimentalAttachments.length > 0 ? { experimental_attachments: experimentalAttachments } : {}),
+      }
     );
-  }, [input, isLoading, sendMessage]);
+  }, [input, attachments, isLoading, sendMessage]);
 
   // Auto-fire prompt when TV sync detects CF/VR event
   useEffect(() => {
@@ -129,29 +229,34 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
   const isEmpty = visibleMessages.length === 0;
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-5">
+    <div className="flex flex-col h-full bg-slate-950">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
 
         {isEmpty ? (
-          <div className="flex flex-col items-center justify-center h-full space-y-8 text-center">
-            <div>
-              <div className="text-2xl font-black text-amber-500 tracking-tighter">CHAIN REACTION</div>
-              <div className="text-xs text-zinc-500 mt-1">Trading Advisor — XAUUSD Daily Deploy</div>
+          <div className="flex flex-col items-center justify-center h-full space-y-6 text-center">
+            {/* Hero emblem */}
+            <div className="relative">
+              <div className="absolute inset-0 blur-2xl rounded-full bg-indigo-500/10" />
+              <div className="relative">
+                <div className="text-xl font-bold text-slate-200 tracking-tight">Chain Reaction</div>
+                <div className="text-[11px] text-slate-500 mt-0.5 tracking-wide">AI Advisor · {instrument} Daily Deploy</div>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 max-w-lg w-full">
+            {/* Quick prompts */}
+            <div className="grid grid-cols-2 gap-2 max-w-md w-full">
               {QUICK_PROMPTS.map(qp => (
                 <button
                   key={qp.label}
                   onClick={() => { setInput(qp.prompt); textareaRef.current?.focus(); }}
-                  className="flex items-start gap-2 p-3 bg-zinc-900 border border-zinc-800 rounded-xl text-left hover:bg-zinc-800 hover:border-zinc-700 transition-all group"
+                  className="flex items-start gap-2.5 p-3 bg-slate-900 border border-slate-800/50 rounded-xl text-left hover:bg-slate-800 hover:border-indigo-500/30 transition-all group"
                 >
-                  <qp.icon className="w-3.5 h-3.5 text-zinc-500 group-hover:text-amber-400 mt-0.5 shrink-0" />
-                  <span className="text-xs text-zinc-400 group-hover:text-zinc-200">{qp.label}</span>
+                  <qp.icon className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 mt-0.5 shrink-0 transition-colors" />
+                  <span className="text-[11px] text-slate-400 group-hover:text-slate-200 transition-colors">{qp.label}</span>
                 </button>
               ))}
             </div>
-            <p className="text-xs text-zinc-600 max-w-sm">
-              Klik ⚡ Sync di panel kanan — analisis storyline muncul otomatis.
+            <p className="text-[11px] text-slate-600 max-w-xs leading-relaxed">
+              Klik ⚡ Sync di panel market untuk update data. AI bisa sync sendiri via tool.
             </p>
           </div>
         ) : (
@@ -168,14 +273,14 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
 
             {isLoading && visibleMessages.at(-1)?.role === "user" && (
               <div className="flex justify-start">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl rounded-tl-sm px-4 py-3">
-                  <div className="flex items-center gap-2">
+                <div className="bg-slate-900 border border-slate-800/50 rounded-2xl rounded-tl-sm px-4 py-3">
+                  <div className="flex items-center gap-2.5">
                     <div className="flex gap-1">
-                      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce [animation-delay:0ms]" />
-                      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce [animation-delay:150ms]" />
-                      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce [animation-delay:300ms]" />
+                      <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                      <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                      <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:300ms]" />
                     </div>
-                    <span className="text-xs text-zinc-500">Menganalisis storyline...</span>
+                    <span className="text-[11px] text-slate-500">Menganalisis...</span>
                   </div>
                 </div>
               </div>
@@ -183,16 +288,16 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
 
             {error && !isLoading && (
               <div className="flex justify-start">
-                <div className="bg-red-950 border border-red-900 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%]">
+                <div className="bg-red-950 border border-red-900/50 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%]">
                   <p className="text-xs text-red-400 font-medium mb-1">Gagal mendapat respons</p>
-                  <p className="text-xs text-red-300/70">
+                  <p className="text-[11px] text-red-300/60 leading-relaxed">
                     {error.message?.includes("401")
                       ? modelChoice === "cloud"
                         ? "Bluepack API key error. Cek koneksi internet & API key."
                         : "Qwen3-8B tidak merespons. Pastikan server jalan di port 8080."
                       : error.message ?? "Cek server log untuk detail."}
                   </p>
-                  <button onClick={() => handleSend()} className="mt-2 text-xs text-red-400 hover:text-red-300 underline">
+                  <button onClick={() => handleSend()} className="mt-2 text-[11px] text-red-400 hover:text-red-300 underline">
                     Coba lagi
                   </button>
                 </div>
@@ -203,49 +308,96 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
         <div ref={bottomRef} />
       </div>
 
-      {/* Input bar */}
-      <div className="border-t border-zinc-800 px-4 py-4 bg-zinc-950">
-        {/* Model selector */}
-        <div className="flex gap-1.5 mb-2.5 max-w-4xl mx-auto">
+      {/* ── Input bar — glass morphism ─────────────────────────────────────── */}
+      <div className="border-t border-slate-800/50 px-4 py-3 bg-slate-950">
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.pdf,.txt,.csv,.json"
+          multiple
+          className="hidden"
+          onChange={e => handleAttach(e.target.files)}
+        />
+
+        {/* Attachment preview strip */}
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2.5">
+            {attachments.map((att, i) => (
+              <div key={i} className="relative group flex items-center gap-1.5 bg-slate-800 border border-slate-700/50 rounded-xl px-2.5 py-1.5 text-[11px] text-slate-300 max-w-[160px]">
+                {att.kind === "image"
+                  ? <img src={att.url} alt={att.name} className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                  : <FileTextIcon className="w-4 h-4 text-indigo-400 shrink-0" />
+                }
+                <span className="truncate text-[10px]">{att.name}</span>
+                <button
+                  onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-slate-600 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+                >
+                  <XIcon className="w-2.5 h-2.5 text-white" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Model selector — refined chips */}
+        <div className="flex items-center gap-1.5 mb-2.5">
           <button
             onClick={() => setModelChoice("local")}
             className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono font-black tracking-wider border transition-all",
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-mono tracking-wider border transition-all",
               modelChoice === "local"
-                ? "bg-zinc-800 border-zinc-600 text-amber-400"
-                : "bg-zinc-950 border-zinc-800 text-zinc-600 hover:text-zinc-400"
+                ? "bg-slate-800/60 border-slate-600/50 text-slate-200"
+                : "bg-transparent border-slate-800/40 text-slate-600 hover:text-slate-400 hover:border-slate-700/50"
             )}
           >
             <CpuIcon className="w-3 h-3" />
-            LOCAL · QWEN3
+            LOCAL
           </button>
           <button
             onClick={() => setModelChoice("cloud")}
             className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono font-black tracking-wider border transition-all",
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-mono tracking-wider border transition-all",
               modelChoice === "cloud"
-                ? "bg-blue-950 border-blue-700 text-blue-300"
-                : "bg-zinc-950 border-zinc-800 text-zinc-600 hover:text-zinc-400"
+                ? "bg-indigo-950/50 border-indigo-500/30 text-indigo-300"
+                : "bg-transparent border-slate-800/40 text-slate-600 hover:text-slate-400 hover:border-slate-700/50"
             )}
           >
             <CloudIcon className="w-3 h-3" />
-            CLOUD · CLAUDE
+            DADANG
           </button>
           <div className="flex-1" />
-          <span className="text-[9px] text-zinc-700 font-mono self-center">
-            {modelChoice === "cloud" ? "🌐 online · bluepack" : "💻 offline · localhost:8080"}
+          <span className="text-[9px] text-slate-600 font-mono">
+            {modelChoice === "cloud" ? "commander · cloud" : "qwen3 · local"}
           </span>
         </div>
-        <div className="flex gap-2 items-end max-w-4xl mx-auto">
+
+        <div className="flex gap-2 items-end">
+          {/* Attach button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className={cn(
+              "h-11 w-11 rounded-xl border flex items-center justify-center transition-all shrink-0",
+              uploading
+                ? "bg-indigo-950/50 border-indigo-500/30 text-indigo-400 animate-pulse"
+                : "bg-slate-900 border-slate-800/60 text-slate-500 hover:text-indigo-400 hover:border-indigo-500/40"
+            )}
+            title="Lampirkan gambar / file"
+          >
+            {uploading ? <ImageIcon className="w-4 h-4" /> : <PaperclipIcon className="w-4 h-4" />}
+          </button>
           <div className="flex-1">
             <Textarea
               ref={textareaRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Tanya setup, storyline, CMP/VR/CF... (Enter kirim)"
+              onPaste={handlePaste}
+              placeholder="Tanya setup, storyline, atau ngobrol biasa... (Ctrl+V untuk paste gambar)"
               rows={1}
-              className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 resize-none min-h-[44px] max-h-40 text-sm focus:border-amber-700 rounded-xl"
+              className="bg-slate-900 border-slate-800/60 text-slate-100 placeholder:text-slate-600 resize-none min-h-[44px] max-h-40 text-sm focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 rounded-xl"
               style={{ height: "auto" }}
               onInput={e => {
                 const el = e.currentTarget;
@@ -262,28 +414,28 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
             className={cn(
               "h-11 w-11 rounded-xl border flex items-center justify-center transition-all shrink-0",
               isListening
-                ? "bg-red-500 border-red-600 text-white animate-pulse"
-                : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500"
+                ? "bg-red-500/80 border-red-500/50 text-white animate-pulse"
+                : "bg-slate-900 border-slate-800/60 text-slate-500 hover:text-slate-300 hover:border-slate-600"
             )}
           >
             <MicIcon className="w-4 h-4" />
           </button>
           {isLoading ? (
-            <button onClick={() => stop()} className="h-11 w-11 bg-red-600 hover:bg-red-700 rounded-xl flex items-center justify-center shrink-0">
+            <button onClick={() => stop()} className="h-11 w-11 bg-red-500/80 hover:bg-red-500 border border-red-500/30 rounded-xl flex items-center justify-center shrink-0 transition-colors">
               <SquareIcon className="w-4 h-4 text-white" />
             </button>
           ) : (
             <button
               onClick={() => handleSend()}
-              disabled={!input.trim()}
-              className="h-11 w-11 bg-amber-500 hover:bg-amber-400 text-black rounded-xl flex items-center justify-center shrink-0 disabled:opacity-30 transition-colors"
+              disabled={!input.trim() && attachments.length === 0}
+              className="h-11 w-11 bg-indigo-500 hover:bg-indigo-400 text-white rounded-xl flex items-center justify-center shrink-0 disabled:opacity-20 transition-colors shadow-lg shadow-indigo-500/20"
             >
               <SendIcon className="w-4 h-4" />
             </button>
           )}
         </div>
-        <p className="text-center text-xs text-zinc-700 mt-2">
-          Chain Reaction — doktrin CMP/VR/CF. Bukan financial advice.
+        <p className="text-center text-[10px] text-slate-700 mt-2">
+          Chain Reaction · {modelChoice === "cloud" ? "Dadang · Cloud API" : "Qwen3 · Local"} · Memori persisten
         </p>
       </div>
     </div>
