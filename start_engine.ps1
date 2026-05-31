@@ -1,0 +1,5 @@
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+$env:TERM = "xterm"
+Set-Location "D:\PROJECT TRADING"
+& "D:\PROJECT TRADING\venv\Scripts\python.exe" "D:\PROJECT TRADING\main.py"

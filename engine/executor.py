@@ -1,5 +1,7 @@
 import MetaTrader5 as mt5
 import time
+import json
+import os
 from datetime import datetime
 import pytz
 from rich.console import Console
@@ -22,6 +24,10 @@ class ChainReactionExecutor:
         self.max_spread_points = 30
         self.news_blackout_minutes = 15
         self.news_schedule_wib = []
+        # Fundamental SNR guard — diset dari main.py setelah init
+        self.fundamental_snr = None   # FundamentalSNR instance
+        self.snr_block_usd   = 2.0    # Jarak minimum ke PDH/PDL/RN sebelum di-block
+        self.snr_warn_usd    = 5.0    # Jarak warning (tampil di feed, tidak block)
 
     def update_settings(self, settings):
         """Sync all runtime config from chain_settings.json each loop."""
@@ -36,6 +42,8 @@ class ChainReactionExecutor:
         self.max_spread_points = settings.get("max_spread_points", 30)
         self.news_blackout_minutes = settings.get("news_blackout_minutes", 15)
         self.news_schedule_wib = settings.get("news_schedule_wib", [])
+        self.snr_block_usd = settings.get("snr_block_usd", 2.0)
+        self.snr_warn_usd  = settings.get("snr_warn_usd",  5.0)
 
     # ─────────────────────────── GUARD CHECKS ────────────────────────────────
 
@@ -52,10 +60,12 @@ class ChainReactionExecutor:
                 return False, f"VETO: Barrier dist {dist:.2f} > {self.barrier_limit} USD"
         return True, "Barrier OK"
 
-    def check_session_and_spread(self):
+    def check_session_and_spread(self, bypass_session=False):
         """
         Session Filter: only allow execution during London (08–16 UTC) or NY (13–21 UTC).
         Spread Guard: veto if spread exceeds max_spread_points.
+        bypass_session=True skips the time check (still enforces spread) — used by PDB
+        which is valid in Asian session.
         """
         tick = mt5.symbol_info_tick(self.symbol)
         info = mt5.symbol_info(self.symbol)
@@ -67,7 +77,7 @@ class ChainReactionExecutor:
                 return False, f"VETO: Spread {spread_pts} pts > {self.max_spread_points} limit"
 
         # Session filter
-        if self.session_filter:
+        if self.session_filter and not bypass_session:
             hour_utc = datetime.now(pytz.utc).hour
             in_london = 8 <= hour_utc < 16
             in_new_york = 13 <= hour_utc < 21
@@ -275,11 +285,15 @@ class ChainReactionExecutor:
     # ─────────────────────────── EXECUTION ───────────────────────────────────
 
     def execute_strike(self, direction, analyst, lot=0.0, comment="Chain Strike",
-                       tp_price=0.0, sl_price=0.0, settings=None, tp_tf=None, sl_tf=None):
+                       tp_price=0.0, sl_price=0.0, settings=None, tp_tf=None, sl_tf=None,
+                       bypass_session=False, bypass_snr=False):
         """
         Execute a trade with the full Chain Reaction rule stack:
         Barrier Guard → Session/Spread → News Blackout → TP → SL →
         Risk Lot → Drawdown Guard → Order Send.
+
+        bypass_session=True  — skip time-of-day filter (PDB fires in Asian session).
+        bypass_snr=True      — skip Fundamental SNR guard (PDB entry IS the PDH/PDL level).
         """
         if settings is None:
             settings = {}
@@ -296,7 +310,7 @@ class ChainReactionExecutor:
             return False, msg
 
         # 2. Session & Spread
-        ok, msg = self.check_session_and_spread()
+        ok, msg = self.check_session_and_spread(bypass_session=bypass_session)
         if not ok:
             return False, msg
 
@@ -304,6 +318,18 @@ class ChainReactionExecutor:
         ok, msg = self.check_news_blackout()
         if not ok:
             return False, msg
+
+        # 3b. Fundamental SNR Guard
+        # Block jika terlalu dekat PDH/PDL/PWH/PWL/Round Number
+        # bypass_snr=True untuk PDB — entry IS the level, guard tidak relevan
+        if self.fundamental_snr is not None and not bypass_snr:
+            blocked, warned, snr_msg = self.fundamental_snr.get_nearest_warning(
+                price, self.snr_block_usd, self.snr_warn_usd
+            )
+            if blocked:
+                return False, f"VETO: {snr_msg}"
+            if warned:
+                console.print(f"[bold yellow]⚠ {snr_msg}[/bold yellow]")
 
         # 4. TP resolution
         # tp_tf comes from signal: CF_LOW targets TF above VR, CF_HIGH targets VR TF itself
@@ -369,4 +395,34 @@ class ChainReactionExecutor:
         msg = f"SUCCESS: {direction} {lot}L @ {price:.2f} | SL {sl:.2f} | TP {tp:.2f}"
         if is_adaptive:
             msg += " (Adaptive TP)"
+
+        # Export ke signal_queue.json untuk TV annotator
+        self._export_signal_queue(direction, price, round(sl, 2), round(tp, 2), comment)
+
         return True, msg
+
+    def _export_signal_queue(self, direction, entry, sl, tp, comment):
+        """Append fired signal ke signal_queue.json → dibaca signal_annotator.mjs."""
+        queue_file = "signal_queue.json"
+        try:
+            queue = []
+            if os.path.exists(queue_file):
+                with open(queue_file, "r") as f:
+                    queue = json.load(f)
+            queue.append({
+                "id":        int(datetime.now().timestamp()),
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+                "symbol":    self.symbol,
+                "direction": direction,
+                "entry":     round(entry, 2),
+                "sl":        sl,
+                "tp":        tp,
+                "comment":   comment,
+                "drawn":     False,
+            })
+            if len(queue) > 50:           # keep last 50 signals only
+                queue = queue[-50:]
+            with open(queue_file, "w") as f:
+                json.dump(queue, f, indent=2)
+        except Exception:
+            pass  # silent — jangan crash execute_strike

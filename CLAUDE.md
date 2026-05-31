@@ -1,5 +1,5 @@
 # CLAUDE.md — Sultan Sniper Engine
-**Owner:** Dadang Wahyuono (Bonker / Commander Dadang)  
+**Owner:** Dadang Wahyuono (Commander Dadang)  
 **Instrument:** XAUUSD CFD  
 **Engine:** Chain Reaction v4.0 OVERLORD
 

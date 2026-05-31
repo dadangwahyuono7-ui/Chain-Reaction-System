@@ -1,0 +1,490 @@
+// ═══════════════════════════════════════════════════════════════════════════
+//  DD — CMP Marker v5  |  Daily Deploy System by Dadang Wahyuono
+//  Pelengkap CMP Engine v6.3 — visual CMP lines + dashboard
+//
+//  PERUBAHAN v5 dari v4:
+//    [1] STORYLINE PANEL — tampilkan jalan cerita fractal per TF
+//        Setiap TF punya storyline: "CMP → VR di TF bawah → CF"
+//        VR = CMP di TF bawahnya = punya storylinenya sendiri
+//
+//    [2] ACTIVE CMP INDICATOR — TF mana yang sedang diuji VR sekarang
+//        Deteksi: lihat TF mana yang VR → TF atasnya = CMP aktif
+//        Display: highlight TF yang sedang aktif siklus penuh
+//
+//    [3] CONTI STATUS PANEL — 3 jenis CONTI yang valid
+//        Daily CONTI: Daily CMP BO + H4 BELUM VR ke Daily
+//        H4 CONTI: H4 CMP BO + H1 BELUM VR ke H4
+//        H1 CONTI: H1 CMP BO + M30 BELUM VR ke H1
+//        Tiap CONTI tampilkan arah dan SOP entry
+//
+//    [4] TP GUIDE — Left Barrier sebagai TP target per TF
+//        TP expected range: M15=10-20, M30=20-40, H1=40-80, H4=80-150, D=150+
+//
+//  DOKTRIN ABSOLUT (Commander Dadang):
+//    "SETIAP CMP HANYA 1 KALI VR TAPI CF BISA BERKALI KALI"
+//    "VR ADALAH CMP DI TF BAWAHNYA — PUNYA STORYLINE SENDIRI"
+//    "SEMUA STORYLINE BAWAH HARUS SELESAI SEBELUM CMP ATAS JALAN"
+//    "TP = LEFT BARRIER — BUKAN ANGKA BULAT"
+// ═══════════════════════════════════════════════════════════════════════════
+//@version=5
+indicator("DD — CMP Marker v5", shorttitle="DD·CMP·v5", overlay=true, max_lines_count=300, max_labels_count=200)
+
+// ─── INPUTS ──────────────────────────────────────────────────────────────
+i_tbl       = input.bool(true, "Dashboard Utama (CMP/VR/CF)",  group="Tampilan")
+i_storyline = input.bool(true, "Panel Storyline & Conti",       group="Tampilan")
+i_active    = input.bool(true, "Highlight Active CMP TF",       group="Tampilan")
+i_d         = input.bool(true, "Garis CMP Daily",               group="Garis")
+i_h4        = input.bool(true, "Garis CMP H4",                  group="Garis")
+i_h1        = input.bool(true, "Garis CMP H1",                  group="Garis")
+i_m30       = input.bool(true, "Garis CMP M30",                 group="Garis")
+i_m15       = input.bool(true, "Garis CMP M15",                 group="Garis")
+
+// ─── CORE FUNCTION — SAMA PERSIS DENGAN CMP ENGINE v6.3 ─────────────────
+f_get_data() =>
+    var float sup1   = na
+    var float res1   = na
+    var string arah  = "WAIT"
+    var float cmpLvl = na
+
+    isMinorSup = close[1] < open[1] and close > open
+    isMinorRes = close[1] > open[1] and close < open
+
+    if isMinorSup
+        sup1 := math.min(close[1], open[1])
+    if isMinorRes
+        res1 := math.max(close[1], open[1])
+
+    if barstate.isconfirmed
+        if arah == "WAIT"
+            if not na(res1) and close > res1
+                arah   := "BUY"
+                cmpLvl := res1
+            else if not na(sup1) and close < sup1
+                arah   := "SELL"
+                cmpLvl := sup1
+        else if arah == "BUY"
+            if not na(sup1) and close < sup1
+                arah   := "SELL"
+                cmpLvl := sup1
+        else if arah == "SELL"
+            if not na(res1) and close > res1
+                arah   := "BUY"
+                cmpLvl := res1
+
+    [arah, cmpLvl]
+
+// ─── REQUEST SECURITY ────────────────────────────────────────────────────
+[arah_D,   cmpD]   = request.security(syminfo.tickerid, "D",   f_get_data(), lookahead=barmerge.lookahead_off)
+[arah_H4,  cmpH4]  = request.security(syminfo.tickerid, "240", f_get_data(), lookahead=barmerge.lookahead_off)
+[arah_H1,  cmpH1]  = request.security(syminfo.tickerid, "60",  f_get_data(), lookahead=barmerge.lookahead_off)
+[arah_M30, cmpM30] = request.security(syminfo.tickerid, "30",  f_get_data(), lookahead=barmerge.lookahead_off)
+[arah_M15, cmpM15] = request.security(syminfo.tickerid, "15",  f_get_data(), lookahead=barmerge.lookahead_off)
+[arah_M5,  cmpM5]  = request.security(syminfo.tickerid, "5",   f_get_data(), lookahead=barmerge.lookahead_off)
+[arah_M1,  cmpM1]  = request.security(syminfo.tickerid, "1",   f_get_data(), lookahead=barmerge.lookahead_off)
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────
+f_derivePhase(arah_self, vrSeen, arah_vr, arah_high, has_high) =>
+    if arah_self == "WAIT"
+        0
+    else if not vrSeen
+        1
+    else if arah_vr == arah_self
+        4
+    else if has_high and arah_high == arah_self
+        3
+    else
+        2
+
+f_cfStr(phase, count, dir) =>
+    if phase == 4
+        dir + " LOW #" + str.tostring(count)
+    else if phase == 3
+        dir + " HIGH #" + str.tostring(count)
+    else
+        "–"
+
+f_actStr(phase, count) =>
+    if phase == 1
+        "MENUNGGU VR"
+    else if phase == 2
+        count > 0 ? "MENUNGGU CF #" + str.tostring(count + 1) : "MENUNGGU CF"
+    else if phase == 3
+        "ENTRI ⚡ HIGH #" + str.tostring(count)
+    else if phase == 4
+        "ENTRI ✅ LOW #" + str.tostring(count)
+    else
+        "–"
+
+// ─── PERSISTENT STATE ────────────────────────────────────────────────────
+var string prevArah_D   = "WAIT"
+var string prevArah_H4  = "WAIT"
+var string prevArah_H1  = "WAIT"
+var string prevArah_M30 = "WAIT"
+var string prevArah_M15 = "WAIT"
+
+var int  phase_D    = 0
+var int  phase_H4   = 0
+var int  phase_H1   = 0
+var int  phase_M30  = 0
+var int  phase_M15  = 0
+
+var int  cfCnt_D    = 0
+var int  cfCnt_H4   = 0
+var int  cfCnt_H1   = 0
+var int  cfCnt_M30  = 0
+var int  cfCnt_M15  = 0
+
+var bool vrSeen_D   = false
+var bool vrSeen_H4  = false
+var bool vrSeen_H1  = false
+var bool vrSeen_M30 = false
+var bool vrSeen_M15 = false
+
+if barstate.isconfirmed
+
+    // ── DAILY: vr=H4, cf_high=H1 ──────────────────────────────────────────
+    if arah_D != prevArah_D
+        prevArah_D := arah_D
+        vrSeen_D   := false
+        cfCnt_D    := 0
+        phase_D    := arah_D == "WAIT" ? 0 : 1
+    if arah_D != "WAIT"
+        if not vrSeen_D and arah_H4 != "WAIT" and arah_H4 != arah_D
+            vrSeen_D := true
+        np_D = f_derivePhase(arah_D, vrSeen_D, arah_H4, arah_H1, true)
+        if phase_D <= 2 and np_D >= 3
+            cfCnt_D := cfCnt_D + 1
+        phase_D := np_D
+
+    // ── H4: vr=H1, cf_high=M30 ────────────────────────────────────────────
+    if arah_H4 != prevArah_H4
+        prevArah_H4 := arah_H4
+        vrSeen_H4   := false
+        cfCnt_H4    := 0
+        phase_H4    := arah_H4 == "WAIT" ? 0 : 1
+    if arah_H4 != "WAIT"
+        if not vrSeen_H4 and arah_H1 != "WAIT" and arah_H1 != arah_H4
+            vrSeen_H4 := true
+        np_H4 = f_derivePhase(arah_H4, vrSeen_H4, arah_H1, arah_M30, true)
+        if phase_H4 <= 2 and np_H4 >= 3
+            cfCnt_H4 := cfCnt_H4 + 1
+        phase_H4 := np_H4
+
+    // ── H1: vr=M30, cf_high=M15 ───────────────────────────────────────────
+    if arah_H1 != prevArah_H1
+        prevArah_H1 := arah_H1
+        vrSeen_H1   := false
+        cfCnt_H1    := 0
+        phase_H1    := arah_H1 == "WAIT" ? 0 : 1
+    if arah_H1 != "WAIT"
+        if not vrSeen_H1 and arah_M30 != "WAIT" and arah_M30 != arah_H1
+            vrSeen_H1 := true
+        np_H1 = f_derivePhase(arah_H1, vrSeen_H1, arah_M30, arah_M15, true)
+        if phase_H1 <= 2 and np_H1 >= 3
+            cfCnt_H1 := cfCnt_H1 + 1
+        phase_H1 := np_H1
+
+    // ── M30: vr=M15, cf_high=M5 ───────────────────────────────────────────
+    if arah_M30 != prevArah_M30
+        prevArah_M30 := arah_M30
+        vrSeen_M30   := false
+        cfCnt_M30    := 0
+        phase_M30    := arah_M30 == "WAIT" ? 0 : 1
+    if arah_M30 != "WAIT"
+        if not vrSeen_M30 and arah_M15 != "WAIT" and arah_M15 != arah_M30
+            vrSeen_M30 := true
+        np_M30 = f_derivePhase(arah_M30, vrSeen_M30, arah_M15, arah_M5, true)
+        if phase_M30 <= 2 and np_M30 >= 3
+            cfCnt_M30 := cfCnt_M30 + 1
+        phase_M30 := np_M30
+
+    // ── M15: vr=M5, cf_high=NONE ──────────────────────────────────────────
+    if arah_M15 != prevArah_M15
+        prevArah_M15 := arah_M15
+        vrSeen_M15   := false
+        cfCnt_M15    := 0
+        phase_M15    := arah_M15 == "WAIT" ? 0 : 1
+    if arah_M15 != "WAIT"
+        if not vrSeen_M15 and arah_M5 != "WAIT" and arah_M5 != arah_M15
+            vrSeen_M15 := true
+        np_M15 = f_derivePhase(arah_M15, vrSeen_M15, arah_M5, "WAIT", false)
+        if phase_M15 <= 2 and np_M15 >= 3
+            cfCnt_M15 := cfCnt_M15 + 1
+        phase_M15 := np_M15
+
+// ─── CMP LINE DRAWING ─────────────────────────────────────────────────────
+var string prev_D   = "WAIT"
+var string prev_H4  = "WAIT"
+var string prev_H1  = "WAIT"
+var string prev_M30 = "WAIT"
+var string prev_M15 = "WAIT"
+
+var line ln_D   = na
+var line ln_H4  = na
+var line ln_H1  = na
+var line ln_M30 = na
+var line ln_M15 = na
+
+f_drawCmp(arah, cmpLvl, prevArah, ln, colBuy, colSell, w) =>
+    var line myLn = ln
+    changed = arah != prevArah and arah != "WAIT" and not na(cmpLvl)
+    if changed
+        if not na(myLn)
+            line.set_color(myLn, color.new(#888888, 60))
+            line.set_width(myLn, 1)
+            line.set_style(myLn, line.style_dashed)
+            line.set_extend(myLn, extend.none)
+        col = arah == "BUY" ? colBuy : colSell
+        myLn := line.new(bar_index, cmpLvl, bar_index, cmpLvl, color=col, width=w, style=line.style_solid, extend=extend.right)
+    myLn
+
+if i_d
+    ln_D   := f_drawCmp(arah_D,   cmpD,   prev_D,   ln_D,   #FFD700, #FF6B6B, 3)
+if i_h4
+    ln_H4  := f_drawCmp(arah_H4,  cmpH4,  prev_H4,  ln_H4,  #00E676, #FF3B30, 2)
+if i_h1
+    ln_H1  := f_drawCmp(arah_H1,  cmpH1,  prev_H1,  ln_H1,  #00C7BE, #FF9F0A, 2)
+if i_m30
+    ln_M30 := f_drawCmp(arah_M30, cmpM30, prev_M30, ln_M30, #30D158, #FF453A, 1)
+if i_m15
+    ln_M15 := f_drawCmp(arah_M15, cmpM15, prev_M15, ln_M15, #64D2FF, #BF5AF2, 1)
+
+if barstate.isconfirmed
+    prev_D   := arah_D
+    prev_H4  := arah_H4
+    prev_H1  := arah_H1
+    prev_M30 := arah_M30
+    prev_M15 := arah_M15
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  DASHBOARD v5
+// ═══════════════════════════════════════════════════════════════════════════
+if barstate.islast
+
+    // ── Compute Active CMP (TF mana yang sedang diuji VR) ─────────────────
+    // Jika M5 berlawanan dengan M15 → M15 sedang diuji = M15 CMP AKTIF
+    // Jika M15 berlawanan dengan M30 → M30 sedang diuji = M30 CMP AKTIF
+    // dst.
+    activeCmp  = arah_M5 != "WAIT" and arah_M5 != arah_M15 ? "M15" : arah_M15 != "WAIT" and arah_M15 != arah_M30 ? "M30" : arah_M30 != "WAIT" and arah_M30 != arah_H1 ? "H1" : arah_H1 != "WAIT" and arah_H1 != arah_H4 ? "H4" : arah_H4 != "WAIT" and arah_H4 != arah_D ? "Daily" : "–"
+    activeDir  = activeCmp == "M15" ? arah_M15 : activeCmp == "M30" ? arah_M30 : activeCmp == "H1" ? arah_H1 : activeCmp == "H4" ? arah_H4 : activeCmp == "Daily" ? arah_D : "–"
+    vrFromStr  = activeCmp == "M15" ? "VR dari M5" : activeCmp == "M30" ? "VR dari M15" : activeCmp == "H1" ? "VR dari M30" : activeCmp == "H4" ? "VR dari H1" : activeCmp == "Daily" ? "VR dari H4" : "–"
+
+    // VR kekuatan (dari TF paling kecil yang VR)
+    vrFrom    = arah_M1 != "WAIT" and arah_M1 != arah_M5 ? "M1" : arah_M5 != "WAIT" and arah_M5 != arah_M15 ? "M5" : arah_M15 != "WAIT" and arah_M15 != arah_M30 ? "M15" : arah_M30 != "WAIT" and arah_M30 != arah_H1 ? "M30" : arah_H1 != "WAIT" and arah_H1 != arah_H4 ? "H1" : "–"
+    kekuatan  = vrFrom == "M1" ? "⚡⚡⚡ MAX" : vrFrom == "M5" ? "⚡⚡ KUAT" : vrFrom == "M15" ? "⚡ MODERAT" : vrFrom == "M30" ? "MELEMAH" : vrFrom == "H1" ? "LEMAH" : "–"
+
+    // ── Compute CONTI Status ───────────────────────────────────────────────
+    // Daily CONTI valid = Daily punya CMP + H4 BELUM berlawanan dengan Daily
+    dailyContiOk = arah_D != "WAIT" and not (arah_H4 != "WAIT" and arah_H4 != arah_D)
+    // H4 CONTI valid = H4 punya CMP + H1 BELUM berlawanan dengan H4
+    h4ContiOk    = arah_H4 != "WAIT" and not (arah_H1 != "WAIT" and arah_H1 != arah_H4)
+    // H1 CONTI valid = H1 punya CMP + M30 BELUM berlawanan dengan H1
+    h1ContiOk    = arah_H1 != "WAIT" and not (arah_M30 != "WAIT" and arah_M30 != arah_H1)
+
+    dailyContiStr = dailyContiOk ? "✅ " + arah_D + " — entry H1" : "❌ H4 sudah VR"
+    h4ContiStr    = h4ContiOk    ? "✅ " + arah_H4 + " — entry M30" : "❌ H1 sudah VR"
+    h1ContiStr    = h1ContiOk    ? "✅ " + arah_H1 + " — entry M15" : "❌ M30 sudah VR"
+
+    dailyContiCol = dailyContiOk ? (arah_D == "BUY" ? color.green : color.red) : color.new(color.gray, 50)
+    h4ContiCol    = h4ContiOk    ? (arah_H4 == "BUY" ? color.green : color.red) : color.new(color.gray, 50)
+    h1ContiCol    = h1ContiOk    ? (arah_H1 == "BUY" ? color.green : color.red) : color.new(color.gray, 50)
+
+    // ── Storyline per TF ──────────────────────────────────────────────────
+    // Format: "CMP → VR [TF bawah] → CF [TF LowRisk]"
+    storyD   = arah_D   == "WAIT" ? "–" : arah_D   + " → VR H4 → CF H4"
+    storyH4  = arah_H4  == "WAIT" ? "–" : arah_H4  + " → VR H1 → CF H1/M30"
+    storyH1  = arah_H1  == "WAIT" ? "–" : arah_H1  + " → VR M30 → CF M30/M15"
+    storyM30 = arah_M30 == "WAIT" ? "–" : arah_M30 + " → VR M15 → CF M15/M5"
+    storyM15 = arah_M15 == "WAIT" ? "–" : arah_M15 + " → VR M5 → CF M5"
+
+    // Progress dalam storyline
+    progD   = phase_D   == 0 ? "WAIT" : phase_D   == 1 ? "① tunggu VR H4" : phase_D   == 2 ? "② VR✓ tunggu CF" : "③ CF AKTIF ✅"
+    progH4  = phase_H4  == 0 ? "WAIT" : phase_H4  == 1 ? "① tunggu VR H1" : phase_H4  == 2 ? "② VR✓ tunggu CF" : "③ CF AKTIF ✅"
+    progH1  = phase_H1  == 0 ? "WAIT" : phase_H1  == 1 ? "① tunggu VR M30": phase_H1  == 2 ? "② VR✓ tunggu CF" : "③ CF AKTIF ✅"
+    progM30 = phase_M30 == 0 ? "WAIT" : phase_M30 == 1 ? "① tunggu VR M15": phase_M30 == 2 ? "② VR✓ tunggu CF" : "③ CF AKTIF ✅"
+    progM15 = phase_M15 == 0 ? "WAIT" : phase_M15 == 1 ? "① tunggu VR M5" : phase_M15 == 2 ? "② VR✓ tunggu CF" : "③ CF AKTIF ✅"
+
+    // TP guide strings
+    tpD   = arah_D   == "WAIT" ? "–" : "TP: 150+ pts"
+    tpH4  = arah_H4  == "WAIT" ? "–" : "TP: 80-150 pts"
+    tpH1  = arah_H1  == "WAIT" ? "–" : "TP: 40-80 pts"
+    tpM30 = arah_M30 == "WAIT" ? "–" : "TP: 20-40 pts"
+    tpM15 = arah_M15 == "WAIT" ? "–" : "TP: 10-20 pts ⚡"
+
+    // ── Warna ─────────────────────────────────────────────────────────────
+    color cD   = arah_D   == "BUY" ? color.green : arah_D   == "SELL" ? color.red : color.gray
+    color cH4  = arah_H4  == "BUY" ? color.green : arah_H4  == "SELL" ? color.red : color.gray
+    color cH1  = arah_H1  == "BUY" ? color.green : arah_H1  == "SELL" ? color.red : color.gray
+    color cM30 = arah_M30 == "BUY" ? color.green : arah_M30 == "SELL" ? color.red : color.gray
+    color cM15 = arah_M15 == "BUY" ? color.green : arah_M15 == "SELL" ? color.red : color.gray
+    color cM5  = arah_M5  == "BUY" ? color.green : arah_M5  == "SELL" ? color.red : color.gray
+    color cM1  = arah_M1  == "BUY" ? color.green : arah_M1  == "SELL" ? color.red : color.gray
+
+    color aD   = phase_D   >= 4 ? (arah_D   == "BUY" ? color.green : color.red) : phase_D   == 3 ? color.orange : phase_D   == 2 ? #FFD60A : color.gray
+    color aH4  = phase_H4  >= 4 ? (arah_H4  == "BUY" ? color.green : color.red) : phase_H4  == 3 ? color.orange : phase_H4  == 2 ? #FFD60A : color.gray
+    color aH1  = phase_H1  >= 4 ? (arah_H1  == "BUY" ? color.green : color.red) : phase_H1  == 3 ? color.orange : phase_H1  == 2 ? #FFD60A : color.gray
+    color aM30 = phase_M30 >= 4 ? (arah_M30 == "BUY" ? color.green : color.red) : phase_M30 == 3 ? color.orange : phase_M30 == 2 ? #FFD60A : color.gray
+    color aM15 = phase_M15 >= 4 ? (arah_M15 == "BUY" ? color.green : color.red) : phase_M15 == 3 ? color.orange : phase_M15 == 2 ? #FFD60A : color.gray
+
+    // VR label
+    string vr_D   = vrSeen_D   ? "BREAK H4"  : "–"
+    string vr_H4  = vrSeen_H4  ? "BREAK H1"  : "–"
+    string vr_H1  = vrSeen_H1  ? "BREAK M30" : "–"
+    string vr_M30 = vrSeen_M30 ? "BREAK M15" : "–"
+    string vr_M15 = vrSeen_M15 ? "BREAK M5"  : "–"
+
+    string cf_D   = f_cfStr(phase_D,   cfCnt_D,   arah_D)
+    string cf_H4  = f_cfStr(phase_H4,  cfCnt_H4,  arah_H4)
+    string cf_H1  = f_cfStr(phase_H1,  cfCnt_H1,  arah_H1)
+    string cf_M30 = f_cfStr(phase_M30, cfCnt_M30, arah_M30)
+    string cf_M15 = f_cfStr(phase_M15, cfCnt_M15, arah_M15)
+
+    string act_D   = f_actStr(phase_D,   cfCnt_D)
+    string act_H4  = f_actStr(phase_H4,  cfCnt_H4)
+    string act_H1  = f_actStr(phase_H1,  cfCnt_H1)
+    string act_M30 = f_actStr(phase_M30, cfCnt_M30)
+    string act_M15 = f_actStr(phase_M15, cfCnt_M15)
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  TABEL 1: DASHBOARD UTAMA (kiri atas) — sama seperti v4
+    // ══════════════════════════════════════════════════════════════════════
+    if i_tbl
+        var table tbl = table.new(position.top_left, 5, 10, bgcolor=color.new(color.black, 10), border_color=color.blue, border_width=2, frame_color=color.blue, frame_width=2)
+
+        table.cell(tbl, 0, 0, "⏱ TF",      text_color=color.white, bgcolor=color.navy,    text_size=size.small)
+        table.cell(tbl, 1, 0, "📊 CMP",    text_color=color.white, bgcolor=color.maroon,  text_size=size.small)
+        table.cell(tbl, 2, 0, "🔄 VR",     text_color=color.white, bgcolor=color.orange,  text_size=size.small)
+        table.cell(tbl, 3, 0, "✅ CF",     text_color=color.white, bgcolor=color.teal,    text_size=size.small)
+        table.cell(tbl, 4, 0, "🚀 ACTION", text_color=color.white, bgcolor=color.purple,  text_size=size.small)
+
+        // Daily
+        table.cell(tbl, 0, 1, "Daily",   text_color=color.white, bgcolor=color.navy,    text_size=size.small)
+        table.cell(tbl, 1, 1, arah_D,    text_color=color.white, bgcolor=cD,            text_size=size.small)
+        table.cell(tbl, 2, 1, vr_D,      text_color=vr_D=="–"?#555555:#FFD60A,           bgcolor=color.new(color.black,30), text_size=size.tiny)
+        table.cell(tbl, 3, 1, cf_D,      text_color=cf_D=="–"?#555555:str.contains(cf_D,"LOW")?#00E676:#FF9F0A, bgcolor=color.new(color.black,30), text_size=size.tiny)
+        table.cell(tbl, 4, 1, act_D,     text_color=color.white, bgcolor=aD,            text_size=size.tiny)
+
+        // H4
+        table.cell(tbl, 0, 2, "H4",      text_color=color.white, bgcolor=color.purple,  text_size=size.small)
+        table.cell(tbl, 1, 2, arah_H4,   text_color=color.white, bgcolor=cH4,           text_size=size.small)
+        table.cell(tbl, 2, 2, vr_H4,     text_color=vr_H4=="–"?#555555:#FFD60A,          bgcolor=color.new(color.black,30), text_size=size.tiny)
+        table.cell(tbl, 3, 2, cf_H4,     text_color=cf_H4=="–"?#555555:str.contains(cf_H4,"LOW")?#00E676:#FF9F0A, bgcolor=color.new(color.black,30), text_size=size.tiny)
+        table.cell(tbl, 4, 2, act_H4,    text_color=color.white, bgcolor=aH4,           text_size=size.tiny)
+
+        // H1
+        table.cell(tbl, 0, 3, "H1",      text_color=color.white, bgcolor=color.teal,    text_size=size.small)
+        table.cell(tbl, 1, 3, arah_H1,   text_color=color.white, bgcolor=cH1,           text_size=size.small)
+        table.cell(tbl, 2, 3, vr_H1,     text_color=vr_H1=="–"?#555555:#FFD60A,          bgcolor=color.new(color.black,30), text_size=size.tiny)
+        table.cell(tbl, 3, 3, cf_H1,     text_color=cf_H1=="–"?#555555:str.contains(cf_H1,"LOW")?#00E676:#FF9F0A, bgcolor=color.new(color.black,30), text_size=size.tiny)
+        table.cell(tbl, 4, 3, act_H1,    text_color=color.white, bgcolor=aH1,           text_size=size.tiny)
+
+        // M30
+        table.cell(tbl, 0, 4, "M30",     text_color=color.white, bgcolor=color.orange,  text_size=size.small)
+        table.cell(tbl, 1, 4, arah_M30,  text_color=color.white, bgcolor=cM30,          text_size=size.small)
+        table.cell(tbl, 2, 4, vr_M30,    text_color=vr_M30=="–"?#555555:#FFD60A,         bgcolor=color.new(color.black,30), text_size=size.tiny)
+        table.cell(tbl, 3, 4, cf_M30,    text_color=cf_M30=="–"?#555555:str.contains(cf_M30,"LOW")?#00E676:#FF9F0A, bgcolor=color.new(color.black,30), text_size=size.tiny)
+        table.cell(tbl, 4, 4, act_M30,   text_color=color.white, bgcolor=aM30,          text_size=size.tiny)
+
+        // M15 (entry TF utama)
+        table.cell(tbl, 0, 5, "M15 ★",   text_color=color.white, bgcolor=color.fuchsia, text_size=size.small)
+        table.cell(tbl, 1, 5, arah_M15,  text_color=color.white, bgcolor=cM15,          text_size=size.normal)
+        table.cell(tbl, 2, 5, vr_M15,    text_color=vr_M15=="–"?#555555:#FFD60A,         bgcolor=color.new(cM15,70), text_size=size.tiny)
+        table.cell(tbl, 3, 5, cf_M15,    text_color=cf_M15=="–"?#555555:str.contains(cf_M15,"LOW")?#00E676:#FF9F0A, bgcolor=color.new(cM15,70), text_size=size.tiny)
+        table.cell(tbl, 4, 5, act_M15,   text_color=color.white, bgcolor=aM15,          text_size=size.small)
+
+        // M5 monitor
+        table.cell(tbl, 0, 6, "M5",      text_color=#FFD60A, bgcolor=color.new(color.black,30), text_size=size.small)
+        table.cell(tbl, 1, 6, arah_M5,   text_color=color.white, bgcolor=cM5,            text_size=size.small)
+        table.cell(tbl, 2, 6, "–",       text_color=#555555, bgcolor=color.new(color.black,30), text_size=size.tiny)
+        table.cell(tbl, 3, 6, "–",       text_color=#555555, bgcolor=color.new(color.black,30), text_size=size.tiny)
+        table.cell(tbl, 4, 6, "MONITOR", text_color=#FFD60A, bgcolor=color.new(color.black,30), text_size=size.tiny)
+
+        // M1 monitor
+        table.cell(tbl, 0, 7, "M1",      text_color=#FFD60A, bgcolor=color.new(color.black,30), text_size=size.small)
+        table.cell(tbl, 1, 7, arah_M1,   text_color=color.white, bgcolor=cM1,            text_size=size.small)
+        table.cell(tbl, 2, 7, "–",       text_color=#555555, bgcolor=color.new(color.black,30), text_size=size.tiny)
+        table.cell(tbl, 3, 7, "–",       text_color=#555555, bgcolor=color.new(color.black,30), text_size=size.tiny)
+        table.cell(tbl, 4, 7, "MONITOR", text_color=#FFD60A, bgcolor=color.new(color.black,30), text_size=size.tiny)
+
+        // Active CMP row
+        activeColor = activeDir == "BUY" ? color.new(color.green,20) : activeDir == "SELL" ? color.new(color.red,20) : color.new(color.black,20)
+        table.cell(tbl, 0, 8, "🎯 AKTIF:", text_color=#AAAAAA, bgcolor=color.new(color.black,20), text_size=size.tiny)
+        table.cell(tbl, 1, 8, activeCmp,   text_color=#FFD60A, bgcolor=activeColor,              text_size=size.small)
+        table.cell(tbl, 2, 8, vrFromStr,   text_color=#FFD60A, bgcolor=activeColor,              text_size=size.tiny)
+        table.cell(tbl, 3, 8, kekuatan,    text_color=#FFD60A, bgcolor=color.new(color.black,20), text_size=size.tiny)
+        table.cell(tbl, 4, 8, "",          text_color=color.gray, bgcolor=color.new(color.black,20), text_size=size.tiny)
+
+        // Footer
+        table.cell(tbl, 0, 9, "v5",       text_color=#FFD60A, bgcolor=color.new(color.black,20), text_size=size.tiny)
+        table.cell(tbl, 1, 9, "M1 MON",   text_color=#FFD60A, bgcolor=color.new(color.black,20), text_size=size.tiny)
+        table.cell(tbl, 2, 9, "CF flip✓", text_color=#00E676, bgcolor=color.new(color.black,20), text_size=size.tiny)
+        table.cell(tbl, 3, 9, "CF count", text_color=#FFD60A, bgcolor=color.new(color.black,20), text_size=size.tiny)
+        table.cell(tbl, 4, 9, "Storyline", text_color=#BF5AF2, bgcolor=color.new(color.black,20), text_size=size.tiny)
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  TABEL 2: STORYLINE + CONTI (kanan atas)
+    // ══════════════════════════════════════════════════════════════════════
+    if i_storyline
+        var table tbl2 = table.new(position.top_right, 3, 12, bgcolor=color.new(color.black, 10), border_color=#BF5AF2, border_width=2, frame_color=#BF5AF2, frame_width=2)
+
+        // Header Storyline
+        table.cell(tbl2, 0, 0, "⏱ TF",       text_color=color.white, bgcolor=#1a0033, text_size=size.small)
+        table.cell(tbl2, 1, 0, "📖 STORYLINE", text_color=color.white, bgcolor=#1a0033, text_size=size.small)
+        table.cell(tbl2, 2, 0, "📍 PROGRESS",  text_color=color.white, bgcolor=#1a0033, text_size=size.small)
+
+        // Storyline per TF
+        color pD   = phase_D   >= 3 ? color.new(color.green,20) : phase_D   == 2 ? color.new(#FFD60A,60) : color.new(color.black,30)
+        color pH4  = phase_H4  >= 3 ? color.new(color.green,20) : phase_H4  == 2 ? color.new(#FFD60A,60) : color.new(color.black,30)
+        color pH1  = phase_H1  >= 3 ? color.new(color.green,20) : phase_H1  == 2 ? color.new(#FFD60A,60) : color.new(color.black,30)
+        color pM30 = phase_M30 >= 3 ? color.new(color.green,20) : phase_M30 == 2 ? color.new(#FFD60A,60) : color.new(color.black,30)
+        color pM15 = phase_M15 >= 3 ? color.new(color.green,20) : phase_M15 == 2 ? color.new(#FFD60A,60) : color.new(color.black,30)
+
+        table.cell(tbl2, 0, 1, "Daily",   text_color=color.white, bgcolor=color.new(color.navy,20),   text_size=size.small)
+        table.cell(tbl2, 1, 1, storyD,    text_color=cD,          bgcolor=color.new(color.black,30),  text_size=size.tiny)
+        table.cell(tbl2, 2, 1, progD,     text_color=color.white, bgcolor=pD,                         text_size=size.tiny)
+
+        table.cell(tbl2, 0, 2, "H4",      text_color=color.white, bgcolor=color.new(color.purple,20), text_size=size.small)
+        table.cell(tbl2, 1, 2, storyH4,   text_color=cH4,         bgcolor=color.new(color.black,30),  text_size=size.tiny)
+        table.cell(tbl2, 2, 2, progH4,    text_color=color.white, bgcolor=pH4,                        text_size=size.tiny)
+
+        table.cell(tbl2, 0, 3, "H1",      text_color=color.white, bgcolor=color.new(color.teal,20),   text_size=size.small)
+        table.cell(tbl2, 1, 3, storyH1,   text_color=cH1,         bgcolor=color.new(color.black,30),  text_size=size.tiny)
+        table.cell(tbl2, 2, 3, progH1,    text_color=color.white, bgcolor=pH1,                        text_size=size.tiny)
+
+        table.cell(tbl2, 0, 4, "M30",     text_color=color.white, bgcolor=color.new(color.orange,20), text_size=size.small)
+        table.cell(tbl2, 1, 4, storyM30,  text_color=cM30,        bgcolor=color.new(color.black,30),  text_size=size.tiny)
+        table.cell(tbl2, 2, 4, progM30,   text_color=color.white, bgcolor=pM30,                       text_size=size.tiny)
+
+        table.cell(tbl2, 0, 5, "M15",     text_color=color.white, bgcolor=color.new(color.fuchsia,20),text_size=size.small)
+        table.cell(tbl2, 1, 5, storyM15,  text_color=cM15,        bgcolor=color.new(color.black,30),  text_size=size.tiny)
+        table.cell(tbl2, 2, 5, progM15,   text_color=color.white, bgcolor=pM15,                       text_size=size.tiny)
+
+        // Separator
+        table.cell(tbl2, 0, 6, "─────",   text_color=#333333, bgcolor=color.new(color.black,20), text_size=size.tiny)
+        table.cell(tbl2, 1, 6, "──── CONTI ────", text_color=#BF5AF2, bgcolor=color.new(color.black,20), text_size=size.tiny)
+        table.cell(tbl2, 2, 6, "─────",   text_color=#333333, bgcolor=color.new(color.black,20), text_size=size.tiny)
+
+        // Header CONTI
+        table.cell(tbl2, 0, 7, "CONTI",      text_color=#BF5AF2, bgcolor=color.new(#1a0033,20), text_size=size.small)
+        table.cell(tbl2, 1, 7, "STATUS",      text_color=color.white, bgcolor=color.new(#1a0033,20), text_size=size.small)
+        table.cell(tbl2, 2, 7, "TP TARGET",   text_color=color.white, bgcolor=color.new(#1a0033,20), text_size=size.small)
+
+        // Daily CONTI
+        table.cell(tbl2, 0, 8, "D→H1",      text_color=color.white, bgcolor=color.new(color.navy,20),    text_size=size.small)
+        table.cell(tbl2, 1, 8, dailyContiStr, text_color=color.white, bgcolor=dailyContiCol,              text_size=size.tiny)
+        table.cell(tbl2, 2, 8, "150+ pts",   text_color=dailyContiOk?color.green:color.gray, bgcolor=color.new(color.black,30), text_size=size.tiny)
+
+        // H4 CONTI
+        table.cell(tbl2, 0, 9, "H4→M30",    text_color=color.white, bgcolor=color.new(color.purple,20),  text_size=size.small)
+        table.cell(tbl2, 1, 9, h4ContiStr,   text_color=color.white, bgcolor=h4ContiCol,                  text_size=size.tiny)
+        table.cell(tbl2, 2, 9, "80-150 pts", text_color=h4ContiOk?color.green:color.gray, bgcolor=color.new(color.black,30), text_size=size.tiny)
+
+        // H1 CONTI
+        table.cell(tbl2, 0, 10, "H1→M15",   text_color=color.white, bgcolor=color.new(color.teal,20),    text_size=size.small)
+        table.cell(tbl2, 1, 10, h1ContiStr,  text_color=color.white, bgcolor=h1ContiCol,                  text_size=size.tiny)
+        table.cell(tbl2, 2, 10, "10-30 pts", text_color=h1ContiOk?color.green:color.gray, bgcolor=color.new(color.black,30), text_size=size.tiny)
+
+        // Footer
+        table.cell(tbl2, 0, 11, "v5",        text_color=#BF5AF2, bgcolor=color.new(color.black,20), text_size=size.tiny)
+        table.cell(tbl2, 1, 11, "TP=Left Barrier", text_color=#FFD60A, bgcolor=color.new(color.black,20), text_size=size.tiny)
+        table.cell(tbl2, 2, 11, "Dadang ©",  text_color=#555555, bgcolor=color.new(color.black,20), text_size=size.tiny)

@@ -1,0 +1,220 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* ══ REDESIGN v2 — Clean Institutional tokens & base polish ══════════════ */
+:root {
+  --cr-bg:       #0a0e16;
+  --cr-surface:  #111722;
+  --cr-surface2: #161d2b;
+  --cr-border:   #1e2733;
+  --cr-border-hi:#2a3647;
+  --cr-text:     #e2e8f0;
+  --cr-text-dim: #94a3b8;
+  --cr-text-mute:#64748b;
+  --cr-primary:  #4f7cff;
+  --cr-buy:      #10b981;
+  --cr-sell:     #f43f5e;
+  --cr-warn:     #f59e0b;
+  --cr-signal:   #fbbf24;
+}
+
+/* Base premium: smoothing + subtle radial depth pada slate base */
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body {
+  background-color: var(--cr-bg);
+  background-image:
+    radial-gradient(1200px 600px at 78% -8%, rgba(79,124,255,0.06), transparent 60%),
+    radial-gradient(900px 500px at 8% 108%, rgba(79,124,255,0.04), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* Scrollbar halus institusi (bukan default chunky) */
+* { scrollbar-width: thin; scrollbar-color: #2a3647 transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #233047; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: #324061; background-clip: content-box; }
+
+/* Seleksi teks */
+::selection { background: rgba(79,124,255,0.30); color: #fff; }
+
+/* Util kartu konsisten (dipakai komponen redesign) */
+.cr-card { background: var(--cr-surface); border: 1px solid var(--cr-border); border-radius: 14px; }
+.cr-card-hover:hover { background: var(--cr-surface2); border-color: var(--cr-border-hi); }
+.cr-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+/* ══ GLOBAL PALETTE REMAP (Tailwind v4 color vars) ══════════════════════════
+   Sekali remap → SELURUH dashboard berubah warna tanpa sentuh ribuan class.
+   amber (brand lama) → indigo institusi · zinc → slate kebiruan · cyan → slate-biru.
+   emerald/red (buy/sell) SENGAJA dibiarkan = makna arah tetap. */
+:root {
+  /* amber → indigo (brand & actionable accent) */
+  --color-amber-300: #a5b6ff;
+  --color-amber-400: #7f9cff;
+  --color-amber-500: #4f7cff;
+  --color-amber-600: #3f63d6;
+  --color-amber-700: #324ea8;
+  --color-amber-800: #283f86;
+  --color-amber-900: #1e2f63;
+  --color-amber-950: #131d3e;
+  /* cyan (label panel lama) → slate-biru kalem */
+  --color-cyan-300: #aab8d6;
+  --color-cyan-400: #8aa0c8;
+  --color-cyan-500: #6b82ad;
+  /* zinc → slate kebiruan (base & surface) */
+  --color-zinc-950: #0a0e16;
+  --color-zinc-900: #111722;
+  --color-zinc-800: #1e2733;
+  --color-zinc-700: #2a3647;
+  --color-zinc-600: #475569;
+  --color-zinc-500: #64748b;
+  --color-zinc-400: #94a3b8;
+  --color-zinc-300: #cbd5e1;
+}
+
+/* logo animation */
+@keyframes dp-logo-sweep {
+  0% { transform: translateX(-150%) skewX(-25deg); }
+  25% { transform: translateX(250%) skewX(-25deg); }
+  100% { transform: translateX(250%) skewX(-25deg); }
+}
+@keyframes dp-logo-pulse {
+  0%, 100% { filter: drop-shadow(0 0 10px rgba(16,185,129,0.3)) drop-shadow(0 0 20px rgba(99,145,255,0.15)); }
+  50% { filter: drop-shadow(0 0 20px rgba(16,185,129,0.7)) drop-shadow(0 0 40px rgba(99,145,255,0.3)); }
+}
+.dp-logo-sweep {
+  position: absolute; top: -20%; left: 0; width: 50%; height: 140%; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(16,185,129,0.5), rgba(255,255,255,0.8), rgba(16,185,129,0.5), transparent);
+  animation: dp-logo-sweep 4.5s ease-in-out infinite;
+  mix-blend-mode: overlay;
+}
+.dp-logo-container { animation: dp-logo-pulse 3s ease-in-out infinite; }

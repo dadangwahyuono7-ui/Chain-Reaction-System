@@ -5,6 +5,8 @@ import os
 import random
 import math
 import requests
+import subprocess
+import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import pytz
@@ -19,9 +21,10 @@ from rich.progress import Progress, BarColumn, TextColumn, SpinnerColumn
 from rich.console import Group as RichGroup
 from rich import box as rich_box
 from engine.connection import connect_mt5
-from engine.core import SacredDoctrineAnalyst, DailyDeployAnalyst
+from engine.core import SacredDoctrineAnalyst, DailyDeployAnalyst, FundamentalSNR
 from engine.executor import ChainReactionExecutor
 from engine.ninja_trade import NinjaTradeAnalyst
+from engine.pdb_nom_analyst import PDBAnalyst, NOMAnalyst
 
 console = Console()
 
@@ -127,6 +130,145 @@ def load_settings():
         with open(path, "r") as f:
             return json.load(f)
     return {"auto_trade": False, "lot_size": 0.01, "max_layers": 3, "barrier_limit": 3.5}
+
+def launch_companions():
+    """Auto-launch TradingView (CDP) + scenario_builder + signal_annotator saat main.py start.
+    Semua dibungkus try/except — tidak akan crash main loop jika gagal."""
+    try:
+        base   = os.path.dirname(os.path.abspath(__file__))
+        tv_mcp = os.path.join(base, "tradingview-mcp-jackson")
+
+        # ── 1. Cek apakah CDP sudah aktif ─────────────────────────────
+        cdp_ok = False
+        try:
+            with urllib.request.urlopen("http://localhost:9222/json/version", timeout=2) as r:
+                cdp_ok = (r.status == 200)
+        except Exception:
+            pass
+
+        # ── 2. Launch TradingView jika CDP belum aktif ─────────────────
+        if not cdp_ok:
+            console.print("[cyan]  ◈ TradingView belum aktif — kill & relaunch dengan CDP...[/cyan]")
+            subprocess.run(["taskkill", "/F", "/IM", "TradingView.exe"], capture_output=True)
+            time.sleep(2)
+
+            # Cari TradingView.exe
+            tv_exe = None
+            try:
+                r = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command",
+                     "(Get-AppxPackage -Name '*TradingView*' -ErrorAction SilentlyContinue).InstallLocation"],
+                    capture_output=True, text=True, timeout=10
+                )
+                loc = r.stdout.strip()
+                if loc:
+                    c = os.path.join(loc, "TradingView.exe")
+                    if os.path.exists(c):
+                        tv_exe = c
+            except Exception:
+                pass
+
+            if not tv_exe:
+                for p in [
+                    os.path.join(os.environ.get("LOCALAPPDATA", ""), "TradingView", "TradingView.exe"),
+                    r"C:\Program Files\TradingView\TradingView.exe",
+                ]:
+                    if os.path.exists(p):
+                        tv_exe = p
+                        break
+
+            if tv_exe:
+                console.print(f"[cyan]  ◈ Launching: {os.path.basename(tv_exe)}...[/cyan]")
+                subprocess.Popen(
+                    [tv_exe, "--remote-debugging-port=9222"],
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                )
+                # Tunggu CDP ready (max 90 detik, cek tiap 3 detik)
+                console.print("[cyan]  ◈ Menunggu CDP ready...[/cyan]")
+                for _ in range(30):
+                    time.sleep(3)
+                    try:
+                        with urllib.request.urlopen("http://localhost:9222/json/version", timeout=2) as rr:
+                            if rr.status == 200:
+                                cdp_ok = True
+                                break
+                    except Exception:
+                        pass
+                if cdp_ok:
+                    console.print("[green]  ✓ CDP aktif! Menunggu chart load (15 detik)...[/green]")
+                    time.sleep(15)
+                else:
+                    console.print("[yellow]  ⚠ CDP timeout — lanjut tanpa TradingView[/yellow]")
+            else:
+                console.print("[yellow]  ⚠ TradingView.exe tidak ditemukan — install dulu[/yellow]")
+        else:
+            console.print("[green]  ✓ TradingView CDP sudah aktif di port 9222[/green]")
+
+        # ── 3. Launch scenario_builder + signal_annotator di window baru ──
+        CREATE_NEW_CONSOLE = 0x00000010
+        subprocess.Popen(
+            ["node", "scenario_builder.mjs", "--watch"],
+            cwd=tv_mcp,
+            creationflags=CREATE_NEW_CONSOLE,
+        )
+        time.sleep(1)
+        subprocess.Popen(
+            ["node", "signal_annotator.mjs", "--watch"],
+            cwd=tv_mcp,
+            creationflags=CREATE_NEW_CONSOLE,
+        )
+        console.print("[green]  ✓ Companion scripts launched (scenario + annotator)[/green]")
+        time.sleep(1)
+
+    except Exception as e:
+        console.print(f"[yellow]  ⚠ launch_companions error (non-fatal): {e}[/yellow]")
+
+
+def export_state_snapshot(analyst, dd_analyst, fund_snr, chain_signal=None, dd_signal=None):
+    """Export engine state ke state_snapshot.json untuk TV MCP scripts (draw_snr_engine, morning_brief, tv_bridge)."""
+    try:
+        tick  = mt5.symbol_info_tick("XAUUSD")
+        price = float(tick.bid) if tick else 0.0
+
+        tf_states = {}
+        for name, state in analyst.states.items():
+            tf_states[name] = {
+                "cmp":         state.cmp,
+                "status":      state.status,
+                "sup":         round(state.sup, 2),
+                "res":         round(state.res, 2),
+                "vr_occurred": state.vr_occurred,
+            }
+
+        dd_sigs = []
+        if dd_analyst and hasattr(dd_analyst, "active_signals"):
+            for s in dd_analyst.active_signals:
+                dd_sigs.append({
+                    "layer":  s.get("layer",  ""),
+                    "type":   s.get("type",   ""),
+                    "action": s.get("action", ""),
+                })
+
+        snapshot = {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "symbol":    "XAUUSD",
+            "price":     price,
+            "tf_states": tf_states,
+            "chain_signal": chain_signal,
+            "dd_signals":   dd_sigs,
+            "fund_snr": {
+                "pdh":        round(fund_snr.pdh,        2) if fund_snr else 0,
+                "pdl":        round(fund_snr.pdl,        2) if fund_snr else 0,
+                "pwh":        round(fund_snr.pwh,        2) if fund_snr else 0,
+                "pwl":        round(fund_snr.pwl,        2) if fund_snr else 0,
+                "daily_open": round(fund_snr.daily_open, 2) if fund_snr else 0,
+            },
+        }
+        with open("state_snapshot.json", "w") as f:
+            json.dump(snapshot, f, indent=2)
+    except Exception:
+        pass  # silent — jangan crash main loop
+
 
 def get_session_times():
     now = datetime.now(pytz.utc)
@@ -352,45 +494,26 @@ def get_delta_info(symbol, n_candles=8):
 
 
 def make_layout() -> Layout:
+    """Clean 8-panel layout matching web UI dashboard structure."""
     layout = Layout(name="root")
     layout.split_column(
-        Layout(name="header",  size=4),   # +1 untuk sparkline row
-        Layout(name="main",    ratio=1),
-        Layout(name="ticker",  size=3)
+        Layout(name="header", size=4),
+        Layout(name="main",   ratio=1),
+        Layout(name="ticker", size=3),
     )
-    layout["main"].split_row(Layout(name="side", ratio=1), Layout(name="body", ratio=3))
-    layout["side"].split_column(
-        Layout(name="greeting",  size=3),
-        Layout(name="account",   ratio=2),
-        Layout(name="positions", size=6),
-        Layout(name="stats",     ratio=2),
-        Layout(name="delta",     size=8),   # NEW: DELTA.FLOW panel
-        Layout(name="sentiment", size=5),
+    layout["main"].split_row(
+        Layout(name="left",  ratio=3),
+        Layout(name="right", ratio=1),
     )
-    layout["body"].split_column(
-        Layout(name="intel",        size=3),
-        Layout(name="heatmap_row",  size=12),
-        Layout(name="matrix_row",   ratio=2),
-        Layout(name="liquidity",    size=6),   # restored
-        Layout(name="anim_row",     size=15),
-        Layout(name="news_feed",    size=7),
+    layout["left"].split_column(
+        Layout(name="heatmap", size=14),   # SIGNAL.HEATMAP — TF grid
+        Layout(name="neural",  size=9),    # NEURAL.FLOW — chain nodes
+        Layout(name="delta",   ratio=1),   # DELTA.FLOW — volume pressure
     )
-    layout["heatmap_row"].split_row(
-        Layout(name="heatmap", ratio=5),
-        Layout(name="neural",  ratio=5),
-        Layout(name="ninja",   ratio=4),   # NINJA.TRADE — kolom tersendiri
-    )
-    layout["matrix_row"].split_row(
-        Layout(name="matrix",    ratio=5),
-        Layout(name="bs_matrix", ratio=6)
-    )
-    layout["anim_row"].split_row(
-        Layout(name="equity",  ratio=5),
-        Layout(name="oscillo", ratio=5),
-    )
-    layout["news_feed"].split_row(
-        Layout(name="news", ratio=1),
-        Layout(name="feed", ratio=1)
+    layout["right"].split_column(
+        Layout(name="account",   size=8),  # VAULT.ACCESS — account
+        Layout(name="positions", size=9),  # POSISI.AKTIF — open trades
+        Layout(name="snr",       ratio=1), # SNR.LADDER — key levels
     )
     return layout
 
@@ -431,7 +554,7 @@ def _rain(width, frame):
 
 # ── PANEL BUILDERS ────────────────────────────────────────────────────────────
 
-def build_heatmap_panel(frame, analyst, _cs, h4_dir):
+def build_heatmap_panel(frame, analyst, _cs, h4_dir, signal=None, fund_snr=None, tick_price=0.0):
     """SIGNAL.HEATMAP — 8 TFs × CMP + ROLE + VR + CF grid."""
     BLINK = frame % 2 == 0
     MG = "bright_green"; CC = "bright_cyan"; RD = "bright_red"; GD = "gold1"
@@ -454,14 +577,16 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
 
     t = Table(
         box=rich_box.SIMPLE_HEAD, expand=True, show_edge=False,
-        padding=(0, 1), header_style=f"bold {CC} on grey11",
+        padding=(0, 0), header_style=f"bold {CC} on grey11",
     )
-    t.add_column("TF",   justify="center", width=6)
-    t.add_column("CMP",  justify="center", width=10)
-    t.add_column("ROLE", justify="center", width=13)
-    t.add_column("VR→PARENT", justify="center", width=14)
-    t.add_column("CF",   justify="center", width=12)
-    t.add_column("⊕",    justify="center", width=3)
+    # Ratio columns — Rich distribusi proporsional sesuai lebar panel,
+    # tidak ada fixed width yang bisa overflow dan bikin kolom TF terpotong
+    t.add_column("TF",   justify="center", ratio=1, no_wrap=True)
+    t.add_column("CMP",  justify="center", ratio=2, no_wrap=True)
+    t.add_column("ROLE", justify="center", ratio=3, no_wrap=True)
+    t.add_column("VR",   justify="center", ratio=2, no_wrap=True)
+    t.add_column("CF",   justify="center", ratio=2, no_wrap=True)
+    t.add_column("⊕",    justify="center", ratio=1, no_wrap=True)
 
     tfs = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5"]
     aligned_count = 0
@@ -624,18 +749,34 @@ def build_heatmap_panel(frame, analyst, _cs, h4_dir):
 
         t.add_row(tf_lbl, cmp_cell, role_cell, vr_cell, cf_cell, alg, style=row_style)
 
-    # Summary row
-    sync_col = MG if aligned_count >= 6 else GD if aligned_count >= 4 else RD
-    t.add_row(
-        f"[{DG}]SYNC[/]",
-        f"[{DG}]────────[/]",
-        f"[{DG}]───────────[/]",
-        f"[{DG}]────────────[/]",
-        f"[{DG}]──────────[/]",
-        f"[{sync_col}]{aligned_count}/8[/]",
-    )
+    # ── Semua info ringkas masuk ke panel TITLE — zero extra row, layout aman
+    sync_col  = MG if aligned_count >= 6 else GD if aligned_count >= 4 else RD
+    title_ext = f"  [{sync_col}]{aligned_count}/8[/]"
 
-    return Panel(t, title=_T_local("SIGNAL.HEATMAP"), border_style="magenta", padding=(0, 0))
+    # SNR proximity nearest level
+    if fund_snr and tick_price > 0:
+        prox = fund_snr.check_proximity(tick_price, 8.0)
+        if prox:
+            near  = prox[0]
+            dist  = near["dist"]
+            n_col = RD if dist < 2 else GD if dist < 5 else DG
+            warn  = "⚠" if dist < 2 else "·"
+            pos   = "▲" if near["above"] else "▼"
+            title_ext += f"  [{n_col}]{warn}{pos}{near['name']}:{dist:.1f}$[/]"
+
+    # Grade badge + signal type
+    if signal:
+        sig_type  = signal.get("type", "")
+        grade     = signal.get("grade") or analyst.get_signal_grade(sig_type)
+        grade_col = {"A+": MG, "A": CC, "B": GD, "C": "yellow"}.get(grade, DG)
+        d         = signal.get("action", "")
+        d_col     = MG if d == "BUY" else RD
+        g_badge   = (f"[bold {grade_col}] {grade} [/]" if BLINK
+                     else f"[{grade_col}]{grade}[/]")
+        title_ext += f"  [{d_col}]{d}[/][{DG}]·[/]{g_badge}[{DG}]·{sig_type}[/]"
+
+    return Panel(t, title=_T_local("SIGNAL.HEATMAP") + title_ext,
+                 border_style="magenta", padding=(0, 0))
 
 
 def build_neural_flow_panel(frame, analyst, _cs, h4_dir):
@@ -789,6 +930,92 @@ def build_neural_flow_panel(frame, analyst, _cs, h4_dir):
     _cf_risk_mode = m5_cf_to_m15 and m30_is_vr
     border = ("dark_orange3" if _cf_risk_mode else (MG if BLINK else "green")) if m5_cf else (CC if m15_active else DG)
     return Panel(RichGroup(*lines), title=_T_local("NEURAL.FLOW"), border_style=border, padding=(0, 1))
+
+
+def build_snr_ladder_panel(frame, fund_snr, tick, analyst):
+    """SNR.LADDER — key price levels above and below current price."""
+    BLINK = frame % 2 == 0
+    MG = "bright_green"; RD = "bright_red"; GD = "gold1"
+    DG = "grey62"; BC = "bold bright_cyan"
+
+    def _T_local(label):
+        return f"[{BC}][ {label} ][/{BC}]  [{DG}]{_htag(6)}[/{DG}]"
+
+    cp = tick.bid if tick else 0.0
+    if fund_snr is None or cp == 0.0:
+        return Panel(
+            Text.from_markup(f"  [{DG}]AWAITING PRICE SYNC...[/]"),
+            title=_T_local("SNR.LADDER"), border_style=DG, padding=(0, 1)
+        )
+
+    rn_up   = fund_snr.nearest_round(cp)
+    if rn_up <= cp:
+        rn_up += fund_snr.ROUND_STEP
+    rn_down = rn_up - fund_snr.ROUND_STEP
+
+    raw_levels = [
+        ("PDH",   fund_snr.pdh,        "⭐⭐⭐⭐⭐"),
+        ("PDL",   fund_snr.pdl,        "⭐⭐⭐⭐⭐"),
+        ("PWH",   fund_snr.pwh,        "⭐⭐⭐⭐⭐"),
+        ("PWL",   fund_snr.pwl,        "⭐⭐⭐⭐⭐"),
+        ("D.OPN", fund_snr.daily_open, "⭐⭐⭐⭐ "),
+        ("RN",    rn_up,               "⭐⭐⭐⭐ "),
+        ("RN",    rn_down,             "⭐⭐⭐⭐ "),
+    ]
+    valid  = [(n, v, s) for n, v, s in raw_levels if v > 0 and abs(v - cp) > 0.05]
+    above  = sorted([(n, v, s) for n, v, s in valid if v > cp],  key=lambda x:  x[1])
+    below  = sorted([(n, v, s) for n, v, s in valid if v < cp],  key=lambda x: -x[1])
+
+    lines = []
+    for name, val, stars in above[:5]:
+        dist    = val - cp
+        is_near = dist < 3.0
+        col     = RD if is_near else GD
+        sym     = ("⚡" if BLINK else "!") if is_near else "↑"
+        lines.append(Text.from_markup(
+            f"  [{col}]{sym}[/] [{col}]{name:<6}[/] [white]{val:.2f}[/]"
+            f"  [{DG}]+{dist:.1f}$[/]  [{DG}]{stars}[/]"
+        ))
+
+    # Current price separator
+    h4_dir = analyst.states["H4"].cmp
+    cp_col = MG if h4_dir == "BUY" else RD if h4_dir == "SELL" else GD
+    cp_sym = "▲" if h4_dir == "BUY" else "▼" if h4_dir == "SELL" else "●"
+    if BLINK:
+        lines.append(Text.from_markup(
+            f"[bold white on grey19]  {cp_sym} NOW   {cp:.2f}  ──────────────────────[/]"
+        ))
+    else:
+        lines.append(Text.from_markup(
+            f"  [{cp_col}]{cp_sym}[/] [{cp_col}]NOW   {cp:.2f}[/]  [{DG}]──────────────────────[/]"
+        ))
+
+    for name, val, stars in below[:5]:
+        dist    = cp - val
+        is_near = dist < 3.0
+        col     = MG if is_near else GD
+        sym     = ("⚡" if BLINK else "!") if is_near else "↓"
+        lines.append(Text.from_markup(
+            f"  [{col}]{sym}[/] [{col}]{name:<6}[/] [white]{val:.2f}[/]"
+            f"  [{DG}]-{dist:.1f}$[/]  [{DG}]{stars}[/]"
+        ))
+
+    # ADR bar
+    try:
+        adr_val, adr_used, adr_pct = get_adr_info(fund_snr.symbol)
+        if adr_val is not None:
+            adr_col = MG if (adr_pct or 0) < 50 else "yellow" if (adr_pct or 0) < 80 else RD
+            adr_bar = _bar(int((adr_pct or 0) / 100 * 14), 14, fill_color=adr_col, empty_color="grey19")
+            lines.append(Text(""))
+            lines.append(Text.from_markup(
+                f"  [{DG}]ADR[/] [white]{adr_val:.0f}$[/] {adr_bar} [{adr_col}]{adr_pct:.0f}%[/]"
+            ))
+    except Exception:
+        pass
+
+    border = MG if h4_dir == "BUY" else RD if h4_dir == "SELL" else GD
+    return Panel(RichGroup(*lines), title=_T_local("SNR.LADDER"),
+                 border_style=border, padding=(0, 0))
 
 
 def build_equity_curve_panel(frame, acc):
@@ -1142,7 +1369,8 @@ def build_ninja_panel(frame, ninja_state: dict) -> Panel:
 
 
 def update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame,
-                  ninja_state: dict | None = None):
+                  ninja_state: dict | None = None,
+                  fund_snr=None):
     BLINK = frame % 2 == 0
 
     # ── PALETTE ────────────────────────────────────────────────────────────────
@@ -1161,7 +1389,6 @@ def update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame
         a = addr or _htag(6)
         return f"[{BC}][ {label} ][/{BC}]  [{DG}]{a}[/{DG}]"
 
-    # ── LIVE TICK ──────────────────────────────────────────────────────────────
     # ── LIVE TICK ──────────────────────────────────────────────────────────────
     tick   = mt5.symbol_info_tick(symbol)
     bid    = f"{tick.bid:.2f}" if tick else "──────"
@@ -1203,27 +1430,6 @@ def update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame
         RichGroup(Align.center(header_top), header_bot),
         style=f"bold {theme}", padding=(0, 0)
     ))
-
-    # ── GREETING  (matrix rain) ────────────────────────────────────────────────
-    greeting_rain = _rain(34, frame)
-    greeting_msg  = get_commander_greeting()
-    greeting_body = Text.from_markup(
-        f"{greeting_rain}\n"
-        f"  [{CC}]// {greeting_msg}[/{CC}]"
-    )
-    layout["greeting"].update(Panel(greeting_body, border_style="green", padding=(0, 0)))
-
-    # ── STRATEGIC INTEL MARQUEE ─────────────────────────────────────────────────
-    intel_raw = analyst.get_strategic_forecast()
-    for tag in ["[bold yellow]","[bold green]","[bold cyan]","[bold blue]","[bold magenta]","[/]"]:
-        intel_raw = intel_raw.replace(tag, "")
-    _scroll_src = f"  ◈  {intel_raw}  ◈  "
-    _shift  = (frame // 2) % len(_scroll_src)
-    _scrolled = (_scroll_src[_shift:] + _scroll_src[:_shift])[:130]
-    layout["intel"].update(
-        Panel(Align.center(Text(_scrolled, style=f"bold {GD}")),
-              title=_T("STRATEGIC_INTEL"), border_style=GD, padding=(0, 0))
-    )
 
     # ── ACCOUNT  (VAULT ACCESS) ────────────────────────────────────────────────
     acc = mt5.account_info()
@@ -1274,10 +1480,6 @@ def update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame
     layout["positions"].update(
         Panel(pos_t, title=_T("POSISI.AKTIF"), border_style=pos_border, padding=(0, 0))
     )
-
-    # ── SNIPER.SCOPE  (animated radar — SYS.METRICS diganti) ─────────────────
-    stats = get_real_stats(settings.get("magic_number", 2026))
-    layout["stats"].update(build_sniper_scope_panel(frame, analyst, stats))
 
     # ── DELTA.FLOW  (footprint volume) ────────────────────────────────────────
     dlt      = get_delta_info(symbol)
@@ -1370,419 +1572,19 @@ def update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame
         Panel(dlt_t, title=_T("DELTA.FLOW"), border_style=dlt_border, padding=(0, 0))
     )
 
-    # ── SENTIMENT  (SIGNAL SCAN) ───────────────────────────────────────────────
-    buy_pct, sell_pct = analyst.get_total_sentiment()
-    regime, _         = analyst.get_market_regime()
-    bw = 11
-    b_bar = _bar(int(buy_pct/100*bw),  bw, fill_color=MG,  empty_color="grey19")
-    s_bar = _bar(int(sell_pct/100*bw), bw, fill_color=RD,   empty_color="grey19")
-    dom     = "BUY"  if buy_pct > sell_pct else "SELL"
-    dom_col = MG if dom == "BUY" else RD
-    reg_c   = MG if regime == "TRENDING" else "yellow" if regime == "RANGING" else RD
-    reg_sym = "▲" if regime == "TRENDING" else "≈" if regime == "RANGING" else "⚠"
-    pulse   = f"[blink {dom_col}]◆[/]" if BLINK else f"[{dom_col}]◇[/]"
-    sent_t  = Text.from_markup(
-        f" [{DG}]BUY [/]  {b_bar} [{MG if dom=='BUY' else 'dim'}]{buy_pct:.0f}%[/]\n"
-        f" [{DG}]SELL[/]  {s_bar} [{RD if dom=='SELL' else 'dim'}]{sell_pct:.0f}%[/]\n"
-        f" [{reg_c}]{reg_sym} {regime[:5]}[/]  {pulse} [{dom_col}]{dom}[/]"
-    )
-    layout["sentiment"].update(
-        Panel(sent_t, title=_T("SIGNAL.SCAN"), border_style="magenta", padding=(0, 0))
-    )
+    # ── CHAIN STATUS (shared with heatmap + neural panels) ────────────────────
+    _cs     = analyst.get_chain_status()
+    _h4_dir = analyst.states["H4"].cmp
 
-    # ── CHAIN STATUS (shared) ──────────────────────────────────────────────────
-    _cs      = analyst.get_chain_status()
-    _dir     = _cs["direction"]
-    _opp     = _cs["opposite"]
-    _d_col   = MG if _dir == "BUY" else RD if _dir == "SELL" else "white"
-    cf_fired = _cs["cf_ready"]
-    cf_type  = _cs.get("cf_type", "")
-    _depth   = _cs.get("cascade_depth", 0)
-    _roles   = _cs.get("cascade_roles", {})
-    _h4_dir  = analyst.states["H4"].cmp
-    _h4_col  = MG if _h4_dir == "BUY" else RD if _h4_dir == "SELL" else "white"
-    _d_arr   = "▲" if _h4_dir == "BUY" else "▼" if _h4_dir == "SELL" else "·"
-    _c_arr   = "▼" if _h4_dir == "BUY" else "▲"
-
-    def _tf_chip(tf_name):
-        role = _roles.get(tf_name, "WAIT")
-        if role == "WAIT": return f"[dim]{tf_name}?[/]"
-        if role == "VR":   return f"[{CC}]{tf_name}{_c_arr}[VR][/]"
-        if role == "CF":   return f"[{_h4_col}]{tf_name}{_d_arr}[CF][/]"
-        return f"[{_h4_col}]{tf_name}{_d_arr}[/]"
-
-    cascade_chips = " → ".join(_tf_chip(tf) for tf in ["H1","M30","M15","M5"])
-
-    def _sicon(ok):
-        return (f"[{MG}]▣[/]" if BLINK else f"[green]▣[/]") if ok else f"[{DG}]□[/]"
-
-    s1_ok  = _cs["step1_ok"]
-    s2_ok  = _cs["m15_is_vr"] or _cs["m15_solid"]
-    s3_ok  = cf_fired
-
-    # Step 1: H4 CMP
-    s1_lbl = f"[{_d_col}]{_dir}[/]" if s1_ok else f"[{DG}]──[/]"
-    s1_sub = "H4 direction locked"    if s1_ok else "Tunggu breakout H4"
-
-    # H1 info (bukan gate — H1 belum VR = arah kuat, tetap bisa CONTI)
-    _h1_is_vr = _cs.get("h1_is_vr", False)
-    _h1_is_cf = _cs.get("h1_is_cf", False)
-    if _h1_is_vr:
-        s1b_ok  = True
-        s1b_lbl = f"[blink {CC}]H1 VR[/]" if BLINK else f"[{CC}]H1 VR[/]"
-        s1b_sub = f"H1 VR ke H4 — tunggu M30 CF (H4_CF_HIGH)"
-    elif _h1_is_cf:
-        s1b_ok  = True
-        s1b_lbl = f"[{MG}]H1 CF ✓[/]"
-        s1b_sub = "H1 sudah VR → CF, sub-chain aktif"
-    else:
-        s1b_ok  = True  # bukan blocking — H1 belum VR = CONTI territory
-        s1b_lbl = f"[{MG}]CONTI[/]"
-        s1b_sub = "H4 kuat, H1 belum VR — CONTI entry"
-
-    # Step 2: M15 state
-    if _cs["m15_is_vr"]:
-        s2_lbl = f"[{CC}]VR ACTIVE[/]"; s2_sub = "M15 menguji M30"
-    elif _cs["m15_solid"]:
-        s2_lbl = f"[{MG}]SOLID[/]";     s2_sub = "M15 aligned"
-    else:
-        s2_lbl = f"[{DG}]──[/]";        s2_sub = ""
-
-    # Step 3: CF signal
-    if cf_fired:
-        if cf_type == "H4_CF_HIGH":
-            s3_lbl = f"[blink magenta]H4_CF_HIGH[/]" if BLINK else "[magenta]H4_CF_HIGH[/]"
-            s3_sub = "SL=H1  TP=H4 ⚡"
-        elif cf_type == "MINOR_CF":
-            s3_lbl = f"[blink {MG}]MINOR_CF[/]" if BLINK else f"[{MG}]MINOR_CF[/]"
-            s3_sub = "SL=M5  TP=M15"
-        elif cf_type == "CF_LOW":
-            s3_lbl = f"[blink {MG}]CF_LOW[/]"   if BLINK else f"[{MG}]CF_LOW[/]"
-            s3_sub = "SL=M15 TP=M30"
-        else:
-            s3_lbl = f"[blink yellow]CF_HIGH[/]" if BLINK else "[yellow]CF_HIGH[/]"
-            s3_sub = "SL=M15 TP=M30"
-    else:
-        s3_lbl = f"[{DG}]──[/]"; s3_sub = "Tunggu CF"
-
-    macro_m = _cs.get("macro_role", "SOLID_H4")
-    macro_lbl = (f"[{RD}]M30 VR ke H4 !! BLOCK[/]"       if macro_m == "VR_H4" else
-                 f"[magenta]H1 VR | M30 CF HIGH ⚡[/]"    if macro_m == "CF_HIGH_H4" else
-                 f"[{CC}]H1 VR — menunggu M30 CF[/]"      if macro_m == "CF_H4" else
-                 f"[{MG}]H1+M30 solid ke H4[/]")
-
-    _dep_col    = MG if _depth == 0 else "yellow" if _depth <= 2 else RD
-    _steps_done = int(s1_ok) + int(s1b_ok) + int(s2_ok) + int(s3_ok)
-    _rw         = 12
-    _r_fill     = int(_steps_done / 4 * _rw)
-    _r_col      = MG if _steps_done == 4 else "yellow" if _steps_done >= 2 else "dim"
-    _ready_bar  = _bar(_r_fill, _rw, fill_color=_r_col, empty_color="grey19", fill_char="█", empty_char="░")
-
-    if not s1_ok:
-        next_txt = ">> SCAN H4 SNR...";                           next_bc = DG
-    elif _cs.get("m30_broken"):
-        next_txt = "!! SETUP BATAL — M30 BREAK";                  next_bc = RD
-    elif cf_fired and cf_type == "H4_CF_HIGH":
-        next_txt = ">> H4_CF_HIGH::FIRE() ⚡";                    next_bc = "magenta"
-    elif cf_fired and cf_type == "MINOR_CF":
-        next_txt = ">> SAFEST_ENTRY::FIRE()";                     next_bc = MG
-    elif cf_fired and cf_type == "CF_LOW":
-        next_txt = ">> CF_LOW::FIRE()";                           next_bc = MG
-    elif cf_fired and cf_type == "CF_HIGH":
-        next_txt = ">> CF_HIGH::FIRE()";                          next_bc = "yellow"
-    elif _h1_is_vr and not cf_fired:
-        next_txt = f">> WAIT M30.cf({_dir}) → H4_CF_HIGH";       next_bc = "magenta"
-    elif _cs["m15_solid"]:
-        next_txt = f">> WAIT M5.flip({_opp}) → M5.cf({_dir})";   next_bc = CC
-    elif _cs["m15_is_vr"]:
-        next_txt = f">> WAIT M5.cf({_dir}) || M15.cf({_dir})";   next_bc = CC
-    else:
-        next_txt = f">> WAIT M15.solid({_dir}) || M15.vr({_opp})"; next_bc = CC
-
-    # ── HIERARCHY MATRIX  (hacker style) ──────────────────────────────────────
-    regime_str, _ = analyst.get_market_regime()
-    reg_c = MG if regime_str=="TRENDING" else "yellow" if regime_str=="RANGING" else RD
-
-    mx = Table(
-        box=rich_box.SIMPLE_HEAD, expand=True, show_edge=False, padding=(0, 1),
-        header_style=f"bold {CC} on grey11",
-    )
-    mx.add_column("TF",   justify="center", width=8)
-    mx.add_column("CMP",  justify="center", width=7)
-    mx.add_column("ROLE", justify="center", width=14)
-    mx.add_column("SUP",  justify="right",  style="white",   width=8)
-    mx.add_column("RES",  justify="right",  style="white",   width=8)
-
-    tfs = ["MN1","W1","D1","H4","H1","M30","M15","M5"]
-    scan_idx = frame % len(tfs)
-    for i, tf in enumerate(tfs):
-        st       = analyst.states[tf]
-        scanning = (i == scan_idx)
-        cmp_col  = MG if st.cmp == "BUY" else RD if st.cmp == "SELL" else "dim"
-
-        if tf in ("MN1","W1","D1"):
-            r_lbl = "MACRO";      r_col = _h4_col if st.cmp == _h4_dir else "dim"
-        elif tf == "H4":
-            r_lbl = "MASTER";     r_col = GD
-        elif tf == "H1":
-            # Doctrine: H1 harus VR dulu ke H4 sebelum entry boleh
-            if st.cmp == "WAIT":
-                r_lbl = "WAIT";      r_col = "dim"
-            elif _h1_is_vr:
-                lbl = "VR→H4 ⚡" if BLINK else "VR→H4 ·"
-                r_lbl = lbl;         r_col = CC
-            elif _h1_is_cf:
-                r_lbl = "H1_CF ✓";  r_col = MG
-            else:
-                r_lbl = "WAITING";   r_col = "dim"   # H1 belum VR ke H4
-        elif tf == "M30":
-            if st.cmp == "WAIT":
-                r_lbl = "WAIT";      r_col = "dim"
-            elif _h1_is_vr and st.cmp == _h4_dir:
-                lbl = "CF_HIGH ⚡" if BLINK else "CF_HIGH ·"
-                r_lbl = lbl;         r_col = "magenta"  # M30 CF saat H1 VR = H4_CF_HIGH
-            elif st.cmp == _h4_dir:
-                r_lbl = "SETUP_CMP"; r_col = BC          # M30 solid aligned H4
-            else:
-                r_lbl = "VR→H4";     r_col = CC          # M30 counter H4
-        elif tf == "M15":
-            if _cs["m15_is_vr"]:    r_lbl = "VR ⚡";    r_col = CC
-            elif _cs["m15_solid"]:  r_lbl = "SOLID ▣";  r_col = MG
-            else:                   r_lbl = "STANDBY";   r_col = "dim"
-        elif tf == "M5":
-            _m5x_st = analyst.states["M5"]
-            _m30x_vr = (_h4_dir != "WAIT" and _dir != "WAIT" and _dir != _h4_dir)
-            _m5x_cf_to_m15 = (
-                _cs["m15_solid"] and st.cmp == _dir and st.cmp != "WAIT"
-                and _m5x_st.vr_occurred
-            )
-            if cf_fired and cf_type == "MINOR_CF":              r_lbl = "MINOR_CF ▣"; r_col = MG
-            elif cf_fired:                                      r_lbl = f"{cf_type} ▣"; r_col = MG
-            elif _m5x_cf_to_m15 and _m30x_vr:                  r_lbl = "CF_RISK ▣";  r_col = "dark_orange3"
-            elif _m5x_cf_to_m15:                                r_lbl = "CF→M15 ▣";   r_col = MG
-            elif _cs["m15_solid"] and st.cmp!=_dir and st.cmp!="WAIT": r_lbl="VR→M15"; r_col="yellow"
-            elif _cs["m15_is_vr"] and st.cmp!=_dir:            r_lbl = "VR";         r_col = "yellow"
-            elif _cs["m15_is_vr"] and st.cmp==_dir:            r_lbl = "CF_ZONE";    r_col = CC
-            else:                                               r_lbl = "STANDBY";    r_col = "dim"
-        else:
-            r_lbl = st.cmp; r_col = "white"
-
-        if scanning:                              row_s = "bold on grey19"
-        elif "MASTER" in r_lbl:               row_s = "on grey15"
-        elif "CF_RISK" in r_lbl and tf=="M5": row_s = "on dark_orange3"
-        elif "CF" in r_lbl and tf == "M5":    row_s = "on dark_green"
-        elif "VR" in r_lbl:                   row_s = "on dark_blue"
-        elif "SOLID" in r_lbl:                row_s = "on grey23"
-        else:                                 row_s = ""
-
-        scan_pfx = f"[blink {MG}]►[/]" if scanning and BLINK else ("►" if scanning else " ")
-        tf_lbl   = f"{scan_pfx} {tf}"
-        if scanning:
-            tf_lbl += f"  [{DG}]{_htag(4)}[/]"
-
-        # Jika ada background, paksa semua teks terang agar kontras
-        if row_s:
-            role_display = f"[bold white]{r_lbl}[/]"
-            sup_c        = "bold white"
-            res_c        = "bold white"
-        else:
-            role_display = f"[{r_col}]{r_lbl}[/]"
-            sup_c        = "bright_green"
-            res_c        = "bright_red"
-        mx.add_row(
-            tf_lbl,
-            f"[{cmp_col}]{st.cmp}[/]",
-            role_display,
-            f"[{sup_c}]{st.sup:.1f}[/]",
-            f"[{res_c}]{st.res:.1f}[/]",
-            style=row_s,
-        )
-
-    aligned_n  = sum(1 for tf in tfs if analyst.states[tf].cmp == _h4_dir and _h4_dir != "WAIT")
-    wib_now    = datetime.now(pytz.timezone("Asia/Jakarta")).strftime("%H:%M:%S")
-    depth_bar  = _bar(min(_depth,5), 5, fill_color=_dep_col, empty_color="grey19")
-    lat        = random.randint(8, 22)
-
-    mx.add_row(f"[{DG}]──────[/]","─────","──────────","────────","────────")
-    mx.add_row(f"[{CC}]SYNC[/]",  f"[{MG}]{aligned_n}/8[/]",  f"[{DG}]{wib_now}[/]", "", f"[{DG}]{lat}ms[/]")
-    mx.add_row(f"[{CC}]DEPTH[/]", depth_bar, f"[{_dep_col}]D{_depth}[/]  [{reg_c}]{regime_str[:5]}[/]",
-               "", f"[{_r_col}]{_steps_done}/4[/]")
-
-    chain_border = (MG if BLINK else "green") if cf_fired else \
-                   (RD if _cs.get("m30_broken") else CC)
-
-    layout["matrix"].update(
-        Panel(mx, title=_T("HIERARCHY.MATRIX"), border_style="magenta", padding=(0, 0))
-    )
-
-    # ── CHAIN REACTION STORYLINE  (TARGET ACQUISITION) ────────────────────────
-    dir_arrow  = "▲" if _dir == "BUY" else "▼" if _dir == "SELL" else "·"
-    dir_pct    = f"[{_r_col}]{_steps_done}/4[/]  {_ready_bar}"
-    dir_banner = Text.from_markup(
-        f"  [{_d_col}]{dir_arrow} {_dir}[/]"
-        f"  [{DG}]|[/]  "
-        f"[{_dep_col}]CASCADE_DEPTH::{_depth}[/]"
-        f"  [{DG}]|[/]  "
-        f"{dir_pct}"
-    )
-
-    cascade_text = Text.from_markup(
-        f"  [{_h4_col}]H4{_d_arr}[/] → {cascade_chips}"
-    )
-
-    sep = Text("  " + "═" * 52, style=DG)
-
-    steps_t = Table(box=None, expand=True, show_header=False, padding=(0, 1), show_edge=False)
-    steps_t.add_column("", width=3,  justify="center")
-    steps_t.add_column("", width=10, style="white")
-    steps_t.add_column("", width=12, justify="right")
-    steps_t.add_column("", ratio=1,  style="grey74")
-
-    s1_rs  = "bold on dark_green"     if s1_ok else ""
-    s1b_rs = ("bold on dark_blue" if _h1_is_vr else "bold on dark_cyan") if s1b_ok else ""
-    s2_rs  = "bold on dark_blue"      if _cs["m15_is_vr"] else "bold on dark_cyan" if _cs["m15_solid"] else ""
-    s3_rs  = ("bold on dark_green" if cf_type in ("MINOR_CF","CF_LOW","H4_CF_HIGH") else "bold on dark_red") if cf_fired else ""
-
-    steps_t.add_row(_sicon(s1_ok),  "H4_CMP",   s1_lbl,  s1_sub,  style=s1_rs)
-    steps_t.add_row(_sicon(s1b_ok), "H1_GATE",  s1b_lbl, s1b_sub, style=s1b_rs)
-    steps_t.add_row(_sicon(s2_ok),  "M15_STATE",s2_lbl,  s2_sub,  style=s2_rs)
-    steps_t.add_row(_sicon(s3_ok),  "CF_ENTRY", s3_lbl,  s3_sub,  style=s3_rs)
-
-    ctx_t = Table(box=None, expand=True, show_header=False, padding=(0, 1))
-    ctx_t.add_column("", width=9, style="white")
-    ctx_t.add_column("", ratio=1)
-    ctx_t.add_row("MACRO",  macro_lbl)
-    ctx_t.add_row("REGIME", f"[{reg_c}]{regime_str}[/]")
-
-    # ── DD LAYERS  (Daily Deploy multi-layer signals) ──────────────────────────
-    dd_t = Table(box=None, expand=True, show_header=False, padding=(0, 1))
-    dd_t.add_column("", width=9, style=DG)
-    dd_t.add_column("", ratio=1)
-    dd_t.add_row(f"[{BY}]DD_LAYERS[/]", "")
-    for line in dd_analyst.get_layer_summary():
-        dd_t.add_row("", Text.from_markup(line))
-    dd_best = dd_analyst.get_best_signal()
-    if dd_best:
-        _risk_col = MG if dd_best["risk"] == "LOW" else "yellow" if dd_best["risk"] == "MEDIUM" else RD
-        dd_t.add_row(
-            f"[{MG}]SIGNAL[/]",
-            Text.from_markup(
-                f"[bold {_risk_col}]{dd_best['type']}[/]"
-                f"  [{DG}]{dd_best['layer']}[/]"
-                f"  [{CC}]→ {dd_best['entry_tf']}[/]"
-                f"  [{DG}]{dd_best['reason']}[/]"
-            )
-        )
-    else:
-        dd_t.add_row(f"[{DG}]SIGNAL[/]", Text.from_markup(f"[{DG}]no DD signal[/]"))
-
-    # NEXT ACTION — styled as terminal command prompt
-    next_blink = BLINK and "──" not in next_txt
-    next_display = f"[blink {next_bc}]{next_txt}[/]" if next_blink else f"[{next_bc}]{next_txt}[/]"
-    next_panel = Panel(
-        Text.from_markup(f"  [grey62]>>>[/grey62]  {next_display}"),
-        border_style=next_bc if next_bc not in ("dim","") else "green",
-        height=3, padding=(0, 0),
-    )
-
-    pulse_c  = [BC, BY, BG, "bold magenta"][(frame // 3) % 4]
-    blink_d  = f"[blink {MG}]◆[/]" if BLINK else f"[{MG}]◇[/]"
-    cmdr_txt = Text.from_markup(
-        f"[bold red]//[/bold red]  [{pulse_c}]C M D R :: D A D A N G  W A H Y U O N O[/{pulse_c}]  {blink_d}"
-    )
-
-    story_group = RichGroup(
-        dir_banner, Text(""), cascade_text, sep,
-        steps_t, sep, ctx_t, sep,
-        dd_t, Text(""),
-        next_panel, Text(""),
-        Align.center(cmdr_txt),
-    )
-    layout["bs_matrix"].update(
-        Panel(story_group,
-              title=_T("TARGET.ACQUISITION"), border_style=chain_border, padding=(0, 1))
-    )
-
-    # ── LIQUIDITY  (ZONE RADAR) ────────────────────────────────────────────────
-    h4s = analyst.states["H4"]
-    d1s = analyst.states["D1"]
-    cp  = tick.bid if tick else 0
-
-    def _liq_row(st, label, col):
-        if st.sup == 0 or st.res == 0:
-            return f"[{col}]{label}[/]  [{DG}]SCANNING...[/]", ""
-        rng = st.res - st.sup
-        if rng <= 0:
-            return f"[{col}]{label}[/]  [{DG}]─[/]", ""
-        pct    = max(0.0, min(1.0, (cp - st.sup) / rng))
-        pos    = int(pct * 26)
-        bar    = list("─" * 26)
-        marker = f"[blink {GD}]◆[/]" if BLINK else f"[{GD}]◆[/]"
-        if 0 <= pos < 26: bar[pos] = marker
-        bar_s  = "".join(bar)
-        zone   = f"[{MG}]SUP_ZONE[/]" if pct < 0.3 else f"[{RD}]RES_ZONE[/]" if pct > 0.7 else "[yellow]MID_ZONE[/]"
-        pct_r  = (1 - pct) * 100
-        l1 = f"[{col}]{label}[/]  [bright_green]{st.sup:.1f}[/]|{bar_s}|[bright_red]{st.res:.1f}[/]"
-        l2 = f"  [grey74]↑RES {st.res-cp:.1f}$ ({pct_r:.0f}%)[/]  [grey74]↓SUP {cp-st.sup:.1f}$[/]  {zone}"
-        return l1, l2
-
-    liq_t = Table(box=None, expand=True, show_header=False, padding=(0, 0))
-    liq_t.add_column("", ratio=1)
-    h4l1, h4l2 = _liq_row(h4s, "H4", BC)
-    d1l1, d1l2 = _liq_row(d1s, "D1", BY)
-    liq_t.add_row(h4l1); liq_t.add_row(h4l2)
-    liq_t.add_row(d1l1); liq_t.add_row(d1l2)
-
-    # ADR Meter
-    adr_val, adr_used, adr_pct = get_adr_info(symbol)
-    if adr_val is not None:
-        adr_bw  = 20
-        adr_f   = int((adr_pct or 0) / 100 * adr_bw)
-        adr_col = MG if (adr_pct or 0) < 50 else "yellow" if (adr_pct or 0) < 80 else RD
-        adr_bar = _bar(adr_f, adr_bw, fill_color=adr_col, empty_color="grey19")
-        adr_txt = (
-            f"  [grey62]ADR 14D:[/grey62] [white]{adr_val:.1f}$[/white]"
-            f"  [grey62]Hari ini:[/grey62] [white]{adr_used:.1f}$[/white]"
-            f"  {adr_bar} [{adr_col}]{adr_pct:.0f}%[/]"
-        )
-        liq_t.add_row(Text.from_markup(adr_txt))
-
-    layout["liquidity"].update(
-        Panel(liq_t, title=_T("ZONE.RADAR"), border_style=CC, padding=(0, 1))
-    )
-
-    # ── NEWS  (INTERCEPT FEED) ─────────────────────────────────────────────────
-    news_ttl = settings.get("news_refresh_seconds", 300)
-    now_ts   = time.time()
-    if not hasattr(update_layout, "_cached_news") or \
-       (now_ts - getattr(update_layout, "_news_last_fetch", 0)) >= news_ttl:
-        update_layout._cached_news     = fetch_live_news()
-        update_layout._news_last_fetch = now_ts
-    news_items = update_layout._cached_news
-    news_idx   = (frame // 30) % max(1, len(news_items))
-    _src       = fetch_live_news._last_source
-    _fwib      = fetch_live_news._last_fetch_wib
-    _live_ind  = f"[{MG}]◉ {_src}[/]" if _src != "STATIC" else f"[{DG}]◌ STATIC[/]"
-    layout["news"].update(
-        Panel(
-            Align.center(Text(news_items[news_idx], style=f"bold white")),
-            title=f"[{BC}][ INTERCEPT.FEED ][/{BC}]  {_live_ind}  [{DG}]{_fwib}[/]",
-            border_style="blue", padding=(0, 1),
-        )
-    )
-
-    # ── TACTICAL FEED  (SYS LOG) ───────────────────────────────────────────────
-    layout["feed"].update(
-        Panel(Text.from_markup(feed.render()),
-              title=_T("SYS.LOG"), border_style=MG, padding=(0, 1))
-    )
-
-    # ── NEW ANIMATED PANELS ────────────────────────────────────────────────────
-    layout["heatmap"].update(build_heatmap_panel(frame, analyst, _cs, _h4_dir))
+    # ── ANIMATED PANELS ────────────────────────────────────────────────────────
+    _active_signal = analyst.get_strike_signal()
+    _tick_price    = tick.bid if tick else 0.0
+    layout["heatmap"].update(build_heatmap_panel(
+        frame, analyst, _cs, _h4_dir,
+        signal=_active_signal, fund_snr=fund_snr, tick_price=_tick_price
+    ))
     layout["neural"].update(build_neural_flow_panel(frame, analyst, _cs, _h4_dir))
-    layout["ninja"].update(build_ninja_panel(frame, ninja_state or {}))
-    layout["equity"].update(build_equity_curve_panel(frame, acc))
-    layout["oscillo"].update(build_oscilloscope_panel(frame, pos_rows))
+    layout["snr"].update(build_snr_ladder_panel(frame, fund_snr, tick, analyst))
 
     # ── TICKER ──────────────────────────────────────────────────────────────────
     pkt   = f"{random.randint(100000,999999)}"
@@ -1838,26 +1640,33 @@ def boot_sequence():
 def main():
     symbol = "XAUUSD"
     if not connect_mt5(): return
+    launch_companions()   # auto-launch TV CDP + scenario_builder + signal_annotator
     boot_sequence()
     settings   = load_settings()
     analyst    = SacredDoctrineAnalyst(symbol, master_tf=settings.get("master_tf", "H4"))
     dd_analyst = DailyDeployAnalyst(symbol)
     executor   = ChainReactionExecutor(symbol, magic_number=settings.get("magic_number", 2026))
+    fund_snr   = FundamentalSNR(symbol)
+    executor.fundamental_snr = fund_snr   # wire SNR guard ke executor
     ninja      = NinjaTradeAnalyst(
         symbol,
         be_pips        = settings.get("ninja_be_pips",     5.0),
         sl_buffer_pips = settings.get("ninja_sl_buffer",   5.0),
     )
+    pdb_analyst = PDBAnalyst(symbol)
+    nom_analyst = NOMAnalyst(symbol)
     layout = make_layout()
     frame = 0
     last_strike_time_chain  = 0
     last_strike_time_dd     = 0
     last_strike_time_ninja  = 0
+    last_strike_time_pdb    = 0
+    last_strike_time_nom    = 0
     ninja_state: dict       = {}
     feed.add(f"OVERLORD ONLINE: Standing by for Market Ignition")
     feed.add(f"⚖️ DOCTRINE ARMED: Time Law v4.0 Enforced")
     feed.add(f"🛰️ RADAR ACTIVE: Scanning for {symbol} Liquidity")
-    with Live(layout, refresh_per_second=8, screen=True) as live:
+    with Live(layout, refresh_per_second=2, screen=True, vertical_overflow="visible") as live:
         while True:
             try:
                 settings = load_settings()
@@ -1865,7 +1674,10 @@ def main():
 
                 analyst.update()
                 dd_analyst.update(analyst)
+                fund_snr.update()          # refresh PDH/PDL/PWH/PWL tiap 5 menit
                 ninja_state = ninja.update()   # independent — no analyst dependency
+                pdb_analyst.update(analyst)    # PDH/PDL breakout + H4 CMP filter
+                nom_analyst.update(analyst)    # NY open momentum + H4 CMP filter
 
                 events = executor.monitor_positions(analyst)
                 for e in events:
@@ -1949,8 +1761,62 @@ def main():
                                             p.sl, p.tp, ninja_sig["action"])
                                         break
 
+                # 4. PDB — PDH/PDL Breakout (validated +21k pips/6yr, PF 2.33)
+                # Fires in ANY session (Asian is best). bypass_session + bypass_snr
+                # because entry IS the level itself.
+                pdb_sig = pdb_analyst.get_signal()
+                if (pdb_sig and settings.get("auto_trade")
+                        and settings.get("pdb_enabled", True)):
+                    if time.time() - last_strike_time_pdb > 600:
+                        pdb_pos = [p for p in all_positions
+                                   if p.comment.startswith("PDB_")]
+                        if len(pdb_pos) < 2 and total_open < max_layers:
+                            success, msg = executor.execute_strike(
+                                pdb_sig["action"], analyst,
+                                comment=pdb_sig["comment"],
+                                tp_price=pdb_sig["tp"],
+                                sl_price=pdb_sig["sl"],
+                                settings=settings,
+                                bypass_session=True,
+                                bypass_snr=True,
+                            )
+                            feed.add(f"[PDB] {msg}")
+                            if success:
+                                last_strike_time_pdb = time.time()
+                                pdb_analyst.mark_trade_open()
+                                all_positions = mt5.positions_get(symbol=symbol, magic=magic) or []
+                                total_open = len(all_positions)
+
+                # 5. NOM — NY Open Momentum (validated +2.4k pips/6yr, PF 2.22)
+                # Window 14:00-14:29 UTC only. Max 1 trade/day. No session bypass needed.
+                nom_sig = nom_analyst.get_signal()
+                if (nom_sig and settings.get("auto_trade")
+                        and settings.get("nom_enabled", True)):
+                    if time.time() - last_strike_time_nom > 1800:
+                        nom_pos = [p for p in all_positions
+                                   if p.comment.startswith("NOM_")]
+                        if len(nom_pos) == 0 and total_open < max_layers:
+                            success, msg = executor.execute_strike(
+                                nom_sig["action"], analyst,
+                                comment=nom_sig["comment"],
+                                tp_price=nom_sig["tp"],
+                                sl_price=nom_sig["sl"],
+                                settings=settings,
+                            )
+                            feed.add(f"[NOM] {msg}")
+                            if success:
+                                last_strike_time_nom = time.time()
+                                nom_analyst.mark_trade_open()
+                                all_positions = mt5.positions_get(symbol=symbol, magic=magic) or []
+                                total_open = len(all_positions)
+
+                # Export state snapshot setiap 3 detik untuk TV MCP scripts
+                if frame % 30 == 0:
+                    export_state_snapshot(analyst, dd_analyst, fund_snr,
+                                          chain_signal=signal, dd_signal=dd_signal)
+
                 update_layout(layout, analyst, dd_analyst, executor, symbol, settings, frame,
-                              ninja_state=ninja_state)
+                              ninja_state=ninja_state, fund_snr=fund_snr)
                 frame += 1
                 time.sleep(0.1)
             except KeyboardInterrupt:

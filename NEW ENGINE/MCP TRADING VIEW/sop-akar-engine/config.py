@@ -1,0 +1,15 @@
+SYMBOL = "XAUUSD"
+BREAKOUT_BUFFER = 0.1
+
+ENABLE_NINJA = True
+ENABLE_MICRO = False
+ENABLE_AUTO_TRADE = False  # False = alert only, True = auto execute
+
+RISK_PERCENT = 1.0         # % balance per trade
+NINJA_SL_ATR = 1.0
+PYRAMID_SL_ATR = 2.0
+
+POLL_SECONDS = 60
+
+TELEGRAM_TOKEN = "YOUR_BOT_TOKEN"
+TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"

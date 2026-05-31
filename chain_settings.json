@@ -25,5 +25,7 @@
     "news_refresh_seconds": 300,
     "ninja_enabled":   true,
     "ninja_be_pips":   5.0,
-    "ninja_sl_buffer": 5.0
+    "ninja_sl_buffer": 5.0,
+    "snr_block_usd":   2.0,
+    "snr_warn_usd":    5.0
 }
