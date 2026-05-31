@@ -53,6 +53,25 @@ export function LocalModelSwitcher() {
     }
   }
 
+  async function stopModel() {
+    setLoading(true);
+    setMsg("Menghentikan model...");
+    try {
+      const r = await fetch("/api/local-model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "stop" }),
+      });
+      const j = await r.json();
+      setMsg(j.message || j.error || "Stopped");
+      await fetchStatus();
+    } catch {
+      setMsg("Gagal stop model");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-3">
       {/* Status bar */}
@@ -64,7 +83,12 @@ export function LocalModelSwitcher() {
         <span className="text-[12px] font-mono text-zinc-400">
           {running ? `llama.cpp RUNNING${current && current !== "unknown" ? ` · ${current}` : ""}` : "llama.cpp OFFLINE"}
         </span>
-        <button onClick={fetchStatus} className="ml-auto text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors">
+        {running && (
+          <button onClick={stopModel} disabled={loading} className="ml-auto text-[11px] font-bold text-rose-500 hover:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 transition-colors disabled:opacity-50">
+            ⏹ Stop
+          </button>
+        )}
+        <button onClick={fetchStatus} disabled={loading} className={cn("text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors", !running && "ml-auto")}>
           ↻ refresh
         </button>
       </div>

@@ -78,7 +78,18 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { modelId } = await req.json().catch(() => ({}));
+  const { modelId, action } = await req.json().catch(() => ({}));
+
+  // Handle action "stop"
+  if (action === "stop") {
+    try {
+      await execAsync('taskkill /F /IM "llama-server.exe" 2>nul').catch(() => {});
+      return Response.json({ success: true, message: "AI Lokal dihentikan" });
+    } catch (e) {
+      return Response.json({ error: "Gagal mematikan AI lokal" }, { status: 500 });
+    }
+  }
+
   const model = LOCAL_MODELS.find(m => m.id === modelId);
   if (!model) {
     return Response.json({ error: "Model tidak ditemukan" }, { status: 400 });
@@ -99,7 +110,17 @@ export async function POST(req: Request) {
     for (let i = 0; i < maxWait; i++) {
       await new Promise(r => setTimeout(r, 1000));
       const s = await getLlamaStatus();
-      if (s.running) { ready = true; break; }
+      if (s.running) { 
+        ready = true; 
+        break; 
+      }
+    }
+
+    // 4. Tambahan Buffer Time
+    // Meskipun /health bilang ok, model GGUF masih loading ke VRAM dan akan error 503 jika dichat
+    if (ready) {
+      const bufferWait = model.fast ? 10000 : 25000;
+      await new Promise(r => setTimeout(r, bufferWait));
     }
 
     return Response.json({
