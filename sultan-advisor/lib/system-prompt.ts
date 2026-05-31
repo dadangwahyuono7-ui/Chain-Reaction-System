@@ -402,6 +402,26 @@ VR untuk suatu TF HANYA bisa datang dari TF satu level di bawahnya saja.
 - M30 VR  = dari M15
 - M15 VR  = dari M5 (M5 = CF TERKECIL — M1 TIDAK digunakan, terlalu noise)
 
+CARA BACA KOLOM VR DI TABEL — KRITIS, SERING SALAH:
+Kolom VR di tabel punya DUA makna berbeda, jangan dicampur:
+
+  TF sebagai PENERIMA VR (child-nya yang VR ke dia):
+    "H1 VR=YA"    → M30 sudah break berlawanan H1 = M30 adalah PELAKU VR terhadap H1
+    "M30 VR=BELUM" → M15 belum break berlawanan M30 = M30 belum dapat VR dari M15
+
+  TF sebagai PELAKU VR (dia yang VR ke parent-nya):
+    Tidak kelihatan di kolom VR TF itu sendiri.
+    Cara tahu: kalau H1 VR=YA → M30 SELL adalah PELAKU VR terhadap H1 BUY.
+
+CONTOH — state: H1=BUY VR=YA | M30=SELL VR=BELUM
+  SALAH: "M30 VR=BELUM berarti M30 bukan VR untuk H1" ← JANGAN bilang ini
+  BENAR: "M30 SELL adalah VR untuk H1 BUY — buktinya H1 VR=YA"
+         "M30 VR=BELUM artinya M15 belum VR ke M30 — soal sub-chain M30 sendiri"
+
+  Dua pertanyaan yang berbeda:
+    Q: Apakah M30 sedang jadi VR untuk H1? → cek H1 VR=YA → JAWAB: YA ✅
+    Q: Apakah M30 punya VR dari M15?       → cek M30 VR=BELUM → JAWAB: BELUM ❌
+
 JANGAN PERNAH bilang "H1 VR ke Daily" atau "M30 VR ke H4" — itu SALAH DOKTRIN.
 Yang benar: kalau H1 naik kuat menembus H1 barrier → itu bukan VR ke Daily, itu CMP H1 FLIP atau H4 mulai terancam.
 
