@@ -89,33 +89,61 @@ if (Test-Path "$INSTALL_DIR\.git") {
 }
 Write-Host ""
 
-# ── [4] Setup .env.local ─────────────────────────────────────────────────────
-Write-Host "  [4/7] Environment variables..." -ForegroundColor White
-$envFile = "$WEB_DIR\.env.local"
-$envEx   = "$WEB_DIR\.env.example"
+# ── [4] Setup .env.local + Cloudflare config ─────────────────────────────────
+Write-Host "  [4/7] Environment variables & config..." -ForegroundColor White
+$envFile    = "$WEB_DIR\.env.local"
+$envEx      = "$WEB_DIR\.env.example"
+$cfUserDir  = "$env:USERPROFILE\.cloudflared"
+$zipDesktop = "$env:USERPROFILE\Desktop\SultanConfig.zip"
 
-if (Test-Path $envFile) {
+# ── Auto-import dari SultanConfig.zip kalau ada di Desktop ───────────────────
+if (Test-Path $zipDesktop) {
+    Write-Host "      SultanConfig.zip ditemukan di Desktop — import otomatis..." -ForegroundColor Yellow
+    $tmpExtract = "$env:TEMP\SultanConfigImport"
+    if (Test-Path $tmpExtract) { Remove-Item $tmpExtract -Recurse -Force }
+    Expand-Archive -Path $zipDesktop -DestinationPath $tmpExtract -Force
+
+    # Import .env.local
+    if (Test-Path "$tmpExtract\.env.local") {
+        Copy-Item "$tmpExtract\.env.local" $envFile -Force
+        Write-Host "      OK - .env.local di-import dari zip" -ForegroundColor Green
+    }
+
+    # Import .cloudflared credentials
+    $cfSrc = "$tmpExtract\cloudflared"
+    if ((Test-Path $cfSrc) -and (Get-ChildItem $cfSrc).Count -gt 0) {
+        if (-not (Test-Path $cfUserDir)) { New-Item -ItemType Directory $cfUserDir | Out-Null }
+        Copy-Item "$cfSrc\*" $cfUserDir -Recurse -Force
+        Write-Host "      OK - Cloudflare tunnel config di-import dari zip" -ForegroundColor Green
+    }
+
+    Remove-Item $tmpExtract -Recurse -Force
+    Write-Host "      Semua config dari PC lama berhasil di-import!" -ForegroundColor Green
+
+} elseif (Test-Path $envFile) {
     Write-Host "      OK - .env.local sudah ada" -ForegroundColor Green
+
 } elseif (Test-Path $envEx) {
+    # Tidak ada zip, tidak ada .env.local — minta isi manual
     Copy-Item $envEx $envFile
     Write-Host ""
     Write-Host "  =================================================================" -ForegroundColor Yellow
-    Write-Host "   PERLU DIISI MANUAL: $envFile                                   " -ForegroundColor Yellow
+    Write-Host "   PERLU DIISI MANUAL: sultan-advisor\.env.local               " -ForegroundColor Yellow
     Write-Host "  =================================================================" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  Buka file ini dan isi nilai berikut:" -ForegroundColor White
-    Write-Host "    BLUEPACK_API_KEY  = API key dari https://ai.bluepack.my.id" -ForegroundColor Cyan
-    Write-Host "    BETTER_AUTH_SECRET= string random panjang (min 32 karakter)" -ForegroundColor Cyan
-    Write-Host "    TELEGRAM_BOT_TOKEN= (opsional) dari @BotFather Telegram" -ForegroundColor Cyan
-    Write-Host "    TELEGRAM_CHAT_ID  = (opsional) chat ID kamu" -ForegroundColor Cyan
-    Write-Host "    FRED_API_KEY      = (opsional) dari fred.stlouisfed.org" -ForegroundColor Cyan
+    Write-Host "  TIP: Jalankan EXPORT_CONFIG.ps1 di PC lama dulu untuk export" -ForegroundColor Cyan
+    Write-Host "       semua config otomatis — tidak perlu isi manual!" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "  Buka notepad sekarang untuk isi .env.local ..." -ForegroundColor Yellow
+    Write-Host "  Atau isi manual sekarang:" -ForegroundColor White
+    Write-Host "    BLUEPACK_API_KEY   = API key dari https://ai.bluepack.my.id" -ForegroundColor White
+    Write-Host "    BETTER_AUTH_SECRET = string random panjang" -ForegroundColor White
+    Write-Host "    TELEGRAM_BOT_TOKEN = dari @BotFather (opsional)" -ForegroundColor White
+    Write-Host "    TELEGRAM_CHAT_ID   = chat ID kamu (opsional)" -ForegroundColor White
+    Write-Host ""
     Start-Process "notepad.exe" $envFile
-    Write-Host ""
     Read-Host "  Tekan ENTER setelah selesai isi .env.local"
 } else {
-    Write-Host "      ERROR: .env.example tidak ditemukan di repo!" -ForegroundColor Red
+    Write-Host "      ERROR: .env.example tidak ditemukan!" -ForegroundColor Red
     exit 1
 }
 Write-Host ""
@@ -165,12 +193,10 @@ if (Test-Path $CF_EXE) {
     }
 }
 
-# Cek apakah tunnel sudah di-login
-$cfConfigDir = "$env:USERPROFILE\.cloudflared"
-$cfCredsFile = Get-ChildItem "$cfConfigDir\*.json" -ErrorAction SilentlyContinue | Select-Object -First 1
-$cfConfigFile = "$cfConfigDir\config.yml"
+# Cek apakah tunnel sudah ada (bisa dari zip import atau setup sebelumnya)
+$cfCredsFile = Get-ChildItem "$env:USERPROFILE\.cloudflared\*.json" -ErrorAction SilentlyContinue | Select-Object -First 1
 
-if (-not (Test-Path $cfConfigDir) -or -not $cfCredsFile) {
+if (-not $cfCredsFile) {
     Write-Host ""
     Write-Host "  =================================================================" -ForegroundColor Yellow
     Write-Host "   SETUP CLOUDFLARE TUNNEL (sekali saja)                          " -ForegroundColor Yellow
