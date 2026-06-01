@@ -1,16 +1,15 @@
 "use client";
 
 /**
- * ThreeBg — wireframe terrain synthwave di 2D CANVAS (BUKAN WebGL).
- * WebGL gagal/blank di GPU sibuk (RX580 + llama.cpp) → ini software render, SELALU muncul.
- * Floor grid perspektif yang bergelombang + reaktif mouse (ripple). Gak pernah putih.
+ * ThreeBg — ocean wireframe FULL-SCREEN di 2D canvas (BUKAN WebGL → selalu render, gak putih).
+ * Grid penuh satu layar + swell ombak + ripple "batu jatuh ke air" ngikutin kursor.
  */
 
 import { useRef, useEffect } from "react";
 
 export function ThreeBg({ color = "99,102,241", bg = "#020617" }: { color?: string; bg?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const mouse = useRef({ x: 0.5, y: 0.5 });
+  const mouse = useRef({ x: -9999, y: -9999 });
 
   useEffect(() => {
     const canvas = ref.current;
@@ -19,11 +18,9 @@ export function ThreeBg({ color = "99,102,241", bg = "#020617" }: { color?: stri
     if (!ctx) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     let raf = 0;
-    const COLS = 30, ROWS = 16;
+    const COLS = 34, ROWS = 24;
 
-    const onMove = (e: MouseEvent) => {
-      mouse.current = { x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight };
-    };
+    const onMove = (e: MouseEvent) => { mouse.current = { x: e.clientX, y: e.clientY }; };
     window.addEventListener("mousemove", onMove);
 
     const draw = () => {
@@ -33,34 +30,36 @@ export function ThreeBg({ color = "99,102,241", bg = "#020617" }: { color?: stri
       ctx.clearRect(0, 0, w, h);
 
       const t = performance.now() / 1000;
-      const horizon = h * 0.40;
-      const mxCol = mouse.current.x;          // 0..1 lebar
-      const myNear = 1 - mouse.current.y;     // 0 jauh .. 1 dekat
+      const mxP = mouse.current.x, myP = mouse.current.y;
 
       const pts: { x: number; y: number; a: number }[][] = [];
       for (let r = 0; r < ROWS; r++) {
-        const dT = r / (ROWS - 1);            // 0 = jauh (horizon), 1 = dekat (bawah)
-        const persp = Math.pow(dT, 1.7);
-        const rowY = horizon + persp * (h - horizon);
-        const halfW = w * 0.04 + persp * (w * 0.72);
-        const amp = 26 * persp + 6;
+        const dT = r / (ROWS - 1);                 // 0 = atas (jauh), 1 = bawah (dekat)
+        const baseY = dT * h;
+        const spread = 0.55 + dT * 0.6;            // perspektif: sempit di atas, lebar di bawah
+        const ampA = 7 + dT * 22;                  // swell makin besar ke depan
         const row: { x: number; y: number; a: number }[] = [];
         for (let c = 0; c < COLS; c++) {
-          const fx = c / (COLS - 1);          // 0..1
-          const sx = w / 2 + (fx - 0.5) * 2 * halfW;
-          let wave = Math.sin(fx * 8 + t * 1.5 + dT * 4) * 0.5 + Math.cos(dT * 6 - t) * 0.5;
-          const dx = fx - mxCol, dy = dT - myNear;
-          wave += Math.exp(-(dx * dx * 9 + dy * dy * 9)) * Math.sin(t * 5) * 1.7;
-          const sy = rowY - wave * amp;
-          const a = 0.22 + dT * 0.55;
-          row.push({ x: sx, y: sy, a });
+          const fx = c / (COLS - 1);
+          const sx = w / 2 + (fx - 0.5) * w * spread;
+          // swell ombak (multi-arah)
+          let wave =
+            Math.sin(fx * 6 + t * 1.1) * 0.5 +
+            Math.sin(dT * 5 - t * 0.8) * 0.5 +
+            Math.sin((fx * 3 + dT * 4) + t * 0.6) * 0.4;
+          let sy = baseY - wave * ampA;
+          // ripple kursor (ombak melingkar dari titik mouse)
+          const dx = sx - mxP, dy = sy - myP;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          sy -= Math.sin(dist * 0.03 - t * 5) * Math.exp(-dist / 280) * 30;
+          row.push({ x: sx, y: sy, a: 0.13 + dT * 0.45 });
         }
         pts.push(row);
       }
 
-      ctx.lineWidth = 1.3;
-      ctx.shadowColor = `rgba(${color},0.9)`;
-      ctx.shadowBlur = 6;
+      ctx.lineWidth = 1.2;
+      ctx.shadowColor = `rgba(${color},0.85)`;
+      ctx.shadowBlur = 5;
       for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
           const p = pts[r][c];
