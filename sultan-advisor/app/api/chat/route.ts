@@ -806,7 +806,14 @@ export async function POST(req: Request) {
   if (!session) return new Response("Unauthorized", { status: 401 });
 
   const body = await req.json();
-  const { messages: chatMessages, id: sessionId, model: modelChoice } = body;
+  const { messages: chatMessages, id: sessionId, model: modelChoice, systemAccess } = body;
+
+  // ── KEAMANAN: tool sakti (shell/file/browser/settings) HANYA untuk owner,
+  // dan HANYA kalau owner nyalain toggle "System Access" (default OFF).
+  // Non-owner / toggle off → cuma dapat tool analisis (read-only).
+  const OWNER_EMAIL = "dadangwahyuono@gmail.com";
+  const isOwner = session.user.email === OWNER_EMAIL;
+  const systemUnlocked = isOwner && systemAccess === true;
 
   // Build system prompt from market context + persistent memories
   const ctxRows = await db.select().from(marketContext);
@@ -1211,20 +1218,34 @@ export async function POST(req: Request) {
     }),
   };
 
-  // Gemma 4 E4B: full tools + 10 steps + temp 0.7 (reliable tool calling)
-  // Cloud: full tools + 15 steps
+  // ── KEAMANAN: pilih tool sesuai hak akses ────────────────────────────────
+  // SAFE = read-only / analisis, boleh semua user (termasuk team).
+  // SAKTI = bisa nyentuh PC/file/shell/browser/settings → HANYA owner + toggle ON.
+  const SAFE_TOOL_NAMES = [
+    "web_search", "fetch_url", "get_ohlc", "calculate_risk", "get_fund_data",
+    "get_market_context", "search_memories", "save_memory", "trigger_sync",
+    "get_paper_performance", "read_settings",
+  ] as const;
+  const safeTools = Object.fromEntries(
+    Object.entries(toolsWithContext).filter(([k]) => (SAFE_TOOL_NAMES as readonly string[]).includes(k))
+  );
+  // owner + toggle ON → semua tool. selain itu → safe only.
+  const activeTools = systemUnlocked ? toolsWithContext : safeTools;
+
   const result = streamText({
     model: selectedModel,
-    system: systemPrompt,
+    system: systemPrompt + (systemUnlocked
+      ? "\n\n[SYSTEM ACCESS: ON — owner mengizinkan tool sistem (shell/file/browser). Tetap konfirmasi sebelum aksi destruktif.]"
+      : "\n\n[SYSTEM ACCESS: OFF — kamu HANYA punya tool analisis read-only. Tool sistem (shell/file/browser/settings) TIDAK tersedia. Kalau diminta aksi sistem, bilang: 'Butuh System Access — owner aktifkan toggle dulu.']"),
     messages: coreMessages,
     maxOutputTokens: 4096,
     temperature: isLocal ? 0.7 : undefined,
     ...(modelType === "cloud" ? {
       stopWhen: stepCountIs(15),
-      tools: toolsWithContext,
+      tools: activeTools,
     } : {
       stopWhen: stepCountIs(10),
-      tools: toolsWithContext,
+      tools: activeTools,
     }),
     onFinish: async ({ text }) => {
       if (sessionId && text) {

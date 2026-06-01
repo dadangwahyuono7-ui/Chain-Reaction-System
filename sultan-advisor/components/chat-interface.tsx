@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SendIcon, MicIcon, SquareIcon, ShieldCheckIcon, TrendingUpIcon, LayoutDashboardIcon, AlertOctagonIcon, CloudIcon, CpuIcon, PaperclipIcon, XIcon, FileTextIcon, ImageIcon, ZapIcon, TargetIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageBubble } from "./message-bubble";
+import { useSession } from "@/lib/auth-client";
 import type { UIMessage } from "ai";
 
 interface Props {
@@ -100,12 +101,18 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
   const textareaRef  = useRef<HTMLTextAreaElement>(null);
   const [isListening, setIsListening] = useState(false);
   const [modelChoice, setModelChoice] = useState<"local" | "cloud">("local");
+  // System Access (owner-only): gate tool sakti (shell/file/browser/settings). Default OFF.
+  const [systemAccess, setSystemAccess] = useState(false);
+  const { data: authData } = useSession();
+  const isOwner = authData?.user?.email === "dadangwahyuono@gmail.com";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef  = useRef<any>(null);
   const autoFiredRef    = useRef<string | null>(null);
   // Ref so handleSend always reads current modelChoice without needing it as dependency
   const modelChoiceRef  = useRef(modelChoice);
   useEffect(() => { modelChoiceRef.current = modelChoice; }, [modelChoice]);
+  const systemAccessRef = useRef(systemAccess);
+  useEffect(() => { systemAccessRef.current = systemAccess; }, [systemAccess]);
 
   const { messages, sendMessage, setMessages, status, stop, id, error } = useChat({
     id: sessionId ?? undefined,
@@ -198,7 +205,7 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
     await sendMessage(
       { role: "user", parts: [{ type: "text" as const, text: fullText }] },
       {
-        body: { model: modelChoiceRef.current },
+        body: { model: modelChoiceRef.current, systemAccess: systemAccessRef.current },
         ...(experimentalAttachments.length > 0 ? { experimental_attachments: experimentalAttachments } : {}),
       }
     );
@@ -383,6 +390,23 @@ export function ChatInterface({ sessionId, sessionTitle, onSessionId, autoPrompt
             <CloudIcon className="w-3 h-3" />
             DADANG
           </button>
+
+          {/* System Access toggle — OWNER ONLY. Gate tool sakti (shell/file/browser). */}
+          {isOwner && (
+            <button
+              onClick={() => setSystemAccess(v => !v)}
+              title="System Access — izinkan AI pakai tool sistem (shell/file/browser/settings). Owner only. Default OFF demi keamanan."
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-mono tracking-wider border transition-all",
+                systemAccess
+                  ? "bg-rose-950/50 border-rose-500/40 text-rose-300 shadow-[0_0_10px_-2px_rgba(244,63,94,0.4)]"
+                  : "bg-transparent border-slate-800/40 text-slate-600 hover:text-slate-400 hover:border-slate-700/50"
+              )}
+            >
+              <ShieldCheckIcon className="w-3 h-3" />
+              {systemAccess ? "SYS ON" : "SYS OFF"}
+            </button>
+          )}
           <div className="flex-1" />
           <span className="text-[9px] text-slate-600 font-mono">
             {modelChoice === "cloud" ? "sonnet · premium" : "gemma4 · local"}
