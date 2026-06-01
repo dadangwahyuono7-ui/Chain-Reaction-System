@@ -200,23 +200,25 @@ const DP_ANIM = `
 .dp-xl    { font-size: 32px;   line-height: 1.05; }
 .dp-num   { font-variant-numeric: tabular-nums; }
 /* ═══ GLASS MATERIAL ═══ */
-/* ═══ KARTU = SLAB 3D NGAMBANG — perspective di dalam transform biar 3D-nya KELIATAN ═══ */
+/* ═══ KARTU = SLAB 3D: float halus pas diem + ANGKAT tajam pas hover (smooth) ═══ */
 @keyframes dp-slab {
-  0%,100% { transform: perspective(900px) translateZ(0) translateY(0) rotateX(0deg) rotateY(0deg); }
-  50%     { transform: perspective(900px) translateZ(34px) translateY(-6px) rotateX(2.6deg) rotateY(-1.8deg); }
+  0%,100% { transform: perspective(1000px) translateZ(0) translateY(0) rotateX(0deg); }
+  50%     { transform: perspective(1000px) translateZ(12px) translateY(-3px) rotateX(1deg); }
 }
 .dp-card  {
   box-shadow: var(--dp-sh-1);
-  transition: box-shadow .4s ease, border-color .4s ease, filter .4s ease;
+  transition: transform .42s cubic-bezier(.22,.61,.36,1), box-shadow .42s ease, border-color .42s ease, filter .42s ease;
   transform-style: preserve-3d;
   animation: dp-slab 7s ease-in-out infinite;
 }
 .dp-card:nth-child(2n) { animation-duration: 8.5s; animation-delay: -3s; }
 .dp-card:nth-child(3n) { animation-duration: 6.5s; animation-delay: -1.5s; }
 .dp-card:nth-child(5n) { animation-duration: 9.5s; animation-delay: -4.5s; }
-/* hover: glow + brightness (TANPA transform) → float 3D tetap mulus, gak nyentak */
+/* hover: stop float, ANGKAT 3D ke arah viewer — smooth (float halus jadi transisinya mulus) */
 .dp-card:hover {
-  box-shadow: var(--dp-sh-2), 0 22px 60px -12px rgba(99,102,241,0.5);
+  animation: none;
+  transform: perspective(1000px) translateZ(55px) translateY(-9px) rotateX(3deg) scale(1.02);
+  box-shadow: var(--dp-sh-2), 0 26px 64px -12px rgba(99,102,241,0.5);
   border-color: rgba(99,102,241,0.55);
   filter: brightness(1.1);
   z-index: 20;
