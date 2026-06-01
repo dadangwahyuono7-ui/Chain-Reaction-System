@@ -135,6 +135,12 @@ const DP_ANIM = `
 /* lingkaran step = koin 3D muter pelan */
 @keyframes dp-coin { 0%,100% { transform: rotateY(-24deg); } 50% { transform: rotateY(24deg); } }
 .dp-coin        { animation: dp-coin 4.5s ease-in-out infinite; transform-style: preserve-3d; }
+/* CF aktif & belum flip = pulse terus (denyut entry hidup) */
+@keyframes dp-cf-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.45); transform: scale(1); }
+  50%     { box-shadow: 0 0 15px 4px rgba(251,191,36,0.6); transform: scale(1.15); }
+}
+.dp-cf-pulse    { animation: dp-cf-pulse 0.95s ease-in-out infinite; }
 .dp-coin:nth-child(odd) { animation-delay: -2s; }
 /* baris/kartu = miring 3D pas hover (kayak diangkat & diputar) */
 .dp-row3d       { transition: transform .45s cubic-bezier(.22,.61,.36,1), box-shadow .4s ease; transform-style: preserve-3d; }
@@ -494,14 +500,15 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
   if (rows.length === 0)
     return <div className="pb-3"><State icon={<LayersIcon className="w-4 h-4" />} title="Belum ada CMP aktif" sub="sync tradingview untuk mulai" pulse /></div>;
 
-  const Step = ({ label, done, active, waiting, flipped, tone, sub, tfTag }: {
-    label: string; done: boolean; active?: boolean; waiting?: boolean; flipped?: boolean; tone: string; sub?: string; tfTag?: string;
+  const Step = ({ label, done, active, waiting, flipped, tone, sub, tfTag, pulse }: {
+    label: string; done: boolean; active?: boolean; waiting?: boolean; flipped?: boolean; tone: string; sub?: string; tfTag?: string; pulse?: boolean;
   }) => (
     <div className="flex flex-col items-center gap-1.5 shrink-0 w-10">
       <div className={cn(
-        "dp-coin w-8 h-8 rounded-full border-2 flex items-center justify-center text-[13px] font-bold transition-all",
+        pulse ? "dp-cf-pulse" : "dp-coin",
+        "w-8 h-8 rounded-full border-2 flex items-center justify-center text-[13px] font-bold transition-all",
         active
-          ? "border-amber-400 bg-amber-400/15 text-amber-300 dp-signal shadow-[0_0_12px_-2px_rgba(251,191,36,0.4)]"
+          ? "border-amber-400 bg-amber-400/15 text-amber-300 shadow-[0_0_12px_-2px_rgba(251,191,36,0.4)]"
           : done
             ? tone === "emerald" ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
               : tone === "rose" ? "border-rose-500 bg-rose-500/15 text-rose-300"
@@ -572,6 +579,7 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
                 tfTag={VRCF_TF[d.tf]?.vr ? TF_SHORT[VRCF_TF[d.tf].vr] : undefined} />
               <Conn on={cfDone} tone={tone} />
               <Step label="CF" done={cfDone && d.fase !== 3} active={cfDone && d.fase === 3}
+                pulse={cfDone && !cfFlipped}
                 waiting={!cfDone && vrDone && !cfFlipped} flipped={cfFlipped} tone={tone}
                 tfTag={
                   // CF LOW = dari TF yang sama kasih VR. CF HIGH = 1 level bawah VR TF.
