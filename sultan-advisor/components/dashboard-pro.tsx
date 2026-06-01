@@ -200,10 +200,10 @@ const DP_ANIM = `
 .dp-xl    { font-size: 32px;   line-height: 1.05; }
 .dp-num   { font-variant-numeric: tabular-nums; }
 /* ═══ GLASS MATERIAL ═══ */
-/* ═══ KARTU = SLAB 3D NGAMBANG (smooth, hover glow tanpa konflik transform) ═══ */
+/* ═══ KARTU = SLAB 3D NGAMBANG — perspective di dalam transform biar 3D-nya KELIATAN ═══ */
 @keyframes dp-slab {
-  0%,100% { transform: translateZ(0) translateY(0) rotateX(0deg) rotateY(0deg); }
-  50%     { transform: translateZ(22px) translateY(-4px) rotateX(1.4deg) rotateY(-1deg); }
+  0%,100% { transform: perspective(900px) translateZ(0) translateY(0) rotateX(0deg) rotateY(0deg); }
+  50%     { transform: perspective(900px) translateZ(34px) translateY(-6px) rotateX(2.6deg) rotateY(-1.8deg); }
 }
 .dp-card  {
   box-shadow: var(--dp-sh-1);
@@ -213,11 +213,12 @@ const DP_ANIM = `
 }
 .dp-card:nth-child(2n) { animation-duration: 8.5s; animation-delay: -3s; }
 .dp-card:nth-child(3n) { animation-duration: 6.5s; animation-delay: -1.5s; }
-/* hover: cuma glow + brightness (TANPA transform) → float tetap mulus, gak nyentak */
+.dp-card:nth-child(5n) { animation-duration: 9.5s; animation-delay: -4.5s; }
+/* hover: glow + brightness (TANPA transform) → float 3D tetap mulus, gak nyentak */
 .dp-card:hover {
-  box-shadow: var(--dp-sh-2), 0 18px 52px -14px rgba(99,102,241,0.42);
-  border-color: rgba(99,102,241,0.45);
-  filter: brightness(1.07);
+  box-shadow: var(--dp-sh-2), 0 22px 60px -12px rgba(99,102,241,0.5);
+  border-color: rgba(99,102,241,0.55);
+  filter: brightness(1.1);
   z-index: 20;
 }
 .dp-glass { background: var(--dp-glass); backdrop-filter: blur(16px) saturate(1.5); -webkit-backdrop-filter: blur(16px) saturate(1.5); }
