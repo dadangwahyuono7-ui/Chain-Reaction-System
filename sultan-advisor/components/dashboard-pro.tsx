@@ -128,13 +128,12 @@ const DP_ANIM = `
 .dp-coin        { animation: dp-coin 4.5s ease-in-out infinite; transform-style: preserve-3d; }
 .dp-coin:nth-child(odd) { animation-delay: -2s; }
 /* baris/kartu = miring 3D pas hover (kayak diangkat & diputar) */
-.dp-row3d       { transition: transform .4s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease; transform-style: preserve-3d; }
-.dp-row3d:hover { transform: perspective(800px) rotateX(7deg) rotateY(-3deg) translateZ(16px) scale(1.015); box-shadow: 0 16px 40px -12px rgba(99,102,241,0.42); z-index: 10; }
+.dp-row3d       { transition: transform .45s cubic-bezier(.22,.61,.36,1), box-shadow .4s ease; transform-style: preserve-3d; }
+.dp-row3d:hover { transform: perspective(900px) rotateX(4deg) translateY(-3px) scale(1.012); box-shadow: 0 14px 36px -14px rgba(99,102,241,0.34); z-index: 10; }
 /* ═══ ELEGAN 3D MENYELURUH ═══ */
-/* teks besar berdimensi (extruded) */
-.dp-xl, .dp-h   { text-shadow: 0 1px 0 rgba(0,0,0,.55), 0 2px 5px rgba(0,0,0,.45), 0 0 20px rgba(99,145,255,.12); }
-.dp-sub         { text-shadow: 0 1px 2px rgba(0,0,0,.5); }
-.dp-label, .dp-micro { text-shadow: 0 1px 1px rgba(0,0,0,.4); }
+/* depth halus cuma di teks BESAR — teks kecil dibiarin crisp biar jelas */
+.dp-xl          { text-shadow: 0 1px 3px rgba(0,0,0,.5); }
+.dp-h           { text-shadow: 0 1px 2px rgba(0,0,0,.45); }
 /* tombol = timbul, mencet pas diklik (tactile 3D) */
 .dp-scope button { transition: transform .12s ease, box-shadow .2s ease, filter .2s ease; }
 .dp-scope button:hover  { transform: translateY(-1px); filter: brightness(1.08); }
@@ -171,7 +170,7 @@ const DP_ANIM = `
   --dp-sh-1: 0 1px 0 0 rgba(255,255,255,.03) inset, 0 8px 32px -16px rgba(0,0,0,.7);
   --dp-sh-2: 0 1px 0 0 rgba(255,255,255,.05) inset, 0 20px 60px -20px rgba(0,0,0,.85);
   --dp-sh-glow: 0 0 40px -12px;
-  --dp-glass: rgba(15,23,42,0.5);
+  --dp-glass: rgba(15,23,42,0.72);
   --dp-glass-border: rgba(148,163,184,0.08);
   perspective: 2000px;
   transform-style: preserve-3d;
@@ -186,26 +185,17 @@ const DP_ANIM = `
 .dp-xl    { font-size: 32px;   line-height: 1.05; }
 .dp-num   { font-variant-numeric: tabular-nums; }
 /* ═══ GLASS MATERIAL ═══ */
-/* ═══ KOTAK = SLAB 3D NGAMBANG ═══ */
-@keyframes dp-slab {
-  0%,100% { transform: translateZ(0) translateY(0) rotateX(0deg) rotateY(0deg); }
-  50%     { transform: translateZ(26px) translateY(-5px) rotateX(1.4deg) rotateY(-1.2deg); }
-}
+/* ═══ KARTU = HOVER HALUS (tanpa gerak konstan biar teks stabil & jelas) ═══ */
 .dp-card  {
   box-shadow: var(--dp-sh-1);
-  transition: box-shadow .3s ease, border-color .3s ease, transform .35s cubic-bezier(.2,.8,.2,1);
+  transition: box-shadow .45s cubic-bezier(.22,.61,.36,1), border-color .45s ease, transform .45s cubic-bezier(.22,.61,.36,1);
   transform-style: preserve-3d;
-  animation: dp-slab 8s ease-in-out infinite;
+  will-change: transform;
 }
-.dp-card:nth-child(2n) { animation-duration: 9.5s; animation-delay: -3.2s; }
-.dp-card:nth-child(3n) { animation-duration: 7.2s; animation-delay: -1.6s; }
-.dp-card:nth-child(4n) { animation-duration: 10.5s; animation-delay: -5s; }
-/* hover: animasi berhenti, kartu "diangkat" ke arah kita */
 .dp-card:hover {
-  animation: none;
-  box-shadow: var(--dp-sh-2), 0 22px 60px -12px rgba(99,102,241,0.45);
-  transform: translateZ(60px) translateY(-8px) scale(1.02);
-  border-color: rgba(99,102,241,0.45);
+  box-shadow: var(--dp-sh-2), 0 16px 44px -16px rgba(99,102,241,0.32);
+  transform: translateY(-5px) scale(1.01);
+  border-color: rgba(99,102,241,0.38);
   z-index: 20;
 }
 .dp-glass { background: var(--dp-glass); backdrop-filter: blur(16px) saturate(1.5); -webkit-backdrop-filter: blur(16px) saturate(1.5); }
@@ -1265,13 +1255,6 @@ export function DashboardPro(p: DashboardProProps) {
     <div className="dp-scope relative px-5 py-5 max-w-[1200px] mx-auto space-y-4">
       <style>{DP_ANIM}</style>
 
-      {/* ═══ AMBIENT BACKGROUND — subtle radial gradient orbs ═══ */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden" aria-hidden>
-        <div className="absolute -top-[30%] -left-[20%] w-[70%] h-[70%] rounded-full opacity-[0.035]"
-          style={{ background: "radial-gradient(circle, rgba(99,145,255,1), transparent 70%)", animation: "dp-ambient 12s ease-in-out infinite" }} />
-        <div className="absolute -bottom-[20%] -right-[15%] w-[60%] h-[60%] rounded-full opacity-[0.025]"
-          style={{ background: "radial-gradient(circle, rgba(251,191,36,1), transparent 70%)", animation: "dp-ambient 15s ease-in-out infinite 3s" }} />
-      </div>
 
       {/* ══ TOP STRIP: price + session + sync ══════════════════════════════ */}
       <div className="flex items-center gap-3 flex-wrap">
