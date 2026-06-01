@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Textarea } from "@/components/ui/textarea";
-import { SendIcon, MicIcon, SquareIcon, ShieldCheckIcon, TrendingUpIcon, LayoutDashboardIcon, AlertOctagonIcon, CloudIcon, CpuIcon, PaperclipIcon, XIcon, FileTextIcon, ImageIcon, ZapIcon } from "lucide-react";
+import { SendIcon, MicIcon, SquareIcon, ShieldCheckIcon, TrendingUpIcon, LayoutDashboardIcon, AlertOctagonIcon, CloudIcon, CpuIcon, PaperclipIcon, XIcon, FileTextIcon, ImageIcon, ZapIcon, TargetIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageBubble } from "./message-bubble";
 import type { UIMessage } from "ai";
@@ -43,6 +43,22 @@ function useActiveInstrument() {
 }
 
 const QUICK_PROMPTS = [
+  {
+    icon: TargetIcon,
+    label: "Analisa Lengkap + Entry/SL/TP",
+    prompt: [
+      "ANALISA LENGKAP MODE ELITE. Ikuti URUTAN WAJIB ini, jangan skip langkah, jangan ngarang angka:",
+      "1) Panggil get_market_context dulu (kalau data terasa stale, panggil trigger_sync) untuk state CMP/VR/CF terbaru tiap TF.",
+      "2) Panggil get_fund_data — baca Volume Profile (POC/HVN/LVN = zona akumulasi fund), liquidity pool (stop numpuk), basis, DXY & US10Y + macro bias.",
+      "3) Tentukan setup terbaik per DOKTRIN murni (CMP→VR→CF, fase F1/F2/F3). HANYA F3 (VR=YA & CF=YA) yang PRIME ENTRY. F1/F2 = belum, bilang apa adanya.",
+      "4) Panggil get_ohlc di TF tempat VR terjadi untuk SL PRESISI (high/low candle VR + buffer 3-5 pts). DILARANG pakai angka bulat tebakan untuk SL.",
+      "5) Panggil calculate_risk untuk validasi arah SL/TP & R:R sebelum present plan.",
+      "",
+      "ATURAN ANTI-HALU (WAJIB): Kalau belum sync / belum ada CMP / belum F3 → JUJUR bilang 'belum ada setup prime, ini alasannya' dan JANGAN bikin entry/SL/TP karangan. Semua angka HARUS dari data nyata (OHLC, SNR, fund), bukan tebakan.",
+      "",
+      "OUTPUT: (a) Konfirmasi state literal dari tabel, (b) Storyline per TF, (c) Setup terbaik + Grade A+/A/B/C dengan alasan, (d) TRADE PLAN: Arah/Entry/SL/TP1/TP2/Size, (e) CONFLUENCE FUND: apakah entry dekat HVN/POC/liquidity pool & apakah SEARAH macro bias DXY/yield (kalau lawan makro → turunkan grade), (f) Watchlist.",
+    ].join("\n"),
+  },
   {
     icon: ShieldCheckIcon,
     label: "Cek Setup Valid?",
