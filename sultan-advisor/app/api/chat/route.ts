@@ -11,6 +11,7 @@ export const maxDuration = 300;
 import { messages, chatSessions, marketContext, memories, paperAccounts, paperTrades } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { buildSystemPrompt, buildSystemPromptLite, type Memory } from "@/lib/system-prompt";
+import { computeFundData } from "@/lib/fund-data";
 import { headers } from "next/headers";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -777,6 +778,22 @@ const searchTools = {
         return await fetchOHLC(tf, bars);
       } catch (e) {
         return `Gagal fetch OHLC ${tf}: ${e instanceof Error ? e.message : String(e)}. Coba lagi atau gunakan level fundamental SNR dari context sebagai referensi SL sementara.`;
+      }
+    },
+  }),
+  get_fund_data: tool({
+    description: [
+      "Ambil 'Jejak Fund' / data institutional dari Yahoo Finance: Volume Profile (POC/HVN/LVN), Liquidity zones (stop pool equal high/low), basis COMEX-Spot, DXY & US10Y + macro bias gold.",
+      "Gunakan untuk: tau area akumulasi/distribusi fund (HVN/POC = magnet harga), di mana stop numpuk (liquidity pool yang sering di-grab sebelum gerak), dan filter makro (DXY/yield naik = tekanan jual gold).",
+      "WAJIB cek ini sebelum analisis swing besar atau pas Commander tanya 'di mana fund main / area institusi / kenapa harga ke situ'. Ini proxy delay (bukan order book real-time) tapi valid buat baca akumulasi.",
+    ].join(" "),
+    inputSchema: z.object({}),
+    execute: async () => {
+      try {
+        const d = await computeFundData();
+        return `🏦 JEJAK FUND (Yahoo, delay):\n${d.summary}\n\nInterpretasi: POC/HVN = zona akumulasi (harga ketarik balik ke sini). LVN = area rejection (harga cepat lewat). Liquidity pool = stop numpuk, sering di-grab fund sebelum gerak arah sebenarnya. Macro bias = filter; jangan lawan arah makro buat swing.`;
+      } catch (e) {
+        return `Gagal ambil fund data: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
   }),

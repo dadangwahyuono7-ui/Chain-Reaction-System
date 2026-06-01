@@ -8,6 +8,7 @@ import { DashboardPro } from "@/components/dashboard-pro";
 const ThreeBg = dynamic(() => import("@/components/three-bg").then((m) => m.ThreeBg), { ssr: false });
 const Chain3DLive = dynamic(() => import("@/components/chain-3d").then((m) => m.Chain3D), { ssr: false });
 import { CursorGlow } from "@/components/cursor-glow";
+import { FundFootprint } from "@/components/fund-footprint";
 
 const tfData = [
   { tf: "DAILY", cmp: "BEARISH", vr: "YA", cf: "YA", cfCount: 17, cfType: "LOW", fase: 3 },
@@ -35,6 +36,7 @@ export default function DashboardPreview() {
     <div className="min-h-screen bg-transparent text-slate-100">
       <ThreeBg />
       <CursorGlow />
+      <div className="max-w-[1200px] mx-auto px-5 pt-5"><FundFootprint /></div>
       <DashboardPro
         displayPrice="3840.01"
         livePrice="3840.01"

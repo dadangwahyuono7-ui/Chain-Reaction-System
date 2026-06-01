@@ -17,6 +17,7 @@ const ThreeBg = dynamic(() => import("@/components/three-bg").then(m => m.ThreeB
 const Chain3DLive = dynamic(() => import("@/components/chain-3d").then(m => m.Chain3DLive), { ssr: false });
 import { TiltCard } from "@/components/tilt-card";
 import { CursorGlow } from "@/components/cursor-glow";
+import { FundFootprint } from "@/components/fund-footprint";
 
 const ADMIN_EMAIL = "dadangwahyuono@gmail.com";
 import { cn } from "@/lib/utils";
@@ -203,6 +204,10 @@ export default function DashboardPage() {
             <TiltCard className="p-3" intensity={5}>
               <Chain3DLive tf="H4" />
             </TiltCard>
+          </div>
+          {/* Jejak Fund — Volume Profile, Liquidity, Basis, Macro */}
+          <div className="px-3 pt-3">
+            <FundFootprint />
           </div>
           <MarketPanel
             onAutoAnalysis={(prompt) => setAutoPrompt(prompt)}
