@@ -120,7 +120,16 @@ const DP_ANIM = `
 @keyframes dp-hue { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(30deg); } }
 
 /* ═══ CLASS MAPPINGS ═══ */
-.dp-stream      { background-image: repeating-linear-gradient(90deg, var(--c) 0 8px, transparent 8px 16px); background-size: 24px 100%; animation: dp-flow .65s linear infinite; }
+/* heartbeat sweep — blip cahaya nyapu kiri→kanan kayak monitor jantung */
+@keyframes dp-hb { from { background-position: 140% 0; } to { background-position: -40% 0; } }
+.dp-stream      {
+  background-color: rgba(148,163,184,0.10);
+  background-image: linear-gradient(90deg, transparent 0%, transparent 38%, var(--c) 47%, #fff 50%, var(--c) 53%, transparent 62%, transparent 100%);
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  box-shadow: 0 0 6px -1px var(--c);
+  animation: dp-hb 1.15s linear infinite;
+}
 .dp-breathe     { animation: dp-breathe 3s ease-in-out infinite; }
 .dp-signal      { animation: dp-signal .85s ease-in-out infinite; }
 /* lingkaran step = koin 3D muter pelan */
