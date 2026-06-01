@@ -1,57 +1,79 @@
 "use client";
 
 /**
- * ThreeBg — background synthwave CSS MURNI (no WebGL → gak pernah putih, GPU ringan).
- * Grid lantai perspektif yang scroll + horizon glow + sun. Kesan 3D tanpa risiko WebGL.
+ * ThreeBg — WebGL animated wireframe terrain (synthwave wave) REAKTIF MOUSE.
+ * - kamera parallax ngikutin kursor
+ * - terrain beriak (ripple) di posisi kursor
+ * GPU-light: ~3.7K verts, basic material, no lights.
  */
 
-export function ThreeBg({
-  grid = "rgba(99,102,241,0.28)",
-  glow = "rgba(99,102,241,0.5)",
-  bg = "#020617",
-}: { grid?: string; glow?: string; bg?: string }) {
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useRef, useMemo } from "react";
+import * as THREE from "three";
+
+function WaveGrid({ color }: { color: string }) {
+  const geo = useMemo(() => new THREE.PlaneGeometry(40, 40, 60, 60), []);
+  const original = useMemo(
+    () => Float32Array.from(geo.attributes.position.array as Float32Array),
+    [geo]
+  );
+  const { pointer } = useThree();
+
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    // posisi kursor diproyeksikan kasar ke grid-space
+    const cx = pointer.x * 18;
+    const cy = -pointer.y * 18;
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = original[i * 3];
+      const y = original[i * 3 + 1];
+      const base =
+        Math.sin(x * 0.4 + t) * 0.6 + Math.cos(y * 0.4 + t * 0.8) * 0.6;
+      // ripple di sekitar kursor
+      const d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+      const ripple = Math.exp(-d2 / 26) * Math.sin(t * 4 - Math.sqrt(d2)) * 1.4;
+      pos.setZ(i, base + ripple);
+    }
+    pos.needsUpdate = true;
+  });
+
   return (
-    <div className="fixed inset-0 -z-10 pointer-events-none overflow-hidden" style={{ backgroundColor: bg }}>
-      <style>{`
-        @keyframes cr-grid-move { from { background-position: 0 0, 0 0; } to { background-position: 0 50px, 50px 0; } }
-        @keyframes cr-glow-pulse { 0%,100% { opacity:.55; } 50% { opacity:.9; } }
-      `}</style>
+    <mesh geometry={geo} rotation={[-Math.PI / 2.15, 0, 0]} position={[0, -2.2, 0]}>
+      <meshBasicMaterial color={color} wireframe transparent opacity={0.32} />
+    </mesh>
+  );
+}
 
-      {/* sun / horizon glow */}
-      <div
-        className="absolute left-1/2 -translate-x-1/2"
-        style={{
-          top: "33%", width: "70%", height: "42%",
-          background: `radial-gradient(ellipse at center, ${glow} 0%, transparent 65%)`,
-          filter: "blur(40px)",
-          animation: "cr-glow-pulse 5s ease-in-out infinite",
-        }}
-      />
-      {/* garis horizon tajam */}
-      <div
-        className="absolute left-0 right-0"
-        style={{ top: "38%", height: "2px", background: `linear-gradient(90deg, transparent, ${glow}, transparent)` }}
-      />
+function CameraRig() {
+  useFrame((state) => {
+    const p = state.pointer;
+    state.camera.position.x += (p.x * 1.8 - state.camera.position.x) * 0.04;
+    state.camera.position.y += (1.6 + p.y * 0.9 - state.camera.position.y) * 0.04;
+    state.camera.lookAt(0, -0.4, 0);
+  });
+  return null;
+}
 
-      {/* lantai grid perspektif (synthwave) */}
-      <div
-        className="absolute left-1/2 bottom-0 h-[62%] w-[300%] -translate-x-1/2"
-        style={{
-          backgroundImage: `linear-gradient(${grid} 1.5px, transparent 1.5px), linear-gradient(90deg, ${grid} 1.5px, transparent 1.5px)`,
-          backgroundSize: "50px 50px",
-          transform: "perspective(360px) rotateX(64deg)",
-          transformOrigin: "bottom center",
-          animation: "cr-grid-move 6s linear infinite",
-          WebkitMaskImage: "linear-gradient(transparent 0%, #000 45%)",
-          maskImage: "linear-gradient(transparent 0%, #000 45%)",
-        }}
-      />
-
-      {/* vignette atas biar konten fokus */}
-      <div
-        className="absolute inset-0"
-        style={{ background: "radial-gradient(130% 90% at 50% 8%, transparent 42%, rgba(2,6,23,0.72) 100%)" }}
-      />
+export function ThreeBg({
+  color = "#6366f1",
+  bg = "#020617",
+}: {
+  color?: string;
+  bg?: string;
+}) {
+  return (
+    <div className="fixed inset-0 -z-10 pointer-events-none" style={{ backgroundColor: bg }}>
+      <Canvas
+        camera={{ position: [0, 1.6, 6], fov: 60 }}
+        gl={{ antialias: true, alpha: true, powerPreference: "low-power" }}
+        dpr={[1, 1.5]}
+      >
+        <color attach="background" args={[bg]} />
+        <fog attach="fog" args={[bg, 5, 17]} />
+        <CameraRig />
+        <WaveGrid color={color} />
+      </Canvas>
     </div>
   );
 }
