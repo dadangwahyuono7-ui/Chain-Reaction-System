@@ -130,6 +130,17 @@ const DP_ANIM = `
 /* baris/kartu = miring 3D pas hover (kayak diangkat & diputar) */
 .dp-row3d       { transition: transform .4s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease; transform-style: preserve-3d; }
 .dp-row3d:hover { transform: perspective(800px) rotateX(7deg) rotateY(-3deg) translateZ(16px) scale(1.015); box-shadow: 0 16px 40px -12px rgba(99,102,241,0.42); z-index: 10; }
+/* ═══ ELEGAN 3D MENYELURUH ═══ */
+/* teks besar berdimensi (extruded) */
+.dp-xl, .dp-h   { text-shadow: 0 1px 0 rgba(0,0,0,.55), 0 2px 5px rgba(0,0,0,.45), 0 0 20px rgba(99,145,255,.12); }
+.dp-sub         { text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+.dp-label, .dp-micro { text-shadow: 0 1px 1px rgba(0,0,0,.4); }
+/* tombol = timbul, mencet pas diklik (tactile 3D) */
+.dp-scope button { transition: transform .12s ease, box-shadow .2s ease, filter .2s ease; }
+.dp-scope button:hover  { transform: translateY(-1px); filter: brightness(1.08); }
+.dp-scope button:active { transform: translateY(1px) scale(.985); }
+/* badge/pill kecil = sedikit timbul */
+.dp-scope [class*="rounded-md"], .dp-scope [class*="rounded-lg"] { box-shadow: inset 0 1px 0 rgba(255,255,255,.05); }
 .dp-grid        { background-image: linear-gradient(rgba(99,145,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(99,145,255,.04) 1px, transparent 1px); background-size: 32px 32px; animation: dp-grid 8s linear infinite; }
 .dp-flicker     { animation: dp-flicker 4s steps(1) infinite; }
 .dp-bar         { animation: dp-bar 1.4s ease-in-out infinite; }
