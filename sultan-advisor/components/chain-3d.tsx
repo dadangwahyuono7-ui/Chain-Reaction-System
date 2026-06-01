@@ -1,154 +1,148 @@
 "use client";
 
 /**
- * Chain3D — visualisasi 3D siklus CMP → VR → CF.
- * 3 orb bercahaya di ruang 3D + pulsa energi yang ngalir antar node,
- * nyala sesuai fase: F1 (CMP only) → F2 (+VR) → F3 PRIME (+CF, full flow).
- * GPU-light: basic material (no lights), <1K verts.
+ * Chain3D — siklus CMP → VR → CF sebagai GARIS DETAK JANTUNG (ECG) full-width.
+ * Garis scroll kiri→kanan, 3 node glow (CMP/VR/CF) nyala per fase.
+ * Detak makin KENCENG seiring fase: F1 pelan → F2 sedang → F3/CF cepat.
+ * 2D canvas (ringan, look monitor jantung), glow neon.
  */
 
-import { Canvas, useFrame } from "@react-three/fiber";
-import { useRef, useState, useEffect } from "react";
-import * as THREE from "three";
+import { useRef, useEffect, useState } from "react";
 
-const NODE_X = [-2.4, 0, 2.4] as const;
-
-function Orb({ x, color, active }: { x: number; color: string; active: boolean }) {
-  const ref = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => {
-    if (!ref.current) return;
-    const t = clock.getElapsedTime();
-    ref.current.scale.setScalar(active ? 1 + Math.sin(t * 3 + x) * 0.07 : 0.65);
-    ref.current.position.y = Math.sin(t * 1.4 + x) * 0.13;
-  });
-  return (
-    <group ref={ref} position={[x, 0, 0]}>
-      <mesh>
-        <sphereGeometry args={[0.42, 32, 32]} />
-        <meshBasicMaterial color={color} transparent opacity={active ? 1 : 0.22} />
-      </mesh>
-      <mesh>
-        <sphereGeometry args={[0.66, 24, 24]} />
-        <meshBasicMaterial color={color} transparent opacity={active ? 0.16 : 0.04} />
-      </mesh>
-    </group>
-  );
+function phaseColor(dir: string): { hex: string; rgb: string } {
+  const d = (dir || "").toUpperCase();
+  if (d.includes("BULL") || d === "BUY") return { hex: "#34d399", rgb: "52,211,153" };
+  if (d.includes("BEAR") || d === "SELL") return { hex: "#f87171", rgb: "248,113,113" };
+  return { hex: "#818cf8", rgb: "129,140,248" };
 }
 
-function Link({ from, to, color, lit }: { from: number; to: number; color: string; lit: boolean }) {
-  const len = Math.abs(to - from);
-  const mid = (from + to) / 2;
-  return (
-    <mesh position={[mid, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-      <cylinderGeometry args={[0.03, 0.03, len, 12]} />
-      <meshBasicMaterial color={color} transparent opacity={lit ? 0.55 : 0.1} />
-    </mesh>
-  );
+// bentuk gelombang ECG dalam 1 siklus detak (t = 0..1)
+function ecg(t: number): number {
+  // P wave
+  if (t > 0.12 && t < 0.20) return Math.sin((t - 0.12) / 0.08 * Math.PI) * 0.18;
+  // QRS complex (dip - spike tajam - dip)
+  if (t > 0.30 && t < 0.34) return -(t - 0.30) / 0.04 * 0.22;          // Q dip
+  if (t > 0.34 && t < 0.38) return -0.22 + (t - 0.34) / 0.04 * 1.22;  // R naik tajam
+  if (t > 0.38 && t < 0.42) return 1.0 - (t - 0.38) / 0.04 * 1.30;    // S turun
+  if (t > 0.42 && t < 0.46) return -0.30 + (t - 0.42) / 0.04 * 0.30;  // balik baseline
+  // T wave
+  if (t > 0.55 && t < 0.70) return Math.sin((t - 0.55) / 0.15 * Math.PI) * 0.30;
+  return 0;
 }
 
-function Pulse({ phase, color }: { phase: number; color: string }) {
-  const ref = useRef<THREE.Mesh>(null);
-  useFrame(({ clock }) => {
-    if (!ref.current) return;
-    const t = clock.getElapsedTime();
-    const p = (t % 2.4) / 2.4;
-    let x: number;
-    if (phase >= 3) x = THREE.MathUtils.lerp(NODE_X[0], NODE_X[2], p);
-    else if (phase === 2) x = THREE.MathUtils.lerp(NODE_X[0], NODE_X[1], p);
-    else x = NODE_X[0] + Math.sin(t * 3) * 0.28;
-    ref.current.position.x = x;
-    ref.current.position.y = Math.sin(t * 1.4) * 0.13;
-    ref.current.visible = phase >= 1;
-  });
-  return (
-    <mesh ref={ref}>
-      <sphereGeometry args={[0.14, 16, 16]} />
-      <meshBasicMaterial color="#ffffff" />
-    </mesh>
-  );
+function HeartbeatCanvas({ phase, color }: { phase: number; color: { hex: string; rgb: string } }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    let raf = 0;
+    let offset = 0;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    // detak makin kenceng per fase
+    const speed = phase >= 3 ? 1.5 : phase === 2 ? 0.85 : phase === 1 ? 0.45 : 0.2;
+    const beats = phase >= 3 ? 4.2 : phase === 2 ? 3.0 : 2.2; // jumlah detak melintang layar
+
+    const nodes = [
+      { x: 0.16, on: phase >= 1, label: "CMP" },
+      { x: 0.5, on: phase >= 2, label: "VR" },
+      { x: 0.84, on: phase >= 3, label: "CF" },
+    ];
+
+    const draw = () => {
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+        canvas.width = w * dpr; canvas.height = h * dpr;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      const midY = h * 0.52;
+      const amp = h * 0.30;
+      offset += speed * 0.006;
+
+      // garis dasar redup
+      ctx.strokeStyle = `rgba(${color.rgb},0.12)`;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(w, midY); ctx.stroke();
+
+      // ECG line dengan glow
+      ctx.shadowColor = color.hex;
+      ctx.shadowBlur = 12;
+      ctx.strokeStyle = color.hex;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let px = 0; px <= w; px += 2) {
+        const t = ((px / w) * beats - offset) % 1;
+        const tt = t < 0 ? t + 1 : t;
+        const y = midY - ecg(tt) * amp;
+        if (px === 0) ctx.moveTo(px, y); else ctx.lineTo(px, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // node glow CMP/VR/CF
+      const beatPulse = 1 + Math.sin(offset * Math.PI * 2 * beats) * 0.12;
+      nodes.forEach(n => {
+        const cx = n.x * w;
+        const r = (n.on ? 9 : 5) * (n.on ? beatPulse : 1);
+        // halo
+        const grad = ctx.createRadialGradient(cx, midY, 0, cx, midY, r * 2.6);
+        grad.addColorStop(0, `rgba(${color.rgb},${n.on ? 0.5 : 0.12})`);
+        grad.addColorStop(1, "transparent");
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(cx, midY, r * 2.6, 0, Math.PI * 2); ctx.fill();
+        // inti
+        ctx.fillStyle = n.on ? color.hex : `rgba(${color.rgb},0.3)`;
+        ctx.beginPath(); ctx.arc(cx, midY, r, 0, Math.PI * 2); ctx.fill();
+      });
+
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [phase, color]);
+
+  return <canvas ref={ref} className="w-full h-[110px] block" />;
 }
 
-function Scene({ phase, color }: { phase: number; color: string }) {
-  const group = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => {
-    if (group.current) group.current.rotation.y = Math.sin(clock.getElapsedTime() * 0.3) * 0.28;
-  });
-  return (
-    <group ref={group}>
-      <Link from={NODE_X[0]} to={NODE_X[1]} color={color} lit={phase >= 2} />
-      <Link from={NODE_X[1]} to={NODE_X[2]} color={color} lit={phase >= 3} />
-      <Orb x={NODE_X[0]} color={color} active={phase >= 1} />
-      <Orb x={NODE_X[1]} color={color} active={phase >= 2} />
-      <Orb x={NODE_X[2]} color={color} active={phase >= 3} />
-      <Pulse phase={phase} color={color} />
-    </group>
-  );
-}
-
-function phaseColor(dir: string): string {
-  const d = dir.toUpperCase();
-  if (d.includes("BULL") || d === "BUY") return "#34d399"; // emerald
-  if (d.includes("BEAR") || d === "SELL") return "#f87171"; // red
-  return "#818cf8"; // indigo
-}
-
-export function Chain3D({
-  tf = "H4",
-  cmp = "",
-  vr = "",
-  cf = "",
-}: {
-  tf?: string;
-  cmp?: string;
-  vr?: string;
-  cf?: string;
-}) {
-  const hasCmp = !!cmp;
-  const isVR = vr === "YA";
-  const isCF = cf === "YA";
+export function Chain3D({ tf = "H4", cmp = "", vr = "", cf = "" }: { tf?: string; cmp?: string; vr?: string; cf?: string }) {
+  const isVR = vr === "YA", isCF = cf === "YA", hasCmp = !!cmp;
   const phase = !hasCmp ? 0 : isVR && isCF ? 3 : isVR ? 2 : 1;
   const color = phaseColor(cmp);
   const faseLabel = phase === 3 ? "F3 ⚡ PRIME" : phase === 2 ? "F2 — tunggu CF" : phase === 1 ? "F1 — tunggu VR" : "no CMP";
-  const dirLabel = cmp ? (phaseColor(cmp) === "#34d399" ? "BUY ▲" : phaseColor(cmp) === "#f87171" ? "SELL ▼" : cmp) : "—";
+  const dirLabel = !cmp ? "—" : color.hex === "#34d399" ? "BUY ▲" : color.hex === "#f87171" ? "SELL ▼" : cmp;
+  const bpm = phase >= 3 ? "FAST" : phase === 2 ? "MED" : phase === 1 ? "SLOW" : "—";
 
   return (
     <div className="relative w-full">
-      <div className="flex items-center justify-between px-1 mb-1">
+      <div className="flex items-center justify-between px-1 mb-0.5">
         <span className="text-[11px] font-mono tracking-widest text-slate-400">
-          CHAIN 3D · <span className="text-slate-200">{tf}</span>
+          CHAIN PULSE · <span className="text-slate-200">{tf}</span>
         </span>
-        <span className="text-[11px] font-mono font-bold" style={{ color }}>
-          {dirLabel} · {faseLabel}
+        <span className="text-[11px] font-mono font-bold" style={{ color: color.hex }}>
+          {dirLabel} · {faseLabel} · ♥ {bpm}
         </span>
       </div>
 
-      <div className="h-[180px] w-full">
-        <Canvas camera={{ position: [0, 0.5, 6.2], fov: 55 }} gl={{ antialias: true, alpha: true }} dpr={[1, 1.5]}>
-          <Scene phase={phase} color={color} />
-        </Canvas>
-      </div>
+      <HeartbeatCanvas phase={phase} color={color} />
 
-      {/* Label node di bawah canvas */}
-      <div className="flex justify-between px-6 -mt-3">
+      <div className="flex justify-between px-[14%] -mt-2">
         {[
           { k: "CMP", on: phase >= 1 },
           { k: "VR", on: phase >= 2 },
           { k: "CF", on: phase >= 3 },
         ].map((n) => (
-          <span
-            key={n.k}
-            className="text-[10px] font-mono font-bold tracking-wider transition-colors"
-            style={{ color: n.on ? color : "#475569" }}
-          >
-            {n.k}
-          </span>
+          <span key={n.k} className="text-[10px] font-mono font-bold tracking-wider"
+            style={{ color: n.on ? color.hex : "#475569" }}>{n.k}</span>
         ))}
       </div>
     </div>
   );
 }
 
-/** Versi live — fetch /api/context, tampilkan chain 3D untuk TF tertentu (default H4). */
+/** Versi live — fetch /api/context untuk TF tertentu (default H4). */
 export function Chain3DLive({ tf = "H4" }: { tf?: string }) {
   const [s, setS] = useState({ cmp: "", vr: "", cf: "" });
   useEffect(() => {
