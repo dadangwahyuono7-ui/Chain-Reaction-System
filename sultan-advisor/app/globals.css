@@ -148,7 +148,7 @@
 }
 
 /* Base premium: smoothing + subtle radial depth pada slate base */
-html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; background-color: #0a0e16; }
 body {
   background-color: var(--cr-bg);
   background-image:
