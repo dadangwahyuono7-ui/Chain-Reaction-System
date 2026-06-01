@@ -194,17 +194,24 @@ const DP_ANIM = `
 .dp-xl    { font-size: 32px;   line-height: 1.05; }
 .dp-num   { font-variant-numeric: tabular-nums; }
 /* ═══ GLASS MATERIAL ═══ */
-/* ═══ KARTU = HOVER HALUS (tanpa gerak konstan biar teks stabil & jelas) ═══ */
+/* ═══ KARTU = SLAB 3D NGAMBANG (smooth, hover glow tanpa konflik transform) ═══ */
+@keyframes dp-slab {
+  0%,100% { transform: translateZ(0) translateY(0) rotateX(0deg) rotateY(0deg); }
+  50%     { transform: translateZ(22px) translateY(-4px) rotateX(1.4deg) rotateY(-1deg); }
+}
 .dp-card  {
   box-shadow: var(--dp-sh-1);
-  transition: box-shadow .45s cubic-bezier(.22,.61,.36,1), border-color .45s ease, transform .45s cubic-bezier(.22,.61,.36,1);
+  transition: box-shadow .4s ease, border-color .4s ease, filter .4s ease;
   transform-style: preserve-3d;
-  will-change: transform;
+  animation: dp-slab 7s ease-in-out infinite;
 }
+.dp-card:nth-child(2n) { animation-duration: 8.5s; animation-delay: -3s; }
+.dp-card:nth-child(3n) { animation-duration: 6.5s; animation-delay: -1.5s; }
+/* hover: cuma glow + brightness (TANPA transform) → float tetap mulus, gak nyentak */
 .dp-card:hover {
-  box-shadow: var(--dp-sh-2), 0 16px 44px -16px rgba(99,102,241,0.32);
-  transform: translateY(-5px) scale(1.01);
-  border-color: rgba(99,102,241,0.38);
+  box-shadow: var(--dp-sh-2), 0 18px 52px -14px rgba(99,102,241,0.42);
+  border-color: rgba(99,102,241,0.45);
+  filter: brightness(1.07);
   z-index: 20;
 }
 .dp-glass { background: var(--dp-glass); backdrop-filter: blur(16px) saturate(1.5); -webkit-backdrop-filter: blur(16px) saturate(1.5); }

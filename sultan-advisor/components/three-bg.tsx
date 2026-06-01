@@ -52,14 +52,12 @@ export function ThreeBg({ color = "99,102,241", bg = "#020617" }: { color?: stri
           const dx = sx - mxP, dy = sy - myP;
           const dist = Math.sqrt(dx * dx + dy * dy);
           sy -= Math.sin(dist * 0.03 - t * 5) * Math.exp(-dist / 280) * 30;
-          row.push({ x: sx, y: sy, a: 0.13 + dT * 0.45 });
+          row.push({ x: sx, y: sy, a: 0.18 + dT * 0.5 });
         }
         pts.push(row);
       }
 
       ctx.lineWidth = 1.2;
-      ctx.shadowColor = `rgba(${color},0.85)`;
-      ctx.shadowBlur = 5;
       for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
           const p = pts[r][c];

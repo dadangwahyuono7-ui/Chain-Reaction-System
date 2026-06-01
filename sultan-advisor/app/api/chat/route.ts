@@ -876,9 +876,10 @@ export async function POST(req: Request) {
   let modelType: "local" | "cloud" = modelChoice === "cloud" ? "cloud" : "local";
 
   if (modelType === "local") {
+    // Auto-fallback: llama.cpp gak nyala / gak respon → otomatis ke cloud (Claude premium)
     const localBase = process.env.LLM_BASE_URL ?? "http://localhost:8080/v1";
     const localOk = await fetch(`${localBase}/models`, {
-      signal: AbortSignal.timeout(1000),
+      signal: AbortSignal.timeout(1800),
     }).then(r => r.ok).catch(() => false);
     if (!localOk) modelType = "cloud";
   }
