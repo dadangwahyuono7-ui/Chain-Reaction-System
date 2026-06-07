@@ -186,9 +186,14 @@ async function main() {
         if (cols.length < 4) continue;
         const tf = normalizeTF(cols[0]);
         if (!tf) continue;
+        // Action dideteksi by KEYWORD (bukan kolom terakhir) — biar gak ketuker
+        // sama kolom JAM yang baru. Jam dideteksi by pola HH:MM.
+        const actionCell = cols.find(c => /ENTRI|MENUNGGU|MONITOR/i.test(c)) || cols[cols.length - 1] || '';
+        const timeCell   = cols.find(c => /\d{1,2}:\d{2}/.test(c)) || '';
         rawState[tf] = {
           cmp:    cols[1] || '',
-          action: cols[cols.length - 1] || '',
+          action: actionCell,
+          times:  timeCell,   // "cmpT/vrT/cfT" mis. "14:00/14:35/15:10"
         };
       }
     }
@@ -205,6 +210,9 @@ async function main() {
         ctx[`${tf}_CF`]       = '';
         ctx[`${tf}_CF_COUNT`] = '';
         ctx[`${tf}_CF_TYPE`]  = '';
+        ctx[`${tf}_CMP_TIME`] = '';
+        ctx[`${tf}_VR_TIME`]  = '';
+        ctx[`${tf}_CF_TIME`]  = '';
       } else {
         const { vr, cf, count, type } = actionToVRCF(s.action);
         ctx[`${tf}_CMP`]      = cmpToValue(s.cmp);
@@ -212,6 +220,12 @@ async function main() {
         ctx[`${tf}_CF`]       = cf;
         ctx[`${tf}_CF_COUNT`] = count;
         ctx[`${tf}_CF_TYPE`]  = type;
+        // Jam breakout: "cmpT/vrT/cfT" → pisah. "-" / non-jam → kosong.
+        const tparts = String(s.times || '').split('/').map(x => x.trim());
+        const cleanT = v => (v && /^\d{1,2}:\d{2}$/.test(v)) ? v : '';
+        ctx[`${tf}_CMP_TIME`] = cleanT(tparts[0]);
+        ctx[`${tf}_VR_TIME`]  = cleanT(tparts[1]);
+        ctx[`${tf}_CF_TIME`]  = cleanT(tparts[2]);
       }
     }
 

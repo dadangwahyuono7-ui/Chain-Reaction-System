@@ -237,19 +237,40 @@ const SNR_LEVEL_KEYS = ["PDH","PDL","DAILY_OPEN","PWH","PWL","WEEKLY_OPEN","PMH"
 function computeAutoLevels(
   get: (k: string) => string, dir: "BUY" | "SELL", entry: number
 ): { sl: number; tp1: number; tp2: number | null } {
-  const levels = SNR_LEVEL_KEYS.map(k => parseFloat(get(k))).filter(v => !isNaN(v) && v > 0);
+  // BUG FIX: kontaminasi lintas-instrumen. Level SNR diambil dari 1 chart (TV_SYMBOL).
+  // Kalau chart pindah (mis. XAUUSD ~4500 → BTCUSD ~73000), level lama nyasar ke trade
+  // baru → SL/TP ngaco. Filter: cuma level dalam ±15% dari entry (skala yg sama).
+  const band   = entry * 0.15;
+  const levels = SNR_LEVEL_KEYS
+    .map(k => parseFloat(get(k)))
+    .filter(v => !isNaN(v) && v > 0 && Math.abs(v - entry) <= band);
+
+  // BUG FIX: SL mikro bikin R meledak gak realistis (R = reward/risk → risk 2 poin =
+  // R ratusan). Paksa jarak risk minimum (di bawah ini ketelan spread di dunia nyata)
+  // dan maksimum (lebih dari ini bukan setup doktrin).
+  const minDist = entry * 0.0015; // 0.15% — floor risk realistis
+  const maxDist = entry * 0.02;   // 2%   — ceiling SL
+  const pct     = entry * 0.003;  // 0.3% — fallback kalau gak ada level valid
+
   const above = levels.filter(v => v > entry).sort((a, b) => a - b);
   const below = levels.filter(v => v < entry).sort((a, b) => b - a);
-  const pct = entry * 0.003; // fallback 0.3% jarak risk
+
+  // SL = level terdekat yg jaraknya WAJAR (>= minDist & <= maxDist). Lewati yg mepet.
+  const pickSL = (cands: number[], fb: number) =>
+    cands.find(v => { const d = Math.abs(v - entry); return d >= minDist && d <= maxDist; }) ?? fb;
+  // TP = level terdekat yg minimal minDist jauh (boleh jauh, gak dibatasi maxDist).
+  const pickTP = (cands: number[], fb: number) =>
+    cands.find(v => Math.abs(v - entry) >= minDist) ?? fb;
+
   if (dir === "BUY") {
-    const sl  = below[0] ?? (entry - pct);
-    const tp1 = above[0] ?? (entry + pct * 2);
-    const tp2 = above[1] ?? null;
+    const sl  = pickSL(below, entry - pct);
+    const tp1 = pickTP(above, entry + pct * 2);
+    const tp2 = above.find(v => v > tp1) ?? null;
     return { sl, tp1, tp2 };
   } else {
-    const sl  = above[0] ?? (entry + pct);
-    const tp1 = below[0] ?? (entry - pct * 2);
-    const tp2 = below[1] ?? null;
+    const sl  = pickSL(above, entry + pct);
+    const tp1 = pickTP(below, entry - pct * 2);
+    const tp2 = below.find(v => v < tp1) ?? null;
     return { sl, tp1, tp2 };
   }
 }
@@ -510,15 +531,22 @@ function playBeep(type: "cf" | "vr") {
   } catch { /* Audio API not available */ }
 }
 
-async function tryBrowserNotify(title: string, body: string) {
+async function tryBrowserNotify(
+  title: string,
+  body: string,
+  opts?: { tag?: string; requireInteraction?: boolean },
+) {
   try {
     if (!("Notification" in window)) return;
-    if (Notification.permission === "denied") return;
-    if (Notification.permission === "default") {
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") return;
-    }
-    new Notification(title, { body, icon: "/favicon.ico" });
+    // Permission "default" tidak boleh di-request dari sini (bukan user-gesture →
+    // diblokir browser). Izin diminta lewat listener klik pertama (lihat useEffect).
+    if (Notification.permission !== "granted") return;
+    new Notification(title, {
+      body,
+      icon: "/favicon.ico",
+      tag: opts?.tag,                                   // sama-tag = replace, gak numpuk
+      requireInteraction: opts?.requireInteraction ?? false, // nempel di Action Center
+    });
   } catch { /* ignore */ }
 }
 
@@ -595,6 +623,9 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, onInstrumentUpdate,
   type Alert = { id: string; text: string; level: "vr" | "cf" };
   const [cfAlerts,        setCfAlerts]    = useState<Alert[]>([]);
   const prevTFStateRef    = useRef<Record<string, string>>({});  // delta detection
+  const cfFiredAtRef      = useRef<Record<string, number>>({});  // {tf: ts CF fresh fire} — BARU vs lama
+  const cmpAtRef          = useRef<Record<string, number>>({});  // {tf: ts CMP breakout terakhir}
+  const vrAtRef           = useRef<Record<string, number>>({});  // {tf: ts VR breakout terakhir}
   const alertDismissRef   = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const hasMountedRef     = useRef(false);
   const [editing,     setEditing]     = useState<string | null>(null);
@@ -707,6 +738,17 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, onInstrumentUpdate,
       });
       pushAlert(`⚙ ENGINE ENTRY — ${dir} ${instrument} @ ${entry.toFixed(2)}`, "cf");
 
+      // -- DESKTOP TOAST: notif entri lengkap (entry/SL/TP) ----------------------
+      // Nempel di Action Center Windows (requireInteraction) — gak kelewat.
+      void tryBrowserNotify(
+        `⚡ ENTRY ${dir} ${instrument} — ${tf}${cfType ? ` ${cfType}` : ""}${cfCount ? ` #${cfCount}` : ""}`,
+        `Masuk @ ${entry.toFixed(2)}\n`
+          + `SL ${sl.toFixed(2)} · TP ${tp1.toFixed(2)}`
+          + (tp2 ? ` / ${tp2.toFixed(2)}` : "")
+          + `\nChain Reaction v4.0`,
+        { tag: `entry-${instrument}-${tf}-${dir}`, requireInteraction: true },
+      );
+
       // AI: evaluasi dulu, baru decide masuk atau skip
       const aiRes = await fetch("/api/paper/ai-decide", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -759,13 +801,18 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, onInstrumentUpdate,
         if (!wasEmpty) {
           for (const tf of TF_ROWS) {
             if (!newState[tf] || !prev[tf]) continue;
-            const [, prevVR, prevCF]       = prev[tf].split(":");
+            const [prevCmp, prevVR, prevCF] = prev[tf].split(":");
             const [cmpNow,  newVR,  newCF] = newState[tf].split(":");
             const dir = cmpNow === "BULLISH" ? "BUY" : cmpNow === "BEARISH" ? "SELL" : "";
+
+            // Rekam JAM breakout: CMP saat arah berubah, VR saat VR fire (CF di branch CF)
+            if (cmpNow && cmpNow !== prevCmp) cmpAtRef.current[tf] = Date.now();
+            if (prevVR !== "YA" && newVR === "YA") vrAtRef.current[tf] = Date.now();
 
             if (prevCF !== "YA" && newCF === "YA") {
               // CF just fired — entry signal! (count diambil dari indikator v4)
               hasCFChange = true;
+              cfFiredAtRef.current[tf] = Date.now(); // rekam waktu CF fresh fire → BARU vs lama
               firedEvents.push({ tf, type: "CF", dir });
               // AUTOPILOT ENGINE — auto-open paper trade (akun "engine", doktrin murni).
               // Mekanis: CF fire + arah jelas → buka posisi pakai SL/TP dari SNR context.
@@ -779,7 +826,12 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, onInstrumentUpdate,
               }
               pushAlert(`⚡ CF FIRED — ${tf} ${dir} · PRIME ENTRY`, "cf");
               playBeep("cf");
-              void tryBrowserNotify(`⚡ Chain Reaction — ${tf} CF`, `${dir} setup active on ${tf}. Check SL/TP.`);
+              // Desktop toast entri di-handle oleh openAutoTrade() (entry/SL/TP lengkap).
+              // Fallback: kalau arah tak jelas (no entry), tetap kasih toast ringkas.
+              if (dir !== "BUY" && dir !== "SELL") {
+                void tryBrowserNotify(`⚡ Chain Reaction — ${tf} CF`, `CF fired on ${tf}. Check chart.`,
+                  { tag: `cf-${tf}` });
+              }
               {
                 const price   = byName["HARGA"]?.value  || "—";
                 const h4cmp   = byName["H4_CMP"]?.value || "—";
@@ -899,6 +951,20 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, onInstrumentUpdate,
 
   useEffect(() => { load(); }, [load]);
 
+  // -- Notif izin: request pada KLIK PERTAMA user (lolos aturan user-gesture) --
+  // Browser blokir Notification.requestPermission() yg bukan dari interaksi user.
+  // Listener sekali-pakai ini jamin izin diminta begitu Commander klik di dashboard.
+  useEffect(() => {
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "default") return; // sudah granted/denied
+    const ask = () => {
+      Notification.requestPermission().catch(() => {});
+      window.removeEventListener("pointerdown", ask);
+    };
+    window.addEventListener("pointerdown", ask, { once: true });
+    return () => window.removeEventListener("pointerdown", ask);
+  }, []);
+
   useEffect(() => {
     if (autoRef.current) { clearInterval(autoRef.current); autoRef.current = null; }
     if (!autoSync) return;
@@ -956,14 +1022,17 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, onInstrumentUpdate,
             openTradesRef.current = openTradesRef.current.filter(t => !hitIds.has(t.id));
             for (const t of hitList) {
               const hitSL = t.direction === "BUY" ? priceNum <= t.slPrice : priceNum >= t.slPrice;
+              // BUG FIX: tutup TEPAT di level (slPrice/tp1Price), bukan di harga tick
+              // yg sudah lompat lewat level — biar R = R yg direncanakan, gak digelembungin.
+              const exitAt = hitSL ? t.slPrice : t.tp1Price;
               void fetch("/api/paper", {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  action: "close", tradeId: t.id, exitPrice: priceNum,
+                  action: "close", tradeId: t.id, exitPrice: exitAt,
                   closeReason: hitSL ? "SL hit" : "TP1 hit",
                 }),
               }).then(() => pushAlert(
-                `${hitSL ? "🔴 SL" : "🟢 TP"} HIT — ${t.direction} closed @ ${priceNum.toFixed(2)}`,
+                `${hitSL ? "🔴 SL" : "🟢 TP"} HIT — ${t.direction} closed @ ${exitAt.toFixed(2)}`,
                 hitSL ? "vr" : "cf"));
             }
           }
@@ -1004,6 +1073,13 @@ export function MarketPanel({ onAutoAnalysis, onPriceUpdate, onInstrumentUpdate,
     cf: byName[`${tf}_CF`]?.value  || "",
     cfCount: parseInt(byName[`${tf}_CF_COUNT`]?.value || "0", 10) || 0,
     cfType:  byName[`${tf}_CF_TYPE`]?.value || "",
+    cfAt:    cfFiredAtRef.current[tf] || 0,   // waktu CF fresh fire (client fallback)
+    cmpAt:   cmpAtRef.current[tf] || 0,
+    vrAt:    vrAtRef.current[tf] || 0,
+    // Jam breakout dari INDIKATOR (akurat + persisten + backfill) — "HH:MM" atau ""
+    cmpTimeStr: byName[`${tf}_CMP_TIME`]?.value || "",
+    vrTimeStr:  byName[`${tf}_VR_TIME`]?.value  || "",
+    cfTimeStr:  byName[`${tf}_CF_TIME`]?.value  || "",
     get fase() { return this.cmp ? getFase(this.vr, this.cf) : 0 as 0|1|2|3; },
     sl: STORYLINE_MAP[tf],
   }));

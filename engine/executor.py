@@ -399,7 +399,60 @@ class ChainReactionExecutor:
         # Export ke signal_queue.json untuk TV annotator
         self._export_signal_queue(direction, price, round(sl, 2), round(tp, 2), comment)
 
+        # ── TELEGRAM ALERT — sinyal buat mirror ke akun REAL ──────────────────
+        # Demo entri = sinyal. Commander analisa mandiri → entri di akun real.
+        try:
+            rr = abs(tp - price) / abs(price - sl) if abs(price - sl) > 1e-9 else 0.0
+            tg = (
+                f"⚡ <b>DEMO ENTRY — {direction} {self.symbol}</b>\n"
+                f"🎯 Setup: {comment}\n\n"
+                f"💰 Entry: <b>{price:.2f}</b>\n"
+                f"🛡️ SL: {sl:.2f}\n"
+                f"🏁 TP: {tp:.2f}\n"
+                f"📊 Lot: {lot} · R:R ≈ 1:{rr:.1f}\n\n"
+                f"👉 Analisa &amp; mirror ke REAL kalau valid\n"
+                f"<i>Chain Reaction v4.0 — DEMO signal</i>"
+            )
+            self._send_telegram(tg)
+        except Exception:
+            pass  # notif gagal != trade gagal
+
         return True, msg
+
+    def _tg_creds(self):
+        """Baca TELEGRAM_BOT_TOKEN/CHAT_ID dari web .env.local (single source, cache)."""
+        if hasattr(self, "_tg_cache"):
+            return self._tg_cache
+        token = chat = ""
+        try:
+            env_path = r"D:\PROJECT TRADING\sultan-advisor\.env.local"
+            if os.path.exists(env_path):
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("TELEGRAM_BOT_TOKEN="):
+                            token = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        elif line.startswith("TELEGRAM_CHAT_ID="):
+                            chat = line.split("=", 1)[1].strip().strip('"').strip("'")
+        except Exception:
+            pass
+        self._tg_cache = (token, chat)
+        return self._tg_cache
+
+    def _send_telegram(self, message):
+        """Kirim alert ke Telegram bot (langsung ke API, gak butuh web nyala). Non-fatal."""
+        try:
+            import requests
+            token, chat = self._tg_creds()
+            if not token or not chat:
+                return
+            requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat, "text": message, "parse_mode": "HTML"},
+                timeout=4,
+            )
+        except Exception:
+            pass  # jaringan/telegram down != trade gagal
 
     def _export_signal_queue(self, direction, entry, sl, tp, comment):
         """Append fired signal ke signal_queue.json → dibaca signal_annotator.mjs."""

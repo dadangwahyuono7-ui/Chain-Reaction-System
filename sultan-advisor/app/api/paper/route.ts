@@ -92,6 +92,15 @@ export async function POST(req: Request) {
     if (Math.abs(Number(entryPrice) - Number(slPrice)) === 0) {
       return Response.json({ error: "SL tidak boleh sama dengan entry (risk 0)" }, { status: 400 });
     }
+    // Safety net: tolak risk mikro (SL terlalu mepet → R meledak gak realistis, dunia
+    // nyata ketelan spread). Floor 0.1% dari entry — backstop untuk computeAutoLevels.
+    const riskDist = Math.abs(Number(entryPrice) - Number(slPrice));
+    if (riskDist < Number(entryPrice) * 0.001) {
+      return Response.json({
+        success: false, skipped: true,
+        reason: `SL terlalu mepet (risk ${riskDist.toFixed(2)} < 0.1% entry) — ditolak biar R tidak menggelembung`,
+      });
+    }
 
     // Anti-dobel: skip kalau sudah ada trade OPEN dgn instrument+direction+TF sama di akun ini
     const dupes = await db.select().from(paperTrades).where(

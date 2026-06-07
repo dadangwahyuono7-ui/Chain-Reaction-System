@@ -46,9 +46,35 @@ function snrTick(side: "up" | "dn") {
 type TFRow = {
   tf: string; cmp: string; vr: string; cf: string;
   cfCount: number; cfType: string; fase: number;
+  cfAt?: number;   // timestamp (ms) CF fresh fire terakhir — buat bedain BARU vs lama
+  cmpAt?: number;  // timestamp (ms) CMP breakout (client fallback)
+  vrAt?: number;   // timestamp (ms) VR breakout (client fallback)
+  cmpTimeStr?: string;  // jam CMP dari indikator "HH:MM" (akurat, persisten)
+  vrTimeStr?: string;   // jam VR dari indikator
+  cfTimeStr?: string;   // jam CF dari indikator
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sl?: any;
 };
+
+// Format jam HH:MM dari timestamp (waktu breakout terdeteksi — fallback client-side).
+function clockHM(ts?: number): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+// Jam breakout: prioritas dari indikator (akurat), fallback ke deteksi client.
+const cmpJam = (d: TFRow) => d.cmpTimeStr || clockHM(d.cmpAt);
+const vrJam  = (d: TFRow) => d.vrTimeStr  || clockHM(d.vrAt);
+const cfJam  = (d: TFRow) => d.cfTimeStr  || clockHM(d.cfAt);
+
+// Umur CF sejak fire terakhir. < 90 detik = BARU (entry aktif sekarang).
+const CF_FRESH_MS = 90_000;
+function cfAgeLabel(cfAt?: number): { fresh: boolean; age: string } {
+  if (!cfAt) return { fresh: false, age: "" };
+  const ms = Date.now() - cfAt;
+  const age = ms < 60_000 ? `${Math.floor(ms / 1000)}s` : `${Math.floor(ms / 60_000)}m`;
+  return { fresh: ms < CF_FRESH_MS, age };
+}
 type Lvl = { key: string; short: string; price: number; stars: number };
 
 export interface DashboardProProps {
@@ -414,6 +440,18 @@ function ChainRail({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
           const aligned = has && d!.cmp === h4Dir;
           const isMaster = tf === "H4";
           const isTrigger = TRIGGER_TFS.includes(tf);
+          // BUG FIX: entry aktif HANYA kalau trigger TF (tempat VR/CF) masih searah.
+          // Trigger TF flip lawan arah = pullback → CF ILANG, tampilkan FLIP bukan ENTRY.
+          const vrTf      = VRCF_TF[tf]?.vr;
+          const cfHighTf  = VRCF_TF[tf]?.cfHigh;
+          const vrRow     = vrTf ? tfData.find(x => x.tf === vrTf) : undefined;
+          const cfHighRow = cfHighTf ? tfData.find(x => x.tf === cfHighTf) : undefined;
+          const vrCounter     = !isTrigger && has && !!vrRow && vrRow.cmp !== "" && vrRow.cmp !== d!.cmp;
+          const cfHighAligned = !!cfHighRow && cfHighRow.cmp === d!.cmp;
+          const pulledBack = vrCounter && !cfHighAligned;
+          const isEntry = !isTrigger && has && d!.fase === 3 && !pulledBack;
+          const isFlip  = !isTrigger && has && !isEntry && (d!.cfCount || 0) > 0 && (d!.fase === 2 || pulledBack);
+          const { fresh: cfFresh, age: cfAge } = isEntry ? cfAgeLabel(d!.cfAt) : { fresh: false, age: "" };
           const next = tfData.find(x => x.tf === RAIL_TFS[i + 1]);
           const connOn = has && !!next?.cmp && next.cmp === h4Dir && aligned;
           return (
@@ -427,11 +465,13 @@ function ChainRail({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
                   : isTrigger ? (has ? "border-amber-500/30" : "border-amber-500/15")
                   : has ? "border-slate-700/60" : "border-slate-800/40",
                 // ring entry HANYA buat setup — M5 trigger gak pernah dianggap entry-ready
-                !isTrigger && d?.fase === 3 && aligned && "ring-1 ring-amber-400/60 dp-signal shadow-[0_0_16px_-4px_rgba(251,191,36,0.4)]",
+                // Ring berdenyut (dp-signal) cuma pas CF BARU. CF lama = border amber statis.
+                isEntry && aligned && cfFresh && "ring-1 ring-amber-400/60 dp-signal shadow-[0_0_16px_-4px_rgba(251,191,36,0.4)]",
+                isEntry && aligned && !cfFresh && "ring-1 ring-amber-500/30",
                 !isTrigger && d?.fase === 2 && aligned && "dp-breathe"
               )}>
                 {/* subtle inner glow for entry nodes */}
-                {!isTrigger && d?.fase === 3 && aligned && (
+                {isEntry && aligned && (
                   <div className="absolute inset-0 bg-gradient-to-b from-amber-500/8 to-transparent pointer-events-none" />
                 )}
                 <div className="relative flex items-center justify-center gap-1">
@@ -460,15 +500,17 @@ function ChainRail({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
                       {aligned ? "running" : "pullback"}
                     </div>
                   )
-                ) : has && d!.fase === 3 ? (
-                  // ⚡ ENTRY AKTIF
-                  <div className="relative mt-2 inline-flex items-center gap-0.5 px-2 py-1 rounded-lg bg-amber-500/15 border border-amber-400/40 shadow-[0_0_8px_-2px_rgba(251,191,36,0.3)]">
-                    <span className="text-[14px] font-bold text-amber-300 tabular-nums">
-                      ⚡ CF{d!.cfCount || 1}{d!.cfType ? ` ${d!.cfType}` : ""}
+                ) : isEntry ? (
+                  // ⚡ ENTRY AKTIF — "BARU" kalau baru fire, atau umur kalau lama
+                  <div className={cn("relative mt-2 inline-flex items-center gap-0.5 px-2 py-1 rounded-lg border",
+                    cfFresh ? "bg-amber-500/15 border-amber-400/40 shadow-[0_0_8px_-2px_rgba(251,191,36,0.3)]"
+                            : "bg-amber-500/8 border-amber-500/25")}>
+                    <span className={cn("text-[14px] font-bold tabular-nums", cfFresh ? "text-amber-300" : "text-amber-400/70")}>
+                      ⚡ CF{d!.cfCount || 1}{d!.cfType ? ` ${d!.cfType}` : ""}{cfFresh ? " BARU" : cfAge ? ` ·${cfAge}` : ""}
                     </span>
                   </div>
-                ) : has && d!.fase === 2 && (d!.cfCount || 0) > 0 ? (
-                  // CF FLIP
+                ) : isFlip ? (
+                  // CF FLIP — CF pernah aktif tapi trigger TF pullback → entry ILANG
                   <div className="relative mt-2 inline-flex items-center gap-0.5 px-2 py-1 rounded-lg bg-rose-500/10 border border-rose-500/30">
                     <span className="text-[14px] font-bold text-rose-300 tabular-nums">
                       FLIP · #{d!.cfCount + 1}
@@ -503,10 +545,10 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
   if (rows.length === 0)
     return <div className="pb-3"><State icon={<LayersIcon className="w-4 h-4" />} title="Belum ada CMP aktif" sub="sync tradingview untuk mulai" pulse /></div>;
 
-  const Step = ({ label, done, active, waiting, flipped, tone, sub, tfTag, pulse }: {
-    label: string; done: boolean; active?: boolean; waiting?: boolean; flipped?: boolean; tone: string; sub?: string; tfTag?: string; pulse?: boolean;
+  const Step = ({ label, done, active, waiting, flipped, tone, sub, tfTag, pulse, time }: {
+    label: string; done: boolean; active?: boolean; waiting?: boolean; flipped?: boolean; tone: string; sub?: string; tfTag?: string; pulse?: boolean; time?: string;
   }) => (
-    <div className="flex flex-col items-center gap-1.5 shrink-0 w-10">
+    <div className="flex flex-col items-center gap-1.5 shrink-0 w-12">
       <div className={cn(
         pulse ? "dp-cf-pulse" : "dp-coin",
         "w-8 h-8 rounded-full border-2 flex items-center justify-center text-[13px] font-bold transition-all",
@@ -527,6 +569,7 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
       <span className={cn("text-[12px] font-semibold tracking-wide",
         active ? "text-amber-300" : done || waiting ? "text-slate-300" : "text-slate-600")}>{label}</span>
       {tfTag && <span className="text-[13px] font-bold tracking-wide text-slate-500/80 leading-none">@{tfTag}</span>}
+      {time && <span className="text-[11px] font-bold tabular-nums text-cyan-300/90 leading-none">{time}</span>}
       {sub && <span className="text-[13px] text-amber-400/90 tabular-nums leading-none font-bold">{sub}</span>}
     </div>
   );
@@ -546,19 +589,37 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
       {rows.map(d => {
         const tone = dirColor(d.cmp);
         const vrDone = d.vr === "YA";
-        const cfDone = d.cf === "YA";
-        const cfFlipped = !cfDone && vrDone && d.cfCount > 0; // CF was active → sub-TF flip → entry ILANG
+        // BUG FIX: CF aktif HANYA kalau trigger TF (tempat VR/CF terjadi) masih searah
+        // setup. Kalau trigger TF flip lawan arah (mis. M15 SELL tapi M5 BUY = pullback),
+        // CF lagi ILANG → pulse berhenti di VR, jangan tampilkan ENTRI.
+        // "Pullback total" = VR TF lawan arah DAN gak ada jalur CF HIGH.
+        // Penting: pas CF HIGH, VR TF MEMANG counter (normal) sementara CF datang dari
+        // cfHigh TF. Jadi jangan suppress kalau cfHigh TF searah setup.
+        const vrTf      = VRCF_TF[d.tf]?.vr;
+        const cfHighTf  = VRCF_TF[d.tf]?.cfHigh;
+        const vrRow     = vrTf ? tfData.find(x => x.tf === vrTf) : undefined;
+        const cfHighRow = cfHighTf ? tfData.find(x => x.tf === cfHighTf) : undefined;
+        const vrCounter     = !!vrRow && vrRow.cmp !== "" && vrRow.cmp !== d.cmp;
+        const cfHighAligned = !!cfHighRow && cfHighRow.cmp === d.cmp;
+        const triggerPulledBack = vrCounter && !cfHighAligned;
+        const cfDone = d.cf === "YA" && !triggerPulledBack;
+        const cfFlipped = vrDone && d.cfCount > 0 && !cfDone; // CF pernah aktif → flip → entry ILANG
+        const isEntry = d.fase === 3 && cfDone;               // ENTRI hanya kalau CF beneran aktif
         const aligned = d.cmp === h4Dir;
         const isMaster = d.tf === "H4";
-        const faseLabel = d.fase === 3
-          ? `ENTRI CF#${d.cfCount || 1}${d.cfType ? " " + d.cfType : ""}`
+        // Freshness: CF ini BARU fire (masuk sekarang) atau lama (udah lewat)?
+        const { fresh: cfFresh, age: cfAge } = cfAgeLabel(d.cfAt);
+        const faseLabel = isEntry
+          ? (cfFresh
+              ? `⚡ ENTRI CF#${d.cfCount || 1}${d.cfType ? " " + d.cfType : ""} · BARU`
+              : `CF#${d.cfCount || 1}${d.cfType ? " " + d.cfType : ""} aktif${cfAge ? ` · ${cfAge}` : ""}`)
           : cfFlipped
-            ? `CF FLIP · #${d.cfCount + 1}`
+            ? `CF FLIP · nunggu #${d.cfCount + 1}`
             : d.fase === 2 ? "tunggu CF" : "tunggu VR";
         return (
           <div key={d.tf} className={cn(
             "dp-row3d rounded-xl border px-4 py-3 flex items-center gap-4 transition-all",
-            d.fase === 3 && aligned ? "border-amber-500/35 bg-gradient-to-r from-amber-500/[0.06] to-transparent shadow-[0_0_12px_-6px_rgba(251,191,36,0.2)]"
+            isEntry && aligned ? "border-amber-500/35 bg-gradient-to-r from-amber-500/[0.06] to-transparent shadow-[0_0_12px_-6px_rgba(251,191,36,0.2)]"
               : cfFlipped ? "border-rose-500/25 bg-gradient-to-r from-rose-500/[0.04] to-transparent"
               : isMaster ? "border-indigo-500/25 bg-gradient-to-r from-indigo-500/[0.04] to-transparent"
               : "border-slate-800/60 bg-slate-900/30 hover:bg-slate-800/20"
@@ -576,13 +637,14 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
             </div>
             {/* sequence stepper — VR & CF dilabeli TF tempat ia terjadi (fractal) */}
             <div className="flex-1 flex items-start min-w-0">
-              <Step label="CMP" done tone={tone} tfTag={TF_SHORT[d.tf]} />
+              <Step label="CMP" done tone={tone} tfTag={TF_SHORT[d.tf]} time={cmpJam(d)} />
               <Conn on={vrDone || cfDone} tone={tone} />
               <Step label="VR" done={vrDone} waiting={!vrDone} tone={tone}
-                tfTag={VRCF_TF[d.tf]?.vr ? TF_SHORT[VRCF_TF[d.tf].vr] : undefined} />
+                tfTag={VRCF_TF[d.tf]?.vr ? TF_SHORT[VRCF_TF[d.tf].vr] : undefined}
+                time={vrDone ? vrJam(d) : ""} />
               <Conn on={cfDone} tone={tone} />
-              <Step label="CF" done={cfDone && d.fase !== 3} active={cfDone && d.fase === 3}
-                pulse={cfDone && !cfFlipped}
+              <Step label="CF" done={cfDone && !isEntry} active={isEntry}
+                pulse={isEntry && cfFresh}
                 waiting={!cfDone && vrDone && !cfFlipped} flipped={cfFlipped} tone={tone}
                 tfTag={
                   // CF LOW = dari TF yang sama kasih VR. CF HIGH = 1 level bawah VR TF.
@@ -590,12 +652,13 @@ function SequenceList({ tfData, h4Dir }: { tfData: TFRow[]; h4Dir: string }) {
                     ? TF_SHORT[VRCF_TF[d.tf].cfHigh!]
                     : VRCF_TF[d.tf]?.vr ? TF_SHORT[VRCF_TF[d.tf].vr] : undefined
                 }
+                time={cfDone ? cfJam(d) : ""}
                 sub={d.cfCount > 0 ? `×${d.cfCount}${d.cfType ? " " + d.cfType : ""}` : undefined} />
             </div>
             {/* status */}
             <div className="w-28 shrink-0 text-right space-y-1">
               <div className={cn("text-[13.5px] font-bold",
-                d.fase === 3 ? "text-amber-300" : cfFlipped ? "text-rose-300" : d.fase === 2 ? "text-indigo-300" : "text-slate-400")}>
+                isEntry ? "text-amber-300" : cfFlipped ? "text-rose-300" : d.fase === 2 ? "text-indigo-300" : "text-slate-400")}>
                 {faseLabel}
               </div>
               <div className={cn("inline-flex items-center gap-1 text-[14px] font-medium px-1.5 py-0.5 rounded-md",

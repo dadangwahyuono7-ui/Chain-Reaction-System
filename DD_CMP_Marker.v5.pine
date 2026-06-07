@@ -115,6 +115,9 @@ f_actStr(phase, count) =>
     else
         "–"
 
+// Format jam breakout (WIB / GMT+7). "-" kalau belum ada.
+f_tstr(t) => t > 0 ? str.format_time(t, "HH:mm", "GMT+7") : "-"
+
 // ─── PERSISTENT STATE ────────────────────────────────────────────────────
 var string prevArah_D   = "WAIT"
 var string prevArah_H4  = "WAIT"
@@ -140,7 +143,58 @@ var bool vrSeen_H1  = false
 var bool vrSeen_M30 = false
 var bool vrSeen_M15 = false
 
+// ── TIME LAW — waktu (bar time) saat CMP tiap TF TERAKHIR berubah arah ──────
+// VR hanya valid kalau CMP child terbentuk SETELAH CMP parent:
+//   cmpTime_child > cmpTime_parent
+// Ini yang cegah BO lawan arah LAMA (terjadi sebelum CMP) salah dikira VR.
+// CATATAN: deteksi breakout CMP (f_get_data) TIDAK diubah — ini cuma stempel waktu.
+var string tA_D   = "WAIT"
+var string tA_H4  = "WAIT"
+var string tA_H1  = "WAIT"
+var string tA_M30 = "WAIT"
+var string tA_M15 = "WAIT"
+var string tA_M5  = "WAIT"
+var int cmpTime_D   = 0
+var int cmpTime_H4  = 0
+var int cmpTime_H1  = 0
+var int cmpTime_M30 = 0
+var int cmpTime_M15 = 0
+var int cmpTime_M5  = 0
+
+// Waktu (bar time) saat VR & CF tiap TF terjadi — buat tampil JAM breakout di dashboard
+var int vrTime_D   = 0
+var int vrTime_H4  = 0
+var int vrTime_H1  = 0
+var int vrTime_M30 = 0
+var int vrTime_M15 = 0
+var int cfTime_D   = 0
+var int cfTime_H4  = 0
+var int cfTime_H1  = 0
+var int cfTime_M30 = 0
+var int cfTime_M15 = 0
+
 if barstate.isconfirmed
+
+    // ── TIME LAW: catat waktu CMP tiap TF DULU (sebelum cek VR) ───────────
+    // Begitu arah TF berubah (CMP baru) → stempel waktunya. Dipakai gate VR.
+    if arah_D   != tA_D
+        tA_D   := arah_D
+        cmpTime_D   := time
+    if arah_H4  != tA_H4
+        tA_H4  := arah_H4
+        cmpTime_H4  := time
+    if arah_H1  != tA_H1
+        tA_H1  := arah_H1
+        cmpTime_H1  := time
+    if arah_M30 != tA_M30
+        tA_M30 := arah_M30
+        cmpTime_M30 := time
+    if arah_M15 != tA_M15
+        tA_M15 := arah_M15
+        cmpTime_M15 := time
+    if arah_M5  != tA_M5
+        tA_M5  := arah_M5
+        cmpTime_M5  := time
 
     // ── DAILY: vr=H4, cf_high=H1 ──────────────────────────────────────────
     if arah_D != prevArah_D
@@ -149,11 +203,13 @@ if barstate.isconfirmed
         cfCnt_D    := 0
         phase_D    := arah_D == "WAIT" ? 0 : 1
     if arah_D != "WAIT"
-        if not vrSeen_D and arah_H4 != "WAIT" and arah_H4 != arah_D
+        if not vrSeen_D and arah_H4 != "WAIT" and arah_H4 != arah_D and cmpTime_H4 > cmpTime_D
             vrSeen_D := true
+            vrTime_D := time
         np_D = f_derivePhase(arah_D, vrSeen_D, arah_H4, arah_H1, true)
         if phase_D <= 2 and np_D >= 3
             cfCnt_D := cfCnt_D + 1
+            cfTime_D := time
         phase_D := np_D
 
     // ── H4: vr=H1, cf_high=M30 ────────────────────────────────────────────
@@ -163,11 +219,13 @@ if barstate.isconfirmed
         cfCnt_H4    := 0
         phase_H4    := arah_H4 == "WAIT" ? 0 : 1
     if arah_H4 != "WAIT"
-        if not vrSeen_H4 and arah_H1 != "WAIT" and arah_H1 != arah_H4
+        if not vrSeen_H4 and arah_H1 != "WAIT" and arah_H1 != arah_H4 and cmpTime_H1 > cmpTime_H4
             vrSeen_H4 := true
+            vrTime_H4 := time
         np_H4 = f_derivePhase(arah_H4, vrSeen_H4, arah_H1, arah_M30, true)
         if phase_H4 <= 2 and np_H4 >= 3
             cfCnt_H4 := cfCnt_H4 + 1
+            cfTime_H4 := time
         phase_H4 := np_H4
 
     // ── H1: vr=M30, cf_high=M15 ───────────────────────────────────────────
@@ -177,11 +235,13 @@ if barstate.isconfirmed
         cfCnt_H1    := 0
         phase_H1    := arah_H1 == "WAIT" ? 0 : 1
     if arah_H1 != "WAIT"
-        if not vrSeen_H1 and arah_M30 != "WAIT" and arah_M30 != arah_H1
+        if not vrSeen_H1 and arah_M30 != "WAIT" and arah_M30 != arah_H1 and cmpTime_M30 > cmpTime_H1
             vrSeen_H1 := true
+            vrTime_H1 := time
         np_H1 = f_derivePhase(arah_H1, vrSeen_H1, arah_M30, arah_M15, true)
         if phase_H1 <= 2 and np_H1 >= 3
             cfCnt_H1 := cfCnt_H1 + 1
+            cfTime_H1 := time
         phase_H1 := np_H1
 
     // ── M30: vr=M15, cf_high=M5 ───────────────────────────────────────────
@@ -191,11 +251,13 @@ if barstate.isconfirmed
         cfCnt_M30    := 0
         phase_M30    := arah_M30 == "WAIT" ? 0 : 1
     if arah_M30 != "WAIT"
-        if not vrSeen_M30 and arah_M15 != "WAIT" and arah_M15 != arah_M30
+        if not vrSeen_M30 and arah_M15 != "WAIT" and arah_M15 != arah_M30 and cmpTime_M15 > cmpTime_M30
             vrSeen_M30 := true
+            vrTime_M30 := time
         np_M30 = f_derivePhase(arah_M30, vrSeen_M30, arah_M15, arah_M5, true)
         if phase_M30 <= 2 and np_M30 >= 3
             cfCnt_M30 := cfCnt_M30 + 1
+            cfTime_M30 := time
         phase_M30 := np_M30
 
     // ── M15: vr=M5, cf_high=NONE ──────────────────────────────────────────
@@ -205,11 +267,13 @@ if barstate.isconfirmed
         cfCnt_M15    := 0
         phase_M15    := arah_M15 == "WAIT" ? 0 : 1
     if arah_M15 != "WAIT"
-        if not vrSeen_M15 and arah_M5 != "WAIT" and arah_M5 != arah_M15
+        if not vrSeen_M15 and arah_M5 != "WAIT" and arah_M5 != arah_M15 and cmpTime_M5 > cmpTime_M15
             vrSeen_M15 := true
+            vrTime_M15 := time
         np_M15 = f_derivePhase(arah_M15, vrSeen_M15, arah_M5, "WAIT", false)
         if phase_M15 <= 2 and np_M15 >= 3
             cfCnt_M15 := cfCnt_M15 + 1
+            cfTime_M15 := time
         phase_M15 := np_M15
 
 // ─── CMP LINE DRAWING ─────────────────────────────────────────────────────
@@ -349,13 +413,14 @@ if barstate.islast
     //  TABEL 1: DASHBOARD UTAMA (kiri atas) — sama seperti v4
     // ══════════════════════════════════════════════════════════════════════
     if i_tbl
-        var table tbl = table.new(position.top_left, 5, 10, bgcolor=color.new(color.black, 10), border_color=color.blue, border_width=2, frame_color=color.blue, frame_width=2)
+        var table tbl = table.new(position.top_left, 6, 10, bgcolor=color.new(color.black, 10), border_color=color.blue, border_width=2, frame_color=color.blue, frame_width=2)
 
         table.cell(tbl, 0, 0, "⏱ TF",      text_color=color.white, bgcolor=color.navy,    text_size=size.small)
         table.cell(tbl, 1, 0, "📊 CMP",    text_color=color.white, bgcolor=color.maroon,  text_size=size.small)
         table.cell(tbl, 2, 0, "🔄 VR",     text_color=color.white, bgcolor=color.orange,  text_size=size.small)
         table.cell(tbl, 3, 0, "✅ CF",     text_color=color.white, bgcolor=color.teal,    text_size=size.small)
         table.cell(tbl, 4, 0, "🚀 ACTION", text_color=color.white, bgcolor=color.purple,  text_size=size.small)
+        table.cell(tbl, 5, 0, "🕐 JAM",    text_color=color.white, bgcolor=color.gray,    text_size=size.small)
 
         // Daily
         table.cell(tbl, 0, 1, "Daily",   text_color=color.white, bgcolor=color.navy,    text_size=size.small)
@@ -363,6 +428,7 @@ if barstate.islast
         table.cell(tbl, 2, 1, vr_D,      text_color=vr_D=="–"?#555555:#FFD60A,           bgcolor=color.new(color.black,30), text_size=size.tiny)
         table.cell(tbl, 3, 1, cf_D,      text_color=cf_D=="–"?#555555:str.contains(cf_D,"LOW")?#00E676:#FF9F0A, bgcolor=color.new(color.black,30), text_size=size.tiny)
         table.cell(tbl, 4, 1, act_D,     text_color=color.white, bgcolor=aD,            text_size=size.tiny)
+        table.cell(tbl, 5, 1, f_tstr(cmpTime_D)+"/"+f_tstr(vrTime_D)+"/"+f_tstr(cfTime_D),   text_color=#7FE7FF, bgcolor=color.new(color.black,30), text_size=size.tiny)
 
         // H4
         table.cell(tbl, 0, 2, "H4",      text_color=color.white, bgcolor=color.purple,  text_size=size.small)
@@ -370,6 +436,7 @@ if barstate.islast
         table.cell(tbl, 2, 2, vr_H4,     text_color=vr_H4=="–"?#555555:#FFD60A,          bgcolor=color.new(color.black,30), text_size=size.tiny)
         table.cell(tbl, 3, 2, cf_H4,     text_color=cf_H4=="–"?#555555:str.contains(cf_H4,"LOW")?#00E676:#FF9F0A, bgcolor=color.new(color.black,30), text_size=size.tiny)
         table.cell(tbl, 4, 2, act_H4,    text_color=color.white, bgcolor=aH4,           text_size=size.tiny)
+        table.cell(tbl, 5, 2, f_tstr(cmpTime_H4)+"/"+f_tstr(vrTime_H4)+"/"+f_tstr(cfTime_H4), text_color=#7FE7FF, bgcolor=color.new(color.black,30), text_size=size.tiny)
 
         // H1
         table.cell(tbl, 0, 3, "H1",      text_color=color.white, bgcolor=color.teal,    text_size=size.small)
@@ -377,6 +444,7 @@ if barstate.islast
         table.cell(tbl, 2, 3, vr_H1,     text_color=vr_H1=="–"?#555555:#FFD60A,          bgcolor=color.new(color.black,30), text_size=size.tiny)
         table.cell(tbl, 3, 3, cf_H1,     text_color=cf_H1=="–"?#555555:str.contains(cf_H1,"LOW")?#00E676:#FF9F0A, bgcolor=color.new(color.black,30), text_size=size.tiny)
         table.cell(tbl, 4, 3, act_H1,    text_color=color.white, bgcolor=aH1,           text_size=size.tiny)
+        table.cell(tbl, 5, 3, f_tstr(cmpTime_H1)+"/"+f_tstr(vrTime_H1)+"/"+f_tstr(cfTime_H1), text_color=#7FE7FF, bgcolor=color.new(color.black,30), text_size=size.tiny)
 
         // M30
         table.cell(tbl, 0, 4, "M30",     text_color=color.white, bgcolor=color.orange,  text_size=size.small)
@@ -384,6 +452,7 @@ if barstate.islast
         table.cell(tbl, 2, 4, vr_M30,    text_color=vr_M30=="–"?#555555:#FFD60A,         bgcolor=color.new(color.black,30), text_size=size.tiny)
         table.cell(tbl, 3, 4, cf_M30,    text_color=cf_M30=="–"?#555555:str.contains(cf_M30,"LOW")?#00E676:#FF9F0A, bgcolor=color.new(color.black,30), text_size=size.tiny)
         table.cell(tbl, 4, 4, act_M30,   text_color=color.white, bgcolor=aM30,          text_size=size.tiny)
+        table.cell(tbl, 5, 4, f_tstr(cmpTime_M30)+"/"+f_tstr(vrTime_M30)+"/"+f_tstr(cfTime_M30), text_color=#7FE7FF, bgcolor=color.new(color.black,30), text_size=size.tiny)
 
         // M15 (entry TF utama)
         table.cell(tbl, 0, 5, "M15 ★",   text_color=color.white, bgcolor=color.fuchsia, text_size=size.small)
@@ -391,6 +460,7 @@ if barstate.islast
         table.cell(tbl, 2, 5, vr_M15,    text_color=vr_M15=="–"?#555555:#FFD60A,         bgcolor=color.new(cM15,70), text_size=size.tiny)
         table.cell(tbl, 3, 5, cf_M15,    text_color=cf_M15=="–"?#555555:str.contains(cf_M15,"LOW")?#00E676:#FF9F0A, bgcolor=color.new(cM15,70), text_size=size.tiny)
         table.cell(tbl, 4, 5, act_M15,   text_color=color.white, bgcolor=aM15,          text_size=size.small)
+        table.cell(tbl, 5, 5, f_tstr(cmpTime_M15)+"/"+f_tstr(vrTime_M15)+"/"+f_tstr(cfTime_M15), text_color=#7FE7FF, bgcolor=color.new(cM15,70), text_size=size.tiny)
 
         // M5 monitor
         table.cell(tbl, 0, 6, "M5",      text_color=#FFD60A, bgcolor=color.new(color.black,30), text_size=size.small)
