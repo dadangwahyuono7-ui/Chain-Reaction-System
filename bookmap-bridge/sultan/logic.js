@@ -5,6 +5,146 @@
 // from DD_ChainReaction_MultiTF_EA.mq5's WriteSultanStatus().
 
 const POLL_MS = 800;
+
+// v52.73: sound alerts (Sweep + per-TF breakout), moved here from the EA's
+// PlaySound() - Dadang: "kalo di ea apa bisa distop manual, kawatirnya
+// bunyi terus2an" (a cluster of sweeps in quick succession, same staircase
+// pattern seen earlier today, would fire it repeatedly with no fast way to
+// silence it). A browser mute button is one click, no MT5 Properties
+// dialog needed.
+// v52.73c: "breakout nya sesuai chain bro m5,m15,m30 dst dan kalo perlu
+// suaranya beda... supaya gw tau tanpa liat chart" - every tracked TF gets
+// its OWN pitch (not just M5) so which TF just flipped is identifiable by
+// ear alone. Frequencies ordered by TF SIZE - smaller/faster TF = higher
+// pitch (M5 highest, matches the original single breakout tone so nothing
+// that already learned that sound has to relearn it), bigger/slower TF =
+// lower/heavier pitch - same "small=light/high, big=heavy/low" mapping as
+// the Barrier doctrine already uses (bigger TF = stronger).
+const TF_TONE_HZ = { d1: 196, h4: 262, h1: 330, m30: 440, m15: 587, m5: 880 };
+let soundMuted = localStorage.getItem("cr_sound_muted") === "1";
+let _prevSweepKey = null;              // "side|price" of the last-alerted
+                                        // sweep, so a still-active sweep
+                                        // doesn't re-fire every poll
+let _prevTFDir = { d1: null, h4: null, h1: null, m30: null, m15: null, m5: null };
+
+function toggleSound() {
+  soundMuted = !soundMuted;
+  localStorage.setItem("cr_sound_muted", soundMuted ? "1" : "0");
+  updateSoundButton();
+}
+function updateSoundButton() {
+  const btn = document.getElementById("sound-toggle");
+  if (!btn) return;
+  btn.textContent = soundMuted ? "\u{1F507}" : "\u{1F50A}"; // muted / speaker
+  btn.classList.toggle("text-rose-400", soundMuted);
+  btn.classList.toggle("text-slate-400", !soundMuted);
+}
+
+// Plain oscillator beeps - no audio files to ship/host, two clearly
+// different shapes: sweep = two short low-to-high blips, breakout = one
+// sharp higher tone.
+let _actx = null;
+function _tone(freq, startAt, dur, gain = 0.18) {
+  if (!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = _actx.createOscillator();
+  const g = _actx.createGain();
+  osc.type = "sine";
+  osc.frequency.value = freq;
+  g.gain.value = gain;
+  osc.connect(g).connect(_actx.destination);
+  osc.start(startAt);
+  osc.stop(startAt + dur);
+}
+// v52.73d: Dadang - "buat suaranya seperti pemadam kebakaran gitu dan makin
+// keras agar gw ketriger, itu suara yang gw tunggu, kalo cuman gitu sweep
+// blm tentu keluar sehari gw akan tidak dengar" - sweep is rare/high-value
+// (not guaranteed even once a day) so it deserves a real siren, not a
+// polite blip: frequency wails up/down like a fire truck, and gain ramps
+// up over the whole ~4.5s so it keeps escalating until it's noticed even
+// from another room - unlike the per-TF tones (routine, frequent, meant to
+// be quick/unobtrusive), this one is meant to interrupt.
+function _playSweepTone() {
+  if (!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
+  const t = _actx.currentTime;
+  const dur = 4.5;
+  const osc = _actx.createOscillator();
+  const g = _actx.createGain();
+  osc.type = "sawtooth"; // harsher/brighter than sine - reads as an alarm, not a chime
+  osc.connect(g).connect(_actx.destination);
+
+  const cycles = 9; // up/down wails across the duration
+  const cycleLen = dur / cycles;
+  osc.frequency.setValueAtTime(450, t);
+  for (let i = 1; i <= cycles; i++) {
+    osc.frequency.linearRampToValueAtTime(i % 2 ? 950 : 450, t + i * cycleLen);
+  }
+
+  g.gain.setValueAtTime(0.05, t);          // starts quiet
+  g.gain.linearRampToValueAtTime(0.4, t + dur);  // "makin keras"
+
+  osc.start(t);
+  osc.stop(t + dur);
+}
+const SWEEP_TONE_DUR_MS = 4700;
+
+// v52.74: "Mega Sweep" - Dadang: "ada ide gila lagi bro? ya itu super
+// kerjakan semua dong" (picked from a pitched list) - 3+ individual sweeps
+// on the SAME side within 5 minutes: the staircase pattern found in the
+// 2026-08-20 history analysis (a wall gets swept, price tests the next one
+// down/up, repeat, until the REAL reversal). Rarer and more decisive than
+// any single sweep, so it gets an even bigger alarm than the regular sweep
+// siren - two slightly-detuned oscillators (a "beating"/thicker, more
+// urgent texture) over a longer, louder ramp. Detection itself is pure
+// client-side history of the sweep events this dashboard has already seen
+// (no new backend/EA field needed) - see the mega-sweep tracking block in
+// render() below.
+const MEGA_SWEEP_WINDOW_MS = 5 * 60 * 1000;
+const MEGA_SWEEP_MIN_COUNT = 3;
+const MEGA_SWEEP_TONE_DUR_MS = 7200;
+let _recentSweeps = [];   // [{side, key, ts}] - rolling log this dashboard has observed
+let _megaActiveSide = null; // which side is currently "mega" - null once it ages out
+
+function _playMegaSweepTone() {
+  if (!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
+  const t = _actx.currentTime;
+  const dur = 7;
+  [[350, 1000], [356, 1012]].forEach(([lo, hi]) => {
+    const osc = _actx.createOscillator();
+    const g = _actx.createGain();
+    osc.type = "sawtooth";
+    osc.connect(g).connect(_actx.destination);
+    const cycles = 14;
+    const cycleLen = dur / cycles;
+    osc.frequency.setValueAtTime(lo, t);
+    for (let i = 1; i <= cycles; i++) osc.frequency.linearRampToValueAtTime(i % 2 ? hi : lo, t + i * cycleLen);
+    g.gain.setValueAtTime(0.06, t);
+    g.gain.linearRampToValueAtTime(0.45, t + dur);
+    osc.start(t);
+    osc.stop(t + dur);
+  });
+}
+function beepMegaSweep() { if (!soundMuted) _playMegaSweepTone(); }
+
+function _playTFTone(tf) {
+  if (!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
+  _tone(TF_TONE_HZ[tf] || 500, _actx.currentTime, 0.16, 0.15);
+}
+// Live-alert wrappers - these respect the mute toggle.
+function beepSweep() { if (!soundMuted) _playSweepTone(); }
+function beepTF(tf) { if (!soundMuted) _playTFTone(tf); }
+
+// v52.73b: "bisa lo beri tombol start buat coba suaranya biar gw tau" -
+// deliberately bypasses soundMuted (testing the sound should work even
+// while live alerts are silenced, otherwise you'd have to unmute first
+// just to hear what you're about to (un)mute). Plays sweep, then every TF
+// tone low-to-high (D1...M5) half a second apart.
+function testSounds() {
+  _playSweepTone();
+  ["d1", "h4", "h1", "m30", "m15", "m5"].forEach((tf, i) => {
+    setTimeout(() => _playTFTone(tf), SWEEP_TONE_DUR_MS + i * 450);
+  });
+  setTimeout(_playMegaSweepTone, SWEEP_TONE_DUR_MS + 6 * 450 + 400);
+}
 const REGIME_ORDER = [
   { key: "d1", label: "D1" },
   { key: "h4", label: "H4" },
@@ -83,6 +223,16 @@ function render(data) {
       <td class="py-1 font-bold ${dirColorClass(dir)}">${dir}</td>
     </tr>`;
   }).join("");
+  // v52.73c: breakout sound per TF - Dadang: "breakout nya sesuai chain
+  // bro m5,m15,m30 dst... suaranya beda supaya gw tau tanpa liat chart".
+  // Skips the very first poll per TF (_prevTFDir[key] starts null) so
+  // loading the page doesn't beep for whatever direction each TF already
+  // happens to be in.
+  REGIME_ORDER.forEach(({ key }) => {
+    const dir = regime[key];
+    if (dir && _prevTFDir[key] !== null && dir !== _prevTFDir[key]) beepTF(key);
+    if (dir) _prevTFDir[key] = dir;
+  });
   set("regime-alignment", fmt(regime.alignment_pct, 0) + "%");
   set("regime-bias", regime.htf_bias || "-", regime.htf_bias === "BULLISH" ? "text-emerald-400" : regime.htf_bias === "BEARISH" ? "text-rose-400" : "text-slate-400");
   set("regime-m5status", (regime.m5_status || "-").replace("_", " "), regime.m5_status === "WITH_TREND" ? "text-emerald-400" : regime.m5_status === "COUNTER_TREND" ? "text-amber-400" : "text-slate-400");
@@ -129,6 +279,17 @@ function render(data) {
   // dashboard never disagrees with the MT5 panel/chart.
   const sweep = data.wall_sweep || {};
   const sweepFresh = !!sweep.active;
+
+  // v52.74: prune the rolling mega-sweep history + recompute mega status on
+  // EVERY poll (not just when a new sweep arrives), so a staircase that
+  // stops (no further sweep) correctly clears itself once the 5-min window
+  // empties out, instead of staying stuck "mega" forever.
+  const _nowMs = Date.now();
+  _recentSweeps = _recentSweeps.filter(e => _nowMs - e.ts <= MEGA_SWEEP_WINDOW_MS);
+  if (_megaActiveSide && _recentSweeps.filter(e => e.side === _megaActiveSide).length < MEGA_SWEEP_MIN_COUNT) {
+    _megaActiveSide = null;
+  }
+
   if (sweepFresh) {
     const tag = sweep.status === "REVERSAL_CONFIRMED" ? "REVERSAL" : sweep.status === "CONTINUATION" ? "LANJUT" : "PENDING";
     const sweepTxt = `${sweep.side} ${fmt(sweep.size, 0)}L @ ${fmt(sweep.price)} — ${tag} (${fmt(sweep.since_sec, 0)}s)`;
@@ -137,8 +298,30 @@ function render(data) {
     // "sweep = blue, walls = green/red" split as the MT5 chart arrow/panel
     // row, so all 3 surfaces teach one color association.
     set("sweep-label", "WALL SWEEP — " + sweepTxt, "text-sky-400");
+    // v52.73: sound alert - keyed on side+price so a still-active sweep
+    // doesn't re-beep every 800ms poll, only when it's genuinely a NEW one
+    // (matches the same "isNewEvent" idea the EA uses for g_sweepRecActive).
+    const sweepKey = sweep.side + "|" + fmt(sweep.price);
+    if (sweepKey !== _prevSweepKey) {
+      beepSweep();
+      // v52.74: log this genuinely-new sweep, check for a "staircase" -
+      // 3+ on the same side within 5 minutes (see 2026-08-20 history
+      // analysis notes in memory - a real staircase pattern, not a guess).
+      _recentSweeps.push({ side: sweep.side, key: sweepKey, ts: _nowMs });
+      const sameSideCount = _recentSweeps.filter(e => e.side === sweep.side).length;
+      if (sameSideCount >= MEGA_SWEEP_MIN_COUNT && _megaActiveSide !== sweep.side) {
+        beepMegaSweep(); // only fires once per NEW staircase, not every added rung
+        _megaActiveSide = sweep.side;
+      }
+    }
+    _prevSweepKey = sweepKey;
+    if (_megaActiveSide) {
+      const n = _recentSweeps.filter(e => e.side === _megaActiveSide).length;
+      set("sweep-label", `⚡ MEGA SWEEP — ${_megaActiveSide} staircase (${n}x) — ${sweepTxt}`, "text-amber-300");
+    }
   } else {
     set("sweep-label", "WALL SWEEP — —", "text-slate-500");
+    _prevSweepKey = null;
   }
 
   // 4. LOCATION
@@ -256,8 +439,17 @@ function render(data) {
   set("bmread-cvd", cvdTxt, cvdTxt.startsWith("-") ? "text-rose-400" : cvdTxt !== "-" ? "text-emerald-400" : "text-slate-500");
   const absorbTxt = bmr.absorption || "-";
   set("bmread-absorb", absorbTxt, absorbTxt === "-" ? "text-slate-500" : "text-amber-400");
+  // v52.74: iceberg reload counter - Dadang: "iceberg reload counter" (from
+  // the same pitch, "kerjakan semua"). A hidden order that disappears then
+  // reappears at the SAME price is a committed player refreshing the same
+  // level, more meaningful than "still sitting there" - needs the raw
+  // price (EA v52.74 export, iceberg_bid_px/ask_px) since the old narrated
+  // text alone couldn't tell "still there" from "gone and came back".
+  const iceBidReloads = _trackIceReload("bid", bmr.iceberg_bid_px || 0);
+  const iceAskReloads = _trackIceReload("ask", bmr.iceberg_ask_px || 0);
   const iceTxt = bmr.iceberg || "-";
-  set("bmread-iceberg", iceTxt, iceTxt === "-" ? "text-slate-500" : "text-fuchsia-400");
+  const iceReloadN = iceTxt.startsWith("B") ? iceBidReloads : iceTxt.startsWith("A") ? iceAskReloads : 0;
+  set("bmread-iceberg", iceTxt + (iceReloadN > 0 ? ` \u{1F501}${iceReloadN}` : ""), iceTxt === "-" ? "text-slate-500" : "text-fuchsia-400");
   const locTxt = bmr.location || "-";
   set("bmread-location", locTxt, (locTxt === "IN" || locTxt === "-") ? "text-slate-200" : "text-amber-400");
   const verdict = bmr.verdict || "-";
@@ -309,20 +501,63 @@ function fmtCountdown(sec) {
 // now instead of a static list.
 const WALL_NEAR_THRESHOLD_USD = 5.0;
 
+// v52.74: wall consumption speed - Dadang: "kecepatan wall dimakan" (from
+// the same "ide gila" pitch he said do-all-three). Tracks each wall's size
+// between polls (keyed by side+price) - a wall shrinking FAST signals more
+// urgency/conviction than one trickling down slowly, visible even before
+// it's fully swept. Pure client-side (compares this poll to the last), no
+// new backend/EA field needed - the ladder data already carries size.
+const WALL_EAT_FAST_LOT_PER_SEC = 1.5;
+let _prevWallSnapshot = new Map(); // "side|price" -> {size, ts}
+
+// v52.74: iceberg reload counter state (see the bmread-iceberg block in
+// render() for the full rationale).
+let _iceState = {
+  bid: { price: null, present: false, reloads: 0 },
+  ask: { price: null, present: false, reloads: 0 },
+};
+function _trackIceReload(side, px) {
+  const st = _iceState[side];
+  const here = px > 0;
+  if (here) {
+    if (!st.present) {
+      if (st.price !== null && Math.abs(px - st.price) < 0.5) st.reloads++;
+      else { st.reloads = 0; st.price = px; }
+    }
+    st.present = true;
+  } else {
+    st.present = false;
+  }
+  return st.reloads;
+}
+function _wallEatRate(side, px, sz, nowMs) {
+  const key = side + "|" + fmt(px, 2);
+  const prev = _prevWallSnapshot.get(key);
+  _prevWallSnapshot.set(key, { size: sz, ts: nowMs });
+  if (!prev) return null;
+  const dtSec = (nowMs - prev.ts) / 1000;
+  if (dtSec < 0.3) return null; // too soon since last sample to be meaningful
+  return (prev.size - sz) / dtSec; // positive = shrinking (being eaten)
+}
+
 function renderLadder(askLadder, bidLadder, currentPrice) {
   const el = document.getElementById("wall-ladder");
   if (!el) return;
+  const nowMs = Date.now();
   const asks = [...askLadder].sort((a, b) => b[0] - a[0]); // farthest/highest first
   const bids = [...bidLadder].sort((a, b) => b[0] - a[0]); // nearest first
 
-  const row = (px, sz, cls) => {
+  const row = (px, sz, cls, side) => {
     const near = currentPrice && Math.abs(currentPrice - px) <= WALL_NEAR_THRESHOLD_USD;
-    return `<div class="flex justify-between px-1.5 py-0.5 ${cls} ${near ? "wall-near" : ""}"><span>${fmt(px, 2)}</span><span>${Math.round(sz)}</span></div>`;
+    const rate = _wallEatRate(side, px, sz, nowMs);
+    const eatTag = (rate !== null && rate >= WALL_EAT_FAST_LOT_PER_SEC)
+      ? `<span class="text-amber-400 ml-1.5" title="Lagi dimakan cepat">-${rate.toFixed(1)}L/s</span>` : "";
+    return `<div class="flex justify-between px-1.5 py-0.5 ${cls} ${near ? "wall-near" : ""}"><span>${fmt(px, 2)}</span><span>${Math.round(sz)}${eatTag}</span></div>`;
   };
 
-  let html = asks.map(([px, sz]) => row(px, sz, "text-rose-400")).join("");
+  let html = asks.map(([px, sz]) => row(px, sz, "text-rose-400", "ASK")).join("");
   html += `<div class="text-center px-1.5 py-1 my-0.5 bg-amber-400/10 border-y border-amber-400/30 text-amber-200 font-bold price-row-live">${currentPrice ? fmt(currentPrice, 2) : "-"}</div>`;
-  html += bids.map(([px, sz]) => row(px, sz, "text-emerald-400")).join("");
+  html += bids.map(([px, sz]) => row(px, sz, "text-emerald-400", "BID")).join("");
 
   el.innerHTML = html || '<div class="text-center text-slate-600 py-6">No significant walls</div>';
 }
@@ -394,4 +629,5 @@ async function poll() {
   }
 }
 
+updateSoundButton();
 poll();

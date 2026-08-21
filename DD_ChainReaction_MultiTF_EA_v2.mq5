@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.72-SWEEPVETO"
+#define EA_VERSION "v52.76-VABIASM5"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -355,6 +355,15 @@ double   g_bookmapSellVolSession = 0.0;
 double   g_bookmapVal = 0.0, g_bookmapVah = 0.0;
 double   g_bookmapBidIcePx = 0.0, g_bookmapBidIceSz = 0.0, g_bookmapBidIceRatio = 0.0;
 double   g_bookmapAskIcePx = 0.0, g_bookmapAskIceSz = 0.0, g_bookmapAskIceRatio = 0.0;
+
+// v52.74 - iceberg reload counter ("kalo perlu suaranya beda" pitch, built
+// MT5-first). An iceberg that DISAPPEARS then REAPPEARS at the same price
+// is a hidden player refreshing the same level - more committed than just
+// "still sitting there". Tracked per side: last known price, whether it's
+// currently present, and how many times it's reloaded.
+double   g_iceLastPx[2]     = {0.0, 0.0};   // 0=BID, 1=ASK
+bool     g_icePresent[2]    = {false, false};
+int      g_iceReloadCount[2] = {0, 0};
 datetime g_lastBookmapTriggerTime = 0;   // v52.3: cooldown tracker for CheckBookmapTrigger()
 
 // v52.42: VA RETEST trigger state - see CheckVaRetestTrigger()
@@ -446,6 +455,17 @@ double   g_bookmapAskPx[WALL_SLOTS_PER_SIDE], g_bookmapAskSz[WALL_SLOTS_PER_SIDE
 // about to get pulled - see bookmap.com's writeup on fake liquidity).
 double   g_bookmapBidAge[WALL_SLOTS_PER_SIDE], g_bookmapAskAge[WALL_SLOTS_PER_SIDE];
 
+// v52.74 - wall consumption speed ("kecepatan wall dimakan" idea, built
+// MT5-first per Dadang's standing instruction). Tracks each SLOT's own
+// last-seen price+size+time - slot index roughly tracks the same ranked
+// wall tick to tick, so WallEatRate() double-checks the price still
+// matches (tolerance) before trusting the size delta as a real eat-rate,
+// not two unrelated walls that happened to land in the same slot.
+#define WALL_EAT_FAST_LOT_PER_SEC 1.5
+double   g_prevBidPx[WALL_SLOTS_PER_SIDE], g_prevBidSz[WALL_SLOTS_PER_SIDE];
+double   g_prevAskPx[WALL_SLOTS_PER_SIDE], g_prevAskSz[WALL_SLOTS_PER_SIDE];
+datetime g_prevBidTime[WALL_SLOTS_PER_SIDE], g_prevAskTime[WALL_SLOTS_PER_SIDE];
+
 // v52.26: wall SWEEP + reversal - Dadang: "ide gila lagi bro?" -> stop-hunt/
 // liquidity-grab detection. A big/persistent wall traded clean through
 // ("jebol") then either reclaimed (REVERSAL_CONFIRMED - the classic hunt-
@@ -472,6 +492,25 @@ double   g_sweepRecPriceMt5  = 0.0;
 double   g_sweepRecSize      = 0.0;
 string   g_sweepRecStatus    = "";
 datetime g_sweepRecFirstSeen = 0;
+
+// v52.74 - "Mega Sweep": 3+ sweep events on the SAME side within 5 min -
+// the staircase pattern from the 2026-08-20 history analysis (a wall gets
+// swept, price tests the next one down/up, repeat, until the real
+// reversal). Ring buffer of recent sweep sides+times, recomputed every
+// tick (not just on a new sweep) so it correctly clears itself once the
+// window empties out even without a fresh event. Dadang: "setiap kerja
+// duluin mt5 nya baru ke web" - built here first, web version (logic.js)
+// already existed from earlier the same night.
+#define MEGA_SWEEP_WINDOW_SEC 300
+#define MEGA_SWEEP_MIN_COUNT  3
+#define MEGA_SWEEP_LOG_LEN    12
+string   g_sweepLogSide[MEGA_SWEEP_LOG_LEN];
+datetime g_sweepLogTime[MEGA_SWEEP_LOG_LEN];
+int      g_sweepLogHead   = 0;
+int      g_sweepLogFilled = 0;
+bool     g_megaSweepActive = false;
+string   g_megaSweepSide   = "";
+int      g_megaSweepCount  = 0;
 bool     g_bidClustered[WALL_SLOTS_PER_SIDE], g_askClustered[WALL_SLOTS_PER_SIDE];   // v52.34 - filled by UpdateWallZones() (runs first), read by UpdateWallLines() to skip a clustered wall's own redundant text label (zone box's aggregate label already covers it) - the line itself is unaffected either way
 
 // v34: SULTAN SNIPER ENGINE web dashboard export - Dadang: "gak usah baca
@@ -1118,15 +1157,18 @@ void UpdatePanel()
          }
 
          // v33: strongest iceberg candidate (either side) - informational.
+         // v52.75: append reload count (0=BID, 1=ASK slot in g_iceReloadCount).
          string iceTxt; color iceClr;
          if(g_bookmapBidIcePx > 0 && g_bookmapBidIceRatio >= g_bookmapAskIceRatio)
          {
-            iceTxt = StringFormat("BID @ %.2f (%.1fx)", g_bookmapBidIcePx + bmOffset, g_bookmapBidIceRatio);
+            string bidReloadTxt = (g_iceReloadCount[0] > 0) ? StringFormat(" reload x%d", g_iceReloadCount[0]) : "";
+            iceTxt = StringFormat("BID @ %.2f (%.1fx)%s", g_bookmapBidIcePx + bmOffset, g_bookmapBidIceRatio, bidReloadTxt);
             iceClr = clrMagenta;
          }
          else if(g_bookmapAskIcePx > 0)
          {
-            iceTxt = StringFormat("ASK @ %.2f (%.1fx)", g_bookmapAskIcePx + bmOffset, g_bookmapAskIceRatio);
+            string askReloadTxt = (g_iceReloadCount[1] > 0) ? StringFormat(" reload x%d", g_iceReloadCount[1]) : "";
+            iceTxt = StringFormat("ASK @ %.2f (%.1fx)%s", g_bookmapAskIcePx + bmOffset, g_bookmapAskIceRatio, askReloadTxt);
             iceClr = clrMagenta;
          }
          else { iceTxt = "none"; iceClr = PNL_LABEL; }
@@ -1165,7 +1207,19 @@ void UpdatePanel()
             sweepTxt = StringFormat("%s %.0fL @%.2f (%s)", g_sweepRecSide, g_sweepRecSize, g_sweepRecPriceMt5, TimeAgoText(recAgeSec));
             sweepClr = clrDeepSkyBlue;
          }
-         PnlRow(x0, y, contentW, "Wall Sweep", sweepTxt, sweepClr); y += 18;
+         // v52.74 - Mega Sweep: 3+ sweeps same side in 5 min (staircase
+         // pattern) - swaps the ROW LABEL itself (not just the value) so
+         // it's impossible to miss scanning down the panel, gold to match
+         // the "attention" color used elsewhere (Barrier row). Web version
+         // built the same night in logic.js - Dadang: "setiap kerja duluin
+         // mt5 nya baru ke web".
+         string sweepLabel = "Wall Sweep";
+         if(g_megaSweepActive)
+         {
+            sweepLabel = StringFormat("MEGA SWEEP (%dx)", g_megaSweepCount);
+            sweepClr = clrGold;
+         }
+         PnlRow(x0, y, contentW, sweepLabel, sweepTxt, sweepClr); y += 18;
          PnlRule(x0, y, contentW); y += 12;
 
          // v32: BIAS BUY/SELL/SIDEWAYS - Dadang: "tambah tulisan bias buy
@@ -2821,7 +2875,26 @@ color WallColor(bool isBid, double size)
 //--- futures) - offset converts it to XAUUSD-equivalent. Deletes the object
 //--- if this wall slot is empty (price<=0, sent that way by the Python side
 //--- when fewer than 2 walls exist on that side).
-void DrawWallLine(string key, double bookmapPrice, double size, double offset, bool isBid, string sideLabel, int barsAhead = 8, bool showLabel = true)
+// v52.74 - returns lot/sec the wall at this slot has shrunk since the last
+// tick (positive = being eaten), or -1.0 if there's nothing meaningful to
+// compare (first tick, price moved to a different wall, or too little time
+// elapsed). Updates the tracking arrays for next time as a side effect.
+double WallEatRate(bool isBid, int slot, double currentPx, double currentSz)
+{
+   double   prevPx = isBid ? g_prevBidPx[slot]   : g_prevAskPx[slot];
+   double   prevSz = isBid ? g_prevBidSz[slot]   : g_prevAskSz[slot];
+   datetime prevT  = isBid ? g_prevBidTime[slot] : g_prevAskTime[slot];
+
+   if(isBid) { g_prevBidPx[slot] = currentPx; g_prevBidSz[slot] = currentSz; g_prevBidTime[slot] = TimeCurrent(); }
+   else      { g_prevAskPx[slot] = currentPx; g_prevAskSz[slot] = currentSz; g_prevAskTime[slot] = TimeCurrent(); }
+
+   if(prevPx <= 0 || prevT == 0 || MathAbs(currentPx - prevPx) > 0.05) return -1.0;
+   double dtSec = (double)(TimeCurrent() - prevT);
+   if(dtSec < 1.0) return -1.0;   // too soon since last sample to be meaningful
+   return (prevSz - currentSz) / dtSec;
+}
+
+void DrawWallLine(string key, double bookmapPrice, double size, double offset, bool isBid, string sideLabel, int barsAhead = 8, bool showLabel = true, double eatRate = -1.0)
 {
    string name     = WALL_PREFIX + key;
    string textName = WALL_PREFIX + key + "_TXT";
@@ -2868,6 +2941,15 @@ void DrawWallLine(string key, double bookmapPrice, double size, double offset, b
       width     = WallWidth(size);
       lineText  = StringFormat("%s %.0f lot @ %.2f (bookmap %.2f)", sideLabel, size, mt5Price, bookmapPrice);
       labelText = StringFormat(" %s: %.0f lot", sideLabel, size);
+      // v52.74 - "kecepatan wall dimakan": a wall shrinking fast signals
+      // more urgency/conviction than one trickling down slowly, visible
+      // even before it's fully swept.
+      if(eatRate >= WALL_EAT_FAST_LOT_PER_SEC)
+      {
+         string eatSuffix = StringFormat(" -%.1fL/s", eatRate);
+         lineText  += eatSuffix;
+         labelText += eatSuffix;
+      }
    }
 
    if(ObjectFind(0, name) < 0)
@@ -2963,13 +3045,15 @@ void UpdateWallLines()
    {
       string key   = StringFormat("BID%d", i+1);
       string label = StringFormat("BID WALL %d", i+1);
-      DrawWallLine(key, g_bookmapBidPx[i], g_bookmapBidSz[i], offset, true, label, 8 + i * 3, !g_bidClustered[i]);
+      double rate  = WallEatRate(true, i, g_bookmapBidPx[i], g_bookmapBidSz[i]);
+      DrawWallLine(key, g_bookmapBidPx[i], g_bookmapBidSz[i], offset, true, label, 8 + i * 3, !g_bidClustered[i], rate);
    }
    for(int i = 0; i < WALL_SLOTS_PER_SIDE; i++)
    {
       string key   = StringFormat("ASK%d", i+1);
       string label = StringFormat("ASK WALL %d", i+1);
-      DrawWallLine(key, g_bookmapAskPx[i], g_bookmapAskSz[i], offset, false, label, 8 + i * 3, !g_askClustered[i]);
+      double rate  = WallEatRate(false, i, g_bookmapAskPx[i], g_bookmapAskSz[i]);
+      DrawWallLine(key, g_bookmapAskPx[i], g_bookmapAskSz[i], offset, false, label, 8 + i * 3, !g_askClustered[i], rate);
    }
 }
 
@@ -3124,9 +3208,48 @@ void UpdateWallZones()
 //--- candle CLOSE genuinely crosses the level - mirrors BarrierIsBroken()'s
 //--- close-based, never-a-wick rule. Call once per tick, right after
 //--- ReadBookmapBridge() so g_bmSweep* is fresh.
+// v52.74 - pushes one entry into the ring buffer, called only on a
+// genuinely NEW sweep (same isNewEvent gate UpdateSweepRecord() already
+// uses for everything else).
+void LogSweepForMega(string side)
+{
+   g_sweepLogSide[g_sweepLogHead] = side;
+   g_sweepLogTime[g_sweepLogHead] = TimeCurrent();
+   g_sweepLogHead = (g_sweepLogHead + 1) % MEGA_SWEEP_LOG_LEN;
+   if(g_sweepLogFilled < MEGA_SWEEP_LOG_LEN) g_sweepLogFilled++;
+}
+
+// v52.74 - recomputed every tick (not just on a new sweep) so g_megaSweepActive
+// correctly clears itself once the window empties out, same "prune every
+// poll" fix the web version (logic.js) needed.
+void RecomputeMegaSweep()
+{
+   int bidCount = 0, askCount = 0;
+   datetime cutoff = TimeCurrent() - MEGA_SWEEP_WINDOW_SEC;
+   for(int i = 0; i < g_sweepLogFilled; i++)
+   {
+      if(g_sweepLogTime[i] < cutoff) continue;
+      if(g_sweepLogSide[i] == "BID") bidCount++;
+      else if(g_sweepLogSide[i] == "ASK") askCount++;
+   }
+   if(bidCount >= MEGA_SWEEP_MIN_COUNT)
+   {
+      g_megaSweepActive = true; g_megaSweepSide = "BID"; g_megaSweepCount = bidCount;
+   }
+   else if(askCount >= MEGA_SWEEP_MIN_COUNT)
+   {
+      g_megaSweepActive = true; g_megaSweepSide = "ASK"; g_megaSweepCount = askCount;
+   }
+   else
+   {
+      g_megaSweepActive = false; g_megaSweepSide = ""; g_megaSweepCount = 0;
+   }
+}
+
 void UpdateSweepRecord()
 {
    if(!g_bookmapOnline) return;
+   RecomputeMegaSweep();
    double offset   = (g_bookmapPrice > 0) ? (SymbolInfoDouble(_Symbol, SYMBOL_BID) - g_bookmapPrice) : 0.0;
    double mt5Price = g_bmSweepPrice + offset;
 
@@ -3140,6 +3263,14 @@ void UpdateSweepRecord()
       g_sweepRecSize      = g_bmSweepSize;
       g_sweepRecStatus    = g_bmSweepStatus;
       g_sweepRecFirstSeen = TimeCurrent();
+      LogSweepForMega(g_bmSweepSide);
+      // v52.73 tried a PlaySound() alert here - Dadang: "kalo di EA apa
+      // bisa distop manual, kawatirnya bunyi terus2an" (a cluster of sweeps
+      // in quick succession, like the staircase pattern seen earlier today,
+      // would fire it repeatedly with no fast way to silence it mid-session
+      // - the MT5 Properties dialog to flip an input isn't quick enough).
+      // Moved to the web dashboard instead (sultan/logic.js) where a mute
+      // button is one click, no dialog needed - see v52.73b there.
    }
 
    if(g_sweepRecActive)
@@ -3324,12 +3455,16 @@ string ComputeVaLocation()
    // SymbolInfoDouble(SYMBOL_BID) - live, tick-by-tick, could flicker
    // BUY(breakout)/SIDEWAYS/SELL(breakout) within a single still-forming
    // candle just off a wick.
-   // v52.48: was PERIOD_M5, Dadang 2026-08-19 live: "ini minimal M30 aja
-   // deh bro, kayaknya kalo M5 masih sering noise" - M5 closes so often the
-   // BUY/SELL/POTENTIAL label was flickering back and forth near the
-   // VAH/VAL/POC boundary. Bumped to InpScalpMasterTF (the system's own M30
-   // cascade slot, not the chart's own _Period) for a far more stable read.
-   double refPrice = iClose(_Symbol, InpScalpMasterTF, 1);
+   // v52.48 bumped this from M5 to InpScalpMasterTF (M30) to kill flicker,
+   // but that made VA Bias/VA Retest go blind to intrabar reversals for up
+   // to 30 minutes (M30's own close-1 candle can be stale mid-bar even as
+   // price already rallies/dumps hard) - Dadang caught this live 2026-08-21
+   // looking at a panel stuck on "SELL (breakout)" while the chart was
+   // clearly ripping back up, and chose to trade the flicker risk back for
+   // reactivity: "balikin ke M5 close". Reverted to InpScalpEntryTF (the
+   // system's own M5 slot, not a hardcoded PERIOD_M5) so it stays in sync if
+   // that input ever changes.
+   double refPrice = iClose(_Symbol, InpScalpEntryTF, 1);
    if(refPrice <= 0) refPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);   // fallback if M30 history isn't ready yet
    double pocMt5 = g_bookmapPocPrice + offset;
 
@@ -3571,8 +3706,15 @@ void WriteSultanStatus()
    // entri beneran". verdict is BookmapTriggerDirection()'s literal output
    // via g_bmNarrVerdict (see ComputeBookmapNarrative()) - same value that
    // decides whether CheckBookmapTrigger() actually opens a position.
-   json += StringFormat("\"bookmap_read\":{\"wall\":\"%s\",\"cvd\":\"%s\",\"absorption\":\"%s\",\"iceberg\":\"%s\",\"location\":\"%s\",\"verdict\":\"%s\"},",
-                         g_bmNarrWall, g_bmNarrCvd, g_bmNarrAbsorb, g_bmNarrIceberg, g_bmNarrLocation, g_bmNarrVerdict);
+   // v52.74: raw bid/ask iceberg price added (was narrated text only) -
+   // Dadang wants a "reload counter" (same iceberg price reappearing after
+   // being consumed = a committed hidden player, not a one-off). That's a
+   // client-side history check the web dashboard can do for itself once it
+   // has the actual price to key on - g_bookmapBidIcePx/AskIcePx already
+   // exist (used to draw the chart lines), just weren't exported before.
+   json += StringFormat("\"bookmap_read\":{\"wall\":\"%s\",\"cvd\":\"%s\",\"absorption\":\"%s\",\"iceberg\":\"%s\",\"location\":\"%s\",\"verdict\":\"%s\",\"iceberg_bid_px\":%.2f,\"iceberg_ask_px\":%.2f},",
+                         g_bmNarrWall, g_bmNarrCvd, g_bmNarrAbsorb, g_bmNarrIceberg, g_bmNarrLocation, g_bmNarrVerdict,
+                         g_bookmapBidIcePx, g_bookmapAskIcePx);
 
    json += "\"location\":{";
    json += StringFormat("\"poc\":%.2f,\"val\":%.2f,\"vah\":%.2f,\"current_price\":%.2f,", pocMt5, valMt5, vahMt5, curPrice);
@@ -3725,6 +3867,39 @@ void DrawValueAreaLine(string name, string textName, double mt5Price, string lab
    ObjectSetString(0, textName, OBJPROP_TEXT, StringFormat("%s ", label));
 }
 
+// v52.75 - iceberg reload counter. Same state-machine as the web side's
+// _trackIceReload(): a side that goes ABSENT (price<=0 or size<=0) then
+// REAPPEARS at the same price is a hidden player reloading the same level
+// (more committed than "still sitting there") - count it. A reappearance
+// at a genuinely different price is a new iceberg, not a reload - reset.
+int IceReloadCount(int sideIdx, double price, double size)
+{
+   bool active = (price > 0 && size > 0);
+   if(!active)
+   {
+      g_icePresent[sideIdx] = false;
+      return g_iceReloadCount[sideIdx];
+   }
+   if(g_icePresent[sideIdx])
+   {
+      if(MathAbs(price - g_iceLastPx[sideIdx]) > 0.05)
+      {
+         g_iceLastPx[sideIdx]      = price;
+         g_iceReloadCount[sideIdx] = 0;
+      }
+   }
+   else
+   {
+      if(g_iceLastPx[sideIdx] > 0 && MathAbs(price - g_iceLastPx[sideIdx]) <= 0.05)
+         g_iceReloadCount[sideIdx]++;
+      else
+         g_iceReloadCount[sideIdx] = 0;
+      g_iceLastPx[sideIdx] = price;
+      g_icePresent[sideIdx] = true;
+   }
+   return g_iceReloadCount[sideIdx];
+}
+
 //--- v33: Iceberg markers - IcebergEngine flags a price where far more
 //--- volume has TRADED than its DISPLAYED resting size would suggest (a
 //--- hidden refilling order). Informational only (no entry gating yet) -
@@ -3733,11 +3908,13 @@ void DrawValueAreaLine(string name, string textName, double mt5Price, string lab
 void UpdateIcebergLines()
 {
    // v35: own lanes (52/56 bars), past POC (40) and VAH/VAL (44/48).
-   DrawIcebergLine("BIDICE", g_bookmapBidIcePx, g_bookmapBidIceSz, g_bookmapBidIceRatio, "BID", 52);
-   DrawIcebergLine("ASKICE", g_bookmapAskIcePx, g_bookmapAskIceSz, g_bookmapAskIceRatio, "ASK", 56);
+   int bidReloads = IceReloadCount(0, g_bookmapBidIcePx, g_bookmapBidIceSz);
+   int askReloads = IceReloadCount(1, g_bookmapAskIcePx, g_bookmapAskIceSz);
+   DrawIcebergLine("BIDICE", g_bookmapBidIcePx, g_bookmapBidIceSz, g_bookmapBidIceRatio, "BID", 52, bidReloads);
+   DrawIcebergLine("ASKICE", g_bookmapAskIcePx, g_bookmapAskIceSz, g_bookmapAskIceRatio, "ASK", 56, askReloads);
 }
 
-void DrawIcebergLine(string key, double bookmapPrice, double size, double ratio, string sideLabel, int barsAhead = 8)
+void DrawIcebergLine(string key, double bookmapPrice, double size, double ratio, string sideLabel, int barsAhead = 8, int reloads = 0)
 {
    string name = WALL_PREFIX + key, textName = WALL_PREFIX + key + "_TXT";
    if(!g_bookmapOnline || bookmapPrice <= 0 || size <= 0)
@@ -3748,6 +3925,7 @@ void DrawIcebergLine(string key, double bookmapPrice, double size, double ratio,
    }
    double offset   = SymbolInfoDouble(_Symbol, SYMBOL_BID) - g_bookmapPrice;
    double mt5Price = bookmapPrice + offset;
+   string reloadSuffix = (reloads > 0) ? StringFormat(" reload x%d", reloads) : "";
 
    if(ObjectFind(0, name) < 0)
    {
@@ -3761,7 +3939,7 @@ void DrawIcebergLine(string key, double bookmapPrice, double size, double ratio,
    ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
    ObjectSetDouble(0, name, OBJPROP_PRICE, mt5Price);
    ObjectSetString(0, name, OBJPROP_TEXT,
-      StringFormat("ICEBERG %s @ %.2f - displayed %.0f, ratio %.1fx", sideLabel, mt5Price, size, ratio));
+      StringFormat("ICEBERG %s @ %.2f - displayed %.0f, ratio %.1fx%s", sideLabel, mt5Price, size, ratio, reloadSuffix));
 
    datetime labelTime = TimeCurrent() + PeriodSeconds(_Period) * barsAhead;
    if(ObjectFind(0, textName) < 0)
@@ -3775,7 +3953,7 @@ void DrawIcebergLine(string key, double bookmapPrice, double size, double ratio,
    ObjectSetDouble(0, textName, OBJPROP_PRICE, mt5Price);
    ObjectSetInteger(0, textName, OBJPROP_COLOR, clrMagenta);
    ObjectSetInteger(0, textName, OBJPROP_FONTSIZE, 12);
-   ObjectSetString(0, textName, OBJPROP_TEXT, StringFormat(" ICEBERG %s (%.1fx)", sideLabel, ratio));
+   ObjectSetString(0, textName, OBJPROP_TEXT, StringFormat(" ICEBERG %s (%.1fx)%s", sideLabel, ratio, reloadSuffix));
 }
 
 //--- M30 momentum candle. Dadang: "M30 harus close di atas high candle

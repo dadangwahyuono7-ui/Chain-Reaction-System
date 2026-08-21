@@ -171,6 +171,14 @@ _last_cvd_log_ts = 0.0
 # (magic 2027, isolated from the production engine's 2026) and log every
 # trade to trades.db. If MT5 isn't reachable at startup, auto-exec disables
 # itself but the rest of the pipeline (CMP/dashboard) keeps running normally.
+#
+# 2026-08-21: DISABLED per Dadang - "lo ilangin bro kita hanya entri pakai
+# ea aja" (only DD_ChainReaction_MultiTF_EA_v2.mq5 should place real
+# orders from now on - this system confused him with a SELL that had no
+# Wall Sweep behind it, since it was never built to check for one). See
+# handle_mt5_auto_execute()'s docstring. Flip back to False to re-enable -
+# trades.db logging + everything else stays wired, just dormant.
+AUTO_EXECUTE_MT5_TRADES_DISABLED_BY_DADANG = True
 trade_db.init_db()
 mt5_ready = mt5x.connect()
 
@@ -226,7 +234,21 @@ def reconcile_broker_position():
 
 def handle_mt5_auto_execute(prev_position, result):
     """Fires exactly once per entry/exit TRANSITION (not every poll) by
-    diffing master_engine.active_position across this evaluate() call."""
+    diffing master_engine.active_position across this evaluate() call.
+
+    2026-08-21: DISABLED - Dadang saw a BMR_M5_DIRECT_CF SELL open with no
+    Wall Sweep confirmation and didn't recognize it: "kenapa dia ngeselin
+    bro kan blm ada sweep untuk sell" -> "lo ilangin bro kita hanya entri
+    pakai ea aja bro nanti gw bingung mana entrian dari bookmap dan ea nya."
+    This system (magic 2027, BMR_ prefix) has always been independent of
+    DD_ChainReaction_MultiTF_EA_v2.mq5's Sweep Reversal Veto (different
+    codebase entirely, see project_bookmap_bridge memory) - it was never
+    supposed to require a sweep, so it isn't a bug, but Dadang wants only
+    ONE system placing real orders from here on. Everything ELSE in this
+    file (CVD/wall/sweep/absorption feeding the EA panel + Sultan dashboard)
+    is untouched - this function just stops executing on the broker."""
+    if AUTO_EXECUTE_MT5_TRADES_DISABLED_BY_DADANG:
+        return
     if not mt5_ready:
         return
     new_position = master_engine.active_position
