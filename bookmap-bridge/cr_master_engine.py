@@ -61,6 +61,8 @@ SWEEP_REVERSAL_CONFIRM_USD = 2.0   # price must reclaim past the swept level by 
 SWEEP_WINDOW_SEC = 180.0           # how long to wait for reversal before calling it a genuine
                                     # continuation/breakout instead
 SWEEP_LOG_LEN = 20                 # rolling event history depth
+MEGA_SWEEP_WINDOW_SEC = 300.0       # same 5-minute window as MT5's MEGA_SWEEP_WINDOW_SEC / web's MEGA_SWEEP_WINDOW_MS
+MEGA_SWEEP_MIN_COUNT = 3            # same threshold as MT5's MEGA_SWEEP_MIN_COUNT / web's MEGA_SWEEP_MIN_COUNT
 
 
 class WallLadderTracker:
@@ -204,6 +206,26 @@ class WallLadderTracker:
     @property
     def latest_sweep(self):
         return self.sweep_events[-1] if self.sweep_events else None
+
+    @property
+    def mega_sweep(self):
+        """2026-08-21 - same staircase escalation already ported to the MT5
+        EA (RecomputeMegaSweep()) and the web dashboard (logic.js), added
+        here too so it lands in bookmap_history_v7 for future backtesting -
+        Dadang: "kita catat aja itu tadi mumpung inget." Counts sweep_events
+        (any status - PENDING/REVERSAL_CONFIRMED/CONTINUATION, mirroring
+        LogSweepForMega()'s "log on every fresh event" behavior) within the
+        last MEGA_SWEEP_WINDOW_SEC on the SAME side; 3+ = a real staircase,
+        not a one-off."""
+        now = time.time()
+        counts = {"BID": 0, "ASK": 0}
+        for ev in self.sweep_events:
+            if now - ev["swept_time"] <= MEGA_SWEEP_WINDOW_SEC:
+                counts[ev["side"]] = counts.get(ev["side"], 0) + 1
+        for side in ("BID", "ASK"):
+            if counts[side] >= MEGA_SWEEP_MIN_COUNT:
+                return {"active": True, "side": side, "count": counts[side]}
+        return {"active": False, "side": "", "count": 0}
 
     def update(self, market_data, top_n: int = 8):
         price = market_data.last_price
@@ -740,6 +762,7 @@ class CRDecisionRecommendationEngine:
             "wall_sweep": {
                 "latest": self.wall_ladder.latest_sweep,
                 "history": list(self.wall_ladder.sweep_events),
+                "mega": self.wall_ladder.mega_sweep,
             },
             "conclusion": conclusion,
             "wall_summary": wall_summary,

@@ -162,7 +162,15 @@ CVD_LOG_DIR = os.path.join(MT5_COMMON_FILES_DIR, "bookmap_history")
 # before it's ever wired into entry/lot-sizing logic, same "record first"
 # discipline Dadang set for POC/CVD (v29 recorded -> v30/31 wired once real
 # data existed).
-CVD_LOG_FILE_PREFIX = "bookmap_history_v6_"
+#
+# 2026-08-21: prefix bumped v7 - added mega_sweep_active/side/count (see
+# WallLadderTracker.mega_sweep in cr_master_engine.py). Same day the Mega
+# Sweep staircase alert (3+ same-side sweeps in 5min) got built MT5-first +
+# web - Dadang, mid-live-trade, watching it fire: "lo catat aja itu tadi
+# mumpung inget" (worried about hitting a usage limit before writing this
+# down). Same "record first, wire into entry logic later" discipline as
+# every other bookmap_history column.
+CVD_LOG_FILE_PREFIX = "bookmap_history_v7_"
 CVD_LOG_INTERVAL_SEC = 5.0
 _last_cvd_log_ts = 0.0
 
@@ -572,6 +580,7 @@ def log_cvd_history(result: dict, price: float, h4_cmp: str):
                     header += [f"ask{i}_px", f"ask{i}_sz", f"ask{i}_age"]
                 header += ["sweep_side", "sweep_price", "sweep_size", "sweep_age_at_sweep_sec",
                            "sweep_status", "sweep_since_sec"]
+                header += ["mega_sweep_active", "mega_sweep_side", "mega_sweep_count"]
                 w.writerow(header)
             row = [
                 f"{now:.2f}",
@@ -603,6 +612,8 @@ def log_cvd_history(result: dict, price: float, h4_cmp: str):
                         f"{(now - sweep.get('swept_time', now)):.0f}"]
             else:
                 row += ["", "0.00", "0.0", "0", "NONE", "0"]
+            mega = result.get("wall_sweep", {}).get("mega") or {}
+            row += [int(bool(mega.get("active"))), mega.get("side", ""), mega.get("count", 0)]
             w.writerow(row)
     except Exception as e:
         print(f"[UDP-Listener] CVD history log failed (non-fatal): {e}", flush=True)

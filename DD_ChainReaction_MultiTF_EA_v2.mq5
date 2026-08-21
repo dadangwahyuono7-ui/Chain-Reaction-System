@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.76-VABIASM5"
+#define EA_VERSION "v52.77-HISTV7"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -565,7 +565,7 @@ double   g_bmHistBidPx[][WALL_SLOTS_PER_SIDE], g_bmHistBidSz[][WALL_SLOTS_PER_SI
 double   g_bmHistAskPx[][WALL_SLOTS_PER_SIDE], g_bmHistAskSz[][WALL_SLOTS_PER_SIDE];
 double   g_bmHistBidAge[][WALL_SLOTS_PER_SIDE], g_bmHistAskAge[][WALL_SLOTS_PER_SIDE];   // v52.14
 #define BM_HIST_DIR "bookmap_history\\"
-#define BM_HIST_GLOB "bookmap_history_v6_*.csv"   // v52.26: schema bumped v6 (added 6 wall-sweep columns, read-and-discarded - see LoadOneBookmapHistoryFile()) - glob only matches v6+ files, skips older-schema files (would desync the fixed-column reader)
+#define BM_HIST_GLOB "bookmap_history_v7_*.csv"   // v52.76: schema bumped v7 (added 3 mega-sweep columns, read-and-discarded - see LoadOneBookmapHistoryFile()) - glob only matches v7+ files, skips older-schema files (would desync the fixed-column reader). v52.26 had bumped it to v6 the same way (6 wall-sweep columns).
 
 #define DASH_PREFIX "DD_DASH_"
 #define WALL_PREFIX "DD_WALL_"
@@ -1927,8 +1927,9 @@ void LoadOneBookmapHistoryFile(string relPath)
 
    // v52.24: parameterized off WALL_SLOTS_PER_SIDE instead of another hardcoded
    // magic number (was 64 -> v52.14's 84 -> this) - 24 fixed columns + (px,sz,age)
-   // per wall slot per side. v52.26: +6 wall-sweep columns appended at the end.
-   int histTotalFields = 24 + WALL_SLOTS_PER_SIDE * 3 * 2 + 6;
+   // per wall slot per side. v52.26: +6 wall-sweep columns. v52.76: +3 mega-
+   // sweep columns (mega_sweep_active/side/count), both appended at the end.
+   int histTotalFields = 24 + WALL_SLOTS_PER_SIDE * 3 * 2 + 6 + 3;
    for(int i = 0; i < histTotalFields && !FileIsEnding(handle); i++) FileReadString(handle);   // skip header row
 
    while(!FileIsEnding(handle))
@@ -1970,9 +1971,12 @@ void LoadOneBookmapHistoryFile(string relPath)
       }
       // v52.26: sweep_side..sweep_since_sec (6 cols) - not replayed yet (see
       // g_bmSweep* globals' comment), just consumed positionally so the
-      // fixed-column reader doesn't desync on the columns after them (there
-      // are none after, but this keeps the pattern consistent/future-proof).
+      // fixed-column reader doesn't desync on the columns after them.
       for(int i = 0; i < 6 && !FileIsEnding(handle); i++) FileReadString(handle);
+      // v52.76: mega_sweep_active/side/count (3 cols) - same read-and-discard
+      // pattern, not replayed yet either (Mega Sweep itself is brand new
+      // today - needs real accumulated data before it's worth wiring in).
+      for(int i = 0; i < 3 && !FileIsEnding(handle); i++) FileReadString(handle);
 
       if(ts <= 0) continue;
 
