@@ -1,0 +1,10 @@
+# Chain Reaction System - Python dependencies for the venv that runs
+# udp_listener.py / sultan_dashboard_server.py (NOT the Bookmap-embedded
+# Python that runs bookmap_addon.py - that one is Bookmap's own interpreter,
+# no pip install needed there, "bookmap" module comes from Bookmap itself).
+#
+# Everything else imported across bookmap-bridge/*.py is either stdlib
+# (json, socket, sqlite3, tkinter, ...) or a local module in this same
+# folder - this list was built by grepping actual imports, not guessed.
+MetaTrader5==5.0.5735
+pywebview==6.2.1

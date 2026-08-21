@@ -1,0 +1,3 @@
+@echo off
+title Chain Reaction - Stopping...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop_trading.ps1"
