@@ -474,6 +474,26 @@ function render(data) {
   set("sig-fusion", fusionTxt, fusionClass);
   const mom = sig.momentum_m5 || {};
   set("sig-momentum", mom.text || "-", dirColorClass(mom.dir));
+
+  // v52.81 - web port of the 3 EA-only rows Dadang flagged were missing
+  // here (Momentum M5 Bookmap/Footprint, Chain Signal) - same passthrough
+  // pattern as everything else in this section, EA computes+formats,
+  // web just displays. "LAWAN" (disagreement) gets the same amber warning
+  // treatment as barrier/fusion above, not a straight BUY/SELL color.
+  const momBm = sig.momentum_m5_bookmap || {};
+  const momBmTxt = momBm.text || "-";
+  set("sig-momentum-bookmap", momBmTxt, momBmTxt.includes("LAWAN") ? "text-amber-400" : dirColorClass(momBm.dir));
+
+  const momFp = sig.momentum_m5_footprint || {};
+  const momFpTxt = momFp.text || "-";
+  set("sig-momentum-footprint", momFpTxt, momFpTxt.includes("LAWAN") ? "text-amber-400" : dirColorClass(momFp.dir));
+
+  const chain = sig.chain_signal || {};
+  const chainLayer = chain.layer || 0;
+  const chainDir = chain.dir || "WAIT";
+  const chainTxt = chainLayer > 0 ? `${chainDir} #${chainLayer} (aktif)` : "menunggu breakout searah master";
+  set("sig-chain-signal", chainTxt, chainLayer > 0 ? dirColorClass(chainDir) : "text-slate-500");
+
   const cd = sig.countdown || {};
   const cdTxt = [
     ["H4", cd.h4], ["H1", cd.h1], ["M30", cd.m30], ["M15", cd.m15], ["M5", cd.m5], ["M1", cd.m1],

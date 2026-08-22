@@ -488,6 +488,23 @@ def write_mt5_bridge_file(result: dict, price: float):
         header += ["sweep_side", "sweep_price", "sweep_size", "sweep_age_sec", "sweep_status", "sweep_since_sec"]
         row += [sweep_side, f"{sweep_price:.2f}", f"{sweep_size:.1f}", f"{sweep_age:.0f}", sweep_status, f"{sweep_since:.0f}"]
 
+        # 2026-08-22 - near-price footprint (buy vs sell volume actually
+        # TRADED at the current price, within footprint_engine's rolling
+        # window - see footprint_engine.py). Dadang, discussing why
+        # Momentum(M5) needed a Bookmap-side companion (built as CVD-based
+        # "Momentum M5 Bookmap" the same night): "valentini gw rasa dia
+        # pakai footprint bro." Reuses the SAME shared footprint_engine
+        # instance already fed live trades for wall-entry confirmation
+        # (cr_master_engine.py) - get_footprint_at_price() is a pure query,
+        # calling it again here doesn't affect that existing use. The MT5
+        # EA does its own event-anchored snapshot/diff on these two raw
+        # numbers (same pattern as g_bmMomBaseCvd) rather than Python trying
+        # to track "since the M5 breakout" itself - keeps this one-way
+        # export simple, consistent with every other bridge field.
+        fp_now = footprint_engine.get_footprint_at_price(price)
+        header += ["footprint_buy_vol", "footprint_sell_vol"]
+        row += [f"{fp_now.get('buy_volume', 0.0):.1f}", f"{fp_now.get('sell_volume', 0.0):.1f}"]
+
         tmp = MT5_BRIDGE_FILE + ".tmp"
         with open(tmp, "w", encoding="ascii", newline="") as f:
             w = csv.writer(f)

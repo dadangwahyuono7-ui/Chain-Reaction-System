@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.77-HISTV7"
+#define EA_VERSION "v52.81-WEBEXPORT"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -335,6 +335,8 @@ int      g_hM1             = INVALID_HANDLE;
 bool     g_bookmapOnline    = false;
 double   g_bookmapPrice     = 0.0;   // Bookmap's OWN instrument price (GCZ6 futures, NOT XAUUSD) - for wall price conversion
 double   g_bookmapCvd       = 0.0;
+double   g_bookmapFootBuyVol  = 0.0;   // v52.79: buy/sell volume traded AT the current Bookmap price (rolling window, see FootprintEngine)
+double   g_bookmapFootSellVol = 0.0;
 double   g_bookmapPulsePct  = 0.0;   // = buyer_aggression_pct 0-100 (kekuatan buyer/seller)
 string   g_bookmapAbsorption = "NONE";
 // v29: Volume Profile (session, resets 07:00 WIB like CVD) - POC = price
@@ -991,6 +993,19 @@ void UpdatePanel()
    color momClr;
    string momTxt = MomentumBreakoutText(InpScalpEntryTF, g_hScalpEntry, momClr);
    PnlRow(x0, y, contentW, "Momentum (M5)", momTxt, momClr); y += 16;
+
+   color momBmClr;
+   string momBmTxt = MomentumBookmapText(momBmClr);
+   PnlRow(x0, y, contentW, "Momentum M5 Bookmap", momBmTxt, momBmClr); y += 16;
+
+   color momFpClr;
+   string momFpTxt = MomentumFootprintText(momFpClr);
+   PnlRow(x0, y, contentW, "Momentum M5 Footprint", momFpTxt, momFpClr); y += 16;
+
+   string chainSigTxt; color chainSigClr;
+   if(g_chainSigLayer > 0) { chainSigTxt = StringFormat("%s #%d (aktif)", g_chainSigMasterDir, g_chainSigLayer); chainSigClr = DirColor(g_chainSigMasterDir); }
+   else                    { chainSigTxt = "menunggu breakout searah master"; chainSigClr = PNL_LABEL; }
+   PnlRow(x0, y, contentW, "Chain Signal", chainSigTxt, chainSigClr); y += 16;
 
    color statusClr = (g_cmpStatus == "CF") ? PNL_EMERALD : ((g_cmpStatus == "VR") ? PNL_GOLD : PNL_LABEL);
    PnlRow(x0, y, contentW, "CMP Status", g_cmpStatus, statusClr); y += 18;
@@ -1860,6 +1875,121 @@ string MomentumBreakoutText(ENUM_TIMEFRAMES tf, int cmpHandle, color &clrOut)
    clrOut = DirColor(dir);
    string strength = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
    return StringFormat("%s %s %.1fx", dir, strength, ratio);
+}
+
+// v52.78 - "Momentum M5 Bookmap": Aggression(M5) confluence pillar. Mid-
+// discussion with Dadang about Fabio Valentini's Direction/Location/
+// Aggression framework, MomentumRatio() above turned out to be 100% MT5
+// candle price data - no Bookmap/order-flow involved at all (see its own
+// comment). This is the missing pair: SAME idea (how far has it moved
+// SINCE the M5 breakout, relative to typical recent scale) but measured in
+// real CVD (buy/sell volume imbalance) instead of price distance. Dadang:
+// "kalo sama2 kuat berarti momentum itu valid" - the two rows are meant to
+// be read SIDE BY SIDE: price momentum alone can be a thin stop-run with
+// no real participants behind it; CVD confirming the SAME direction means
+// genuine order flow is backing the move, not just price drifting.
+//
+// Informational only, same "record first" discipline as POC/sweep/etc -
+// NOT wired into TryOpen() or any entry/exit logic.
+double   g_bmMomBaseCvd     = 0.0;   // CVD snapshot taken at the CURRENT M5 breakout event
+datetime g_bmMomBaseEvtTime = 0;     // which M5 breakout event g_bmMomBaseCvd belongs to
+
+string MomentumBookmapText(color &clrOut)
+{
+   if(!g_bookmapOnline) { clrOut = PNL_LABEL; return "-"; }
+
+   datetime evtTime = ReadBreakoutEventTime(g_hScalpEntry);
+   datetime ct; string dir = ReadCMP(g_hScalpEntry, ct);
+   if(evtTime == 0 || (dir != "BUY" && dir != "SELL")) { clrOut = PNL_LABEL; return "-"; }
+
+   if(evtTime != g_bmMomBaseEvtTime)   // fresh M5 breakout - snapshot CVD as the new baseline
+   {
+      g_bmMomBaseEvtTime = evtTime;
+      g_bmMomBaseCvd     = g_bookmapCvd;
+   }
+
+   double cvdDelta = g_bookmapCvd - g_bmMomBaseCvd;
+   bool   agrees   = (dir == "BUY") ? (cvdDelta > 0) : (cvdDelta < 0);
+
+   // Normalize against the recent typical 1-minute CVD swing - reuses the
+   // SAME ring buffer WriteSultanStatus() already maintains every tick
+   // (g_cvdMinuteSamples/g_cvdSampleCount, see its "Bookmap Flow" comment),
+   // rather than building a second parallel tracker for the same data.
+   double sumAbsMove = 0.0; int nMoves = 0;
+   int startIdx = CVD_HIST_LEN - g_cvdSampleCount;
+   for(int i = MathMax(startIdx, 1); i < CVD_HIST_LEN; i++)
+   {
+      sumAbsMove += MathAbs(g_cvdMinuteSamples[i] - g_cvdMinuteSamples[i - 1]);
+      nMoves++;
+   }
+   double avgMove = (nMoves > 0) ? (sumAbsMove / nMoves) : 0.0;
+   if(avgMove <= 0) { clrOut = PNL_LABEL; return "-"; }
+
+   double ratio = MathAbs(cvdDelta) / avgMove;
+   if(!agrees)
+   {
+      clrOut = C'251,191,36';   // amber - same "caution/conflict" tone as ARMED/pending states elsewhere, not a direction color
+      return StringFormat("%s vs CVD LAWAN (%+.0f)", dir, cvdDelta);
+   }
+   clrOut = DirColor(dir);
+   string strength = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
+   return StringFormat("%s %s %.1fx", dir, strength, ratio);
+}
+
+// v52.79 - "Momentum M5 Footprint": 3rd confluence pillar alongside price
+// Momentum(M5) and CVD-based Momentum M5 Bookmap. Dadang, same night:
+// "valentini gw rasa dia pakai footprint bro" - confirmed, Fabio's
+// Aggression pillar leans on footprint (per-PRICE buy/sell imbalance), not
+// just CVD. Difference from CVD: CVD is session-wide and location-blind
+// (net pressure anywhere); footprint is scoped to the CURRENT price level
+// only (g_bookmapFootBuyVol/SellVol, from FootprintEngine.get_footprint_
+// at_price() on Bookmap's side) - answers "is aggression happening RIGHT
+// HERE at the breakout zone" rather than "somewhere in the session."
+//
+// Same event-anchored snapshot/diff pattern as MomentumBookmapText() -
+// snapshot the buy/sell split at the M5 breakout, compare to now. No
+// separate minute-bucket accumulator (Dadang's original "sejak M1" idea)
+// needed - Bookmap's own rolling window already gives a live read, and
+// diffing two live reads captures "did near-price aggression shift since
+// the breakout" without new state on the Python side.
+double   g_bmFootBaseDelta   = 0.0;   // (buyVol-sellVol) snapshot at the CURRENT M5 breakout
+datetime g_bmFootBaseEvtTime = 0;
+
+string MomentumFootprintText(color &clrOut)
+{
+   if(!g_bookmapOnline) { clrOut = PNL_LABEL; return "-"; }
+
+   datetime evtTime = ReadBreakoutEventTime(g_hScalpEntry);
+   datetime ct; string dir = ReadCMP(g_hScalpEntry, ct);
+   if(evtTime == 0 || (dir != "BUY" && dir != "SELL")) { clrOut = PNL_LABEL; return "-"; }
+
+   double curDelta = g_bookmapFootBuyVol - g_bookmapFootSellVol;
+   if(evtTime != g_bmFootBaseEvtTime)   // fresh M5 breakout - snapshot as the new baseline
+   {
+      g_bmFootBaseEvtTime = evtTime;
+      g_bmFootBaseDelta   = curDelta;
+   }
+
+   double deltaMove = curDelta - g_bmFootBaseDelta;
+   bool   agrees    = (dir == "BUY") ? (deltaMove > 0) : (deltaMove < 0);
+
+   double totalVol = g_bookmapFootBuyVol + g_bookmapFootSellVol;
+   if(totalVol <= 0) { clrOut = PNL_LABEL; return "-"; }   // no trades at this price yet this window
+
+   // Normalize against total volume currently visible at this price - own
+   // reasonable scale (footprint has no natural "average move" history the
+   // way CVD's minute-samples ring buffer does), tuned the same "record
+   // first, recalibrate once real data shows whether 0.5/1.5 reads
+   // sensibly for footprint too" way as everything else built tonight.
+   double ratio = MathAbs(deltaMove) / totalVol * 2.0;
+   if(!agrees)
+   {
+      clrOut = C'251,191,36';
+      return StringFormat("%s vs FOOTPRINT LAWAN (%+.0f)", dir, deltaMove);
+   }
+   clrOut = DirColor(dir);
+   string strength2 = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
+   return StringFormat("%s %s %.1fx", dir, strength2, ratio);
 }
 
 //--- Momentum filter (eksperimen, off by default): skip entry if ADX on the
@@ -2752,7 +2882,7 @@ void ReadBookmapBridge()
    int handle = FileOpen("bookmap_live_signal.csv", FILE_READ | FILE_CSV | FILE_COMMON | FILE_ANSI, ',');
    if(handle == INVALID_HANDLE) { ObjectsDeleteAll(0, WALL_PREFIX); return; }   // bridge never ran, or udp_listener.py isn't up
 
-   int totalFields = 18 + WALL_SLOTS_PER_SIDE * 3 * 2 + 6;   // timestamp,price,cvd,pulse,absorption,poc_price,poc_volume,vol_ratio,buy_vol,sell_vol,val,vah,bid_ice_px,bid_ice_sz,bid_ice_ratio,ask_ice_px,ask_ice_sz,ask_ice_ratio + (bid+ask)*(px+sz+age) per slot [v52.14: +age] + sweep_side,sweep_price,sweep_size,sweep_age_sec,sweep_status,sweep_since_sec [v52.26]
+   int totalFields = 18 + WALL_SLOTS_PER_SIDE * 3 * 2 + 6 + 2;   // timestamp,price,cvd,pulse,absorption,poc_price,poc_volume,vol_ratio,buy_vol,sell_vol,val,vah,bid_ice_px,bid_ice_sz,bid_ice_ratio,ask_ice_px,ask_ice_sz,ask_ice_ratio + (bid+ask)*(px+sz+age) per slot [v52.14: +age] + sweep_side,sweep_price,sweep_size,sweep_age_sec,sweep_status,sweep_since_sec [v52.26] + footprint_buy_vol,footprint_sell_vol [v52.79]
    for(int i = 0; i < totalFields && !FileIsEnding(handle); i++) FileReadString(handle);   // skip header row
    if(FileIsEnding(handle)) { FileClose(handle); ObjectsDeleteAll(0, WALL_PREFIX); return; }
 
@@ -2795,6 +2925,12 @@ void ReadBookmapBridge()
    double sweepAgeSec   = StringToDouble(FileReadString(handle));
    string sweepStatus   = FileReadString(handle);
    double sweepSinceSec = StringToDouble(FileReadString(handle));
+   // v52.79: near-price footprint (buy/sell volume actually TRADED at the
+   // current Bookmap price, rolling window - see udp_listener.py's
+   // write_mt5_bridge_file() comment). Raw buy/sell volumes, not a
+   // pre-computed ratio - matches convention of buy_vol/sell_vol above.
+   double footBuyVol  = StringToDouble(FileReadString(handle));
+   double footSellVol = StringToDouble(FileReadString(handle));
    FileClose(handle);
 
    // v24 fix: use MathAbs() instead of requiring ageSec>=0 - the old check
@@ -2838,6 +2974,8 @@ void ReadBookmapBridge()
    g_bmSweepAgeSec   = sweepAgeSec;
    g_bmSweepStatus   = sweepStatus;
    g_bmSweepSinceSec = sweepSinceSec;
+   g_bookmapFootBuyVol  = footBuyVol;    // v52.79
+   g_bookmapFootSellVol = footSellVol;
    SamplePocIfNewMinute();   // v52.41 - feeds IsPocMigrating()/IsRegimeTrending()
    // v52.34: zones computed+drawn FIRST - UpdateWallLines() reads
    // g_bidClustered[]/g_askClustered[] (filled by UpdateWallZones()) to
@@ -3774,6 +3912,18 @@ void WriteSultanStatus()
    string momText = MomentumBreakoutText(InpScalpEntryTF, g_hScalpEntry, momClrUnused);
    datetime momCt; string momDir = ReadCMP(g_hScalpEntry, momCt);
    json += StringFormat("\"momentum_m5\":{\"text\":\"%s\",\"dir\":\"%s\"},", momText, momDir);
+
+   // v52.80 - export the 2 Bookmap-confluence momentum rows + Chain Signal
+   // for the web dashboard port (Dadang: "kerjakan ke web nya" after
+   // confirming they were EA-only so far). Same dir (momDir, M5's own CMP)
+   // reused for all three - they're all anchored to the same M5 breakout
+   // event, just measured via different data (price/CVD/footprint).
+   color momBmClrUnused, momFpClrUnused;
+   string momBmText = MomentumBookmapText(momBmClrUnused);
+   string momFpText = MomentumFootprintText(momFpClrUnused);
+   json += StringFormat("\"momentum_m5_bookmap\":{\"text\":\"%s\",\"dir\":\"%s\"},", momBmText, momDir);
+   json += StringFormat("\"momentum_m5_footprint\":{\"text\":\"%s\",\"dir\":\"%s\"},", momFpText, momDir);
+   json += StringFormat("\"chain_signal\":{\"layer\":%d,\"dir\":\"%s\"},", g_chainSigLayer, g_chainSigMasterDir);
 
    json += "\"countdown\":{";
    json += StringFormat("\"h4\":%d,\"h1\":%d,\"m30\":%d,\"m15\":%d,\"m5\":%d,\"m1\":%d",
@@ -4923,6 +5073,105 @@ void CheckMomentumEntryTrigger()
    }
 }
 
+// v52.80 - "CHAIN SIGNAL" staircase layering + explicit GAGAL state. Built
+// first in DD_ChainReaction_StorylinePro.v10.pine (same night, v10.3) then
+// Dadang redirected: "kita fokus ke ea dan web jangan ke pine" - ported here
+// as the correct MT5-first build (Pine's copy stays as-is, this is the
+// separate primary implementation).
+//
+// Dadang: "secara keilmuan gw CF bisa berkali kali... jika signal itu
+// muncul lagi di atas kita tambah layer gitu terus bro, kita akan entri
+// seperti tangga seperti trading manual gw - contoh entri sell terakhir gw
+// signal muncul 3 kali, gw entri nambah entri di harga berbeda." Every
+// fresh M5 breakout that agrees with g_scalpMasterDir (M30, "the direction
+// actually being traded") is one more rung - gets its OWN persistent chart
+// marker (not reused/overwritten - Dadang needs to see the whole staircase
+// at once, same reasoning as the Pine version). The chain only INVALIDATES
+// when g_scalpMasterDir itself flips (doctrine: "gagal HANYA kalau CMP
+// flip", not SL, not a pullback - CLAUDE.md) - that moment draws one
+// explicit "SIGNAL GAGAL" marker instead of silently resetting.
+//
+// NOTE: this is a DIFFERENT concept from the existing "RANTAI N/6" panel
+// text (g_chainLen/g_convMode) - RANTAI counts how many TIMEFRAMES
+// currently agree (a conviction-depth snapshot), CHAIN SIGNAL counts how
+// many times a fresh CF has FIRED for this master cycle (a staircase-entry
+// counter). Don't merge them - they answer different questions.
+//
+// Informational/chart-marker only, same "record first" discipline as every
+// other panel feature tonight - NOT wired into TryOpen().
+string   g_chainSigMasterDir   = "WAIT";
+int      g_chainSigLayer       = 0;
+datetime g_chainSigLastBoTime  = 0;
+
+void DrawChainSignalMarker(string dir, int layer, double price, datetime t)
+{
+   string arrName = WALL_PREFIX + StringFormat("CHAINSIG_%d_A", (int)t);
+   string txtName = WALL_PREFIX + StringFormat("CHAINSIG_%d_T", (int)t);
+   color  clr = (dir == "BUY") ? PNL_EMERALD : PNL_ROSE;
+
+   ObjectCreate(0, arrName, OBJ_ARROW, 0, t, price);
+   ObjectSetInteger(0, arrName, OBJPROP_ARROWCODE, dir == "BUY" ? 233 : 234);
+   ObjectSetInteger(0, arrName, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, arrName, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, arrName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, arrName, OBJPROP_HIDDEN, true);
+
+   double offsetPrice = price + (dir == "BUY" ? -1 : 1) * SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 150;
+   ObjectCreate(0, txtName, OBJ_TEXT, 0, t, offsetPrice);
+   ObjectSetInteger(0, txtName, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, txtName, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(0, txtName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, txtName, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, txtName, OBJPROP_ANCHOR, dir == "BUY" ? ANCHOR_TOP : ANCHOR_BOTTOM);
+   ObjectSetString(0, txtName, OBJPROP_TEXT, StringFormat("CHAIN SIGNAL #%d %s @%.2f", layer, dir, price));
+}
+
+void DrawChainSignalFailMarker(string failedDir, int failedLayer, datetime t)
+{
+   string arrName = WALL_PREFIX + StringFormat("CHAINFAIL_%d_A", (int)t);
+   string txtName = WALL_PREFIX + StringFormat("CHAINFAIL_%d_T", (int)t);
+   double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+   ObjectCreate(0, arrName, OBJ_ARROW, 0, t, price);
+   ObjectSetInteger(0, arrName, OBJPROP_ARROWCODE, 251);   // X mark
+   ObjectSetInteger(0, arrName, OBJPROP_COLOR, clrGray);
+   ObjectSetInteger(0, arrName, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, arrName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, arrName, OBJPROP_HIDDEN, true);
+
+   ObjectCreate(0, txtName, OBJ_TEXT, 0, t, price);
+   ObjectSetInteger(0, txtName, OBJPROP_COLOR, clrGray);
+   ObjectSetInteger(0, txtName, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(0, txtName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, txtName, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, txtName, OBJPROP_ANCHOR, ANCHOR_LEFT);
+   ObjectSetString(0, txtName, OBJPROP_TEXT,
+      StringFormat("SIGNAL GAGAL (%s x%d) - CMP FLIP - TUNGGU SIGNAL BARU", failedDir, failedLayer));
+}
+
+void UpdateChainSignal()
+{
+   if(g_scalpMasterDir != g_chainSigMasterDir)
+   {
+      if(g_chainSigMasterDir != "WAIT" && g_chainSigLayer > 0)
+         DrawChainSignalFailMarker(g_chainSigMasterDir, g_chainSigLayer, TimeCurrent());
+      g_chainSigMasterDir  = g_scalpMasterDir;
+      g_chainSigLayer      = 0;
+   }
+
+   if(g_scalpMasterDir == "WAIT") return;
+
+   datetime evtTime = ReadBreakoutEventTime(g_hScalpEntry);
+   if(evtTime == 0 || evtTime == g_chainSigLastBoTime) return;
+   g_chainSigLastBoTime = evtTime;
+
+   if(g_scalpEntryDir != g_scalpMasterDir) return;   // only same-direction (CF) breakouts count as a rung
+
+   g_chainSigLayer++;
+   DrawChainSignalMarker(g_scalpEntryDir, g_chainSigLayer, SymbolInfoDouble(_Symbol, SYMBOL_BID), evtTime);
+   Print("CHAIN SIGNAL #", g_chainSigLayer, " ", g_scalpEntryDir, " fired");
+}
+
 //--- Barrier-BE: uses Scalp Master TF's (M30 by default) own LIVE res/sup -
 //--- NOT H4/Master. Dadang: "barriernya kasih M30 aja minimal biar gak
 //--- terlalu mepet." Reason H4 alone was too aggressive: H4 forms new V/A
@@ -5137,4 +5386,5 @@ void OnTick()
    CheckVaRetestTrigger();   // v52.42
    CheckFusionH1H4Trigger();   // v52.45
    CheckMomentumEntryTrigger();   // v52.71
+   UpdateChainSignal();   // v52.80
 }

@@ -254,6 +254,16 @@
         <div class="stat-row"><span class="stat-label">Barrier</span><span class="stat-value text-amber-400 text-[10.5px]" id="sig-barrier">-</span></div>
         <div class="stat-row"><span class="stat-label">Fusion H1/H4</span><span class="stat-value text-slate-100 text-[10px]" id="sig-fusion">-</span></div>
         <div class="stat-row"><span class="stat-label">Momentum (M5)</span><span class="stat-value text-slate-100" id="sig-momentum">-</span></div>
+        <!-- v52.81 - EA had these 3 rows already (Momentum M5 Bookmap/
+             Footprint, Chain Signal), web dashboard didn't - Dadang: "lo
+             kerjakan ke web nya, carikan lokasi yang pas jangan merusak
+             yang sudah ada." Same stat-row style/sizing as every row above,
+             no new section needed - this panel already scrolls
+             (overflow-y-auto on the <section>) so 3 more compact rows
+             don't re-introduce the pre-v52.59 overflow problem. -->
+        <div class="stat-row"><span class="stat-label">Momentum M5 Bookmap</span><span class="stat-value text-slate-100" id="sig-momentum-bookmap">-</span></div>
+        <div class="stat-row"><span class="stat-label">Momentum M5 Footprint</span><span class="stat-value text-slate-100" id="sig-momentum-footprint">-</span></div>
+        <div class="stat-row"><span class="stat-label">Chain Signal</span><span class="stat-value text-slate-100" id="sig-chain-signal">-</span></div>
         <div class="stat-row"><span class="stat-label">Candle Close In</span><span class="stat-value text-slate-300 text-[9.5px] font-mono" id="sig-countdown">-</span></div>
       </section>
 
