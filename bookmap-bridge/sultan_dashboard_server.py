@@ -35,6 +35,8 @@ import secrets
 import socketserver
 import threading
 import time
+import urllib.error
+import urllib.request
 
 import webview
 
@@ -185,6 +187,12 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
         if path == "/api/admin/status":
             self._admin_status()
             return
+        if path == "/api/admin/settings":
+            self._admin_get_settings()
+            return
+        if path == "/api/admin/models":
+            self._admin_list_models()
+            return
         if path in self._INDEX_ALIASES:
             self.path = "/index.html"
         super().do_GET()
@@ -235,6 +243,52 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
             "logged_in": self._is_logged_in(),
             "email": env.get("ADMIN_EMAIL", "") if self._is_logged_in() else "",
         })
+
+    def _admin_get_settings(self):
+        """Current translate/analysis config, for the admin panel to show
+        what's actually active (and pre-select in the model dropdowns)
+        instead of always presenting blank fields. The API key itself is
+        never sent back in full - only a masked tail - so it's not
+        re-exposed to the browser just for viewing the settings page."""
+        if not self._is_logged_in():
+            self._json_response(401, {"ok": False, "error": "Belum login"})
+            return
+        env = _read_env_file()
+        key = env.get("TRANSLATE_API_KEY", "")
+        masked = f"...{key[-4:]}" if len(key) > 4 else ("(belum diisi)" if not key else "***")
+        self._json_response(200, {
+            "ok": True,
+            "api_key_masked": masked,
+            "api_base": env.get("TRANSLATE_API_BASE", ""),
+            "translate_model": env.get("TRANSLATE_MODEL", ""),
+            "analysis_model": env.get("ANALYSIS_MODEL", ""),
+        })
+
+    def _admin_list_models(self):
+        """Dadang: 'model translate ini sebaiknya detect model yang ready
+        jadi dropdown deh bro supaya gw gak nebak2 jika ganti api' - fetches
+        the live model list from whichever gateway is currently saved
+        (same GET {base}/models call already confirmed working tonight),
+        so the dropdown always reflects what THIS key can actually use -
+        switching to a different key/provider later just works, no need
+        to know exact model id strings."""
+        if not self._is_logged_in():
+            self._json_response(401, {"ok": False, "error": "Belum login"})
+            return
+        env = _read_env_file()
+        api_base = env.get("TRANSLATE_API_BASE", "").rstrip("/")
+        api_key = env.get("TRANSLATE_API_KEY", "")
+        if not api_base or not api_key:
+            self._json_response(400, {"ok": False, "error": "API key/base URL belum di-set - isi dulu terus Simpan"})
+            return
+        try:
+            req = urllib.request.Request(f"{api_base}/models", headers={"Authorization": f"Bearer {api_key}"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            models = sorted(m.get("id", "") for m in data.get("data", []) if m.get("id"))
+            self._json_response(200, {"ok": True, "models": models})
+        except Exception as e:
+            self._json_response(502, {"ok": False, "error": f"Gagal ambil daftar model: {e}"})
 
     def _admin_setup(self):
         env = _read_env_file()

@@ -19,8 +19,9 @@
     }
     .section-title { font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #94a3b8; }
     .gold-rule { height: 1px; background: linear-gradient(90deg, transparent, rgba(217,180,101,0.55), transparent); }
-    input { width: 100%; margin-top: 4px; background: rgba(15,23,42,0.6); border: 1px solid #334155; border-radius: 6px; padding: 8px 10px; font-size: 12.5px; font-family: 'JetBrains Mono', monospace; color: #e2e8f0; }
-    input:focus { outline: none; border-color: rgba(217,180,101,0.5); }
+    input, select { width: 100%; margin-top: 4px; background: rgba(15,23,42,0.6); border: 1px solid #334155; border-radius: 6px; padding: 8px 10px; font-size: 12.5px; font-family: 'JetBrains Mono', monospace; color: #e2e8f0; }
+    input:focus, select:focus { outline: none; border-color: rgba(217,180,101,0.5); }
+    select option { background: #0f172a; }
     label { font-size: 9.5px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
     .btn { font-size: 12px; font-weight: 600; padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: background-color 0.15s; }
     .btn-primary { background: rgba(217,180,101,0.15); color: #fcd34d; border: 1px solid rgba(217,180,101,0.35); }
@@ -72,10 +73,18 @@
         <button type="button" id="logout-btn" class="text-[10px] text-slate-500 hover:text-rose-400 transition-colors">Logout (<span id="logged-in-email"></span>)</button>
       </div>
       <div class="space-y-3">
-        <div><label>API Key</label><input type="password" id="set-api-key" placeholder="sk-... (kosongin kalau gak diganti)"></div>
+        <div><label>API Key aktif</label><p class="text-[11px] font-mono text-slate-400 mt-1" id="current-key-masked">-</p></div>
+        <div><label>API Key baru (kosongin kalau gak diganti)</label><input type="password" id="set-api-key" placeholder="sk-..."></div>
         <div><label>API Base URL</label><input type="text" id="set-api-base" placeholder="https://.../api/v1"></div>
-        <div><label>Model Translate</label><input type="text" id="set-model" placeholder="bt/deepseek-flash"></div>
-        <div><label>Model Analisa AI</label><input type="text" id="set-analysis-model" placeholder="bt/sonnet4.5"></div>
+        <div>
+          <div class="flex items-center justify-between">
+            <label>Model Translate</label>
+            <button type="button" id="refresh-models" class="text-[9.5px] text-slate-500 hover:text-amber-300 transition-colors">&#8635; refresh daftar model</button>
+          </div>
+          <select id="set-model"><option value="">-- pilih model --</option></select>
+        </div>
+        <div><label>Model Analisa AI</label><select id="set-analysis-model"><option value="">-- pilih model --</option></select></div>
+        <p id="models-status" class="text-[10px] text-slate-600"></p>
         <button type="button" id="settings-save" class="btn btn-primary w-full">Simpan</button>
         <p id="settings-status" class="text-[11px] text-slate-500"></p>
         <p class="text-[9px] text-slate-600 italic pt-1">Isi field yang mau diganti aja - yang dikosongin gak disentuh. Berlaku di fetch berikutnya (maks ~10 menit), gak perlu restart apapun. Model Translate dipakai buat terjemahan headline (cepat/murah lebih baik), Model Analisa dipakai buat kesimpulan naratif (model lebih pintar lebih baik).</p>
