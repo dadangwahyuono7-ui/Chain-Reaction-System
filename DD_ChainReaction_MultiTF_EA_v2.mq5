@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.83.1-IVBFIX"
+#define EA_VERSION "v52.84-RELOADHVN"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -191,6 +191,9 @@ input double              InpLiquidityBoostLotFactor = 1.5;    // Lot dikali seg
 input double              InpPocSidewaysZoneUsd = 3.0;     // Jarak (USD) dari POC yang dianggap "di POC" (bukan jelas di atas/bawah) - dipake buat panel BIAS BUY/SELL/SIDEWAYS
 input double              InpPocMigrateUsd = 1.0;          // v52.41: POC harus geser minimal segini USD (skala Bookmap/GCZ6) searah trend dalam InpPocMigrateLookbackMin menit biar Regime dianggap TRENDING (bukan cuma CMP align doang) - Dadang: "poc ini ternyata bisa langsung pindah ke atas atau ke bawah ini artinya apa"
 input int                 InpPocMigrateLookbackMin = 10;   // v52.41: jendela waktu (menit) buat ngukur pergerakan POC di IsPocMigrating()
+input double              InpReloadMinLot    = 80.0;   // v52.84: wall (near-live slot) harus minimal segini lot baru dicatat sebagai Reload Level candidate kalau dia jebol - dari bootcamp Pavlovic: level yang PERNAH nunjukin minat kuat tapi kalah, terus BELAKANGAN jebol -> retest = ekspektasi "reload" (sisi yang dulu kalah masuk lagi, akselerasi)
+input double              InpReloadRetestUsd = 1.0;    // Jarak (USD, skala XAUUSD) dari Reload Level yang masih dianggap "retest" level itu
+input int                 InpReloadWindowMin = 90;     // Reload Level dianggap basi (dibuang dari memori) kalau gak diretest dalam sekian menit sejak dicatat
 
 input group "=== BOOKMAP-TRIGGERED ENTRY (Dadang 2026-08-17: 'kita ngikutin bookmap aja karena tehnikal gw kan hanya baca candle' - bookmap boleh jadi pemicu entry SENDIRI, gak wajib nunggu CMP H4/M30/M5 align) ==="
 input bool                InpUseBookmapTrigger = true;    // Aktifkan entry independen dari sinyal bookmap kuat (di luar cascade CMP biasa)
@@ -357,6 +360,14 @@ double   g_bookmapSellVolSession = 0.0;
 double   g_bookmapVal = 0.0, g_bookmapVah = 0.0;
 double   g_bookmapBidIcePx = 0.0, g_bookmapBidIceSz = 0.0, g_bookmapBidIceRatio = 0.0;
 double   g_bookmapAskIcePx = 0.0, g_bookmapAskIceSz = 0.0, g_bookmapAskIceRatio = 0.0;
+// v52.84 - HVN/LVN (High/Low Volume Node) NEAREST to current price, from
+// volume_profile_engine.py's get_hvn_lvn() - finer-grained cousin of POC:
+// POC is the single biggest peak all session, HVN/LVN here are the closest
+// peak/valley to where price actually is right now. HVN = price tends to
+// stall/bounce there (thick, defended). LVN = price tends to slip through
+// fast (thin, skipped). Same raw-Bookmap-price-needs-offset convention.
+double   g_bookmapHvnPrice = 0.0, g_bookmapHvnVolume = 0.0;
+double   g_bookmapLvnPrice = 0.0, g_bookmapLvnVolume = 0.0;
 
 // v52.74 - iceberg reload counter ("kalo perlu suaranya beda" pitch, built
 // MT5-first). An iceberg that DISAPPEARS then REAPPEARS at the same price
@@ -467,6 +478,29 @@ double   g_bookmapBidAge[WALL_SLOTS_PER_SIDE], g_bookmapAskAge[WALL_SLOTS_PER_SI
 double   g_prevBidPx[WALL_SLOTS_PER_SIDE], g_prevBidSz[WALL_SLOTS_PER_SIDE];
 double   g_prevAskPx[WALL_SLOTS_PER_SIDE], g_prevAskSz[WALL_SLOTS_PER_SIDE];
 datetime g_prevBidTime[WALL_SLOTS_PER_SIDE], g_prevAskTime[WALL_SLOTS_PER_SIDE];
+
+// v52.84 - Reload Level ("Reload Level" konsep bootcamp Pavlovic: level yang
+// PERNAH dites kuat tapi keserap/kalah, terus BELAKANGAN akhirnya jebol ->
+// kalau harga balik retest level itu, ekspektasinya sisi yang dulu kalah
+// "reload" (masuk lagi) dan bikin akselerasi. Beda dari wall biasa - butuh
+// MEMORI 2 tahap (dulu-pernah-dites -> belakangan-jebol), bukan cuma wall
+// yang lagi ada sekarang. EA-only, gak butuh perubahan bridge Python - cuma
+// mengingat wall NEAR-live (slot 0..WALL_NEAR_SLOTS-1) yang hilang dari
+// ladder SEKALIGUS harga udah lewat level itu (jebol beneran, bukan cuma
+// wall pindah slot/re-quote).
+#define WALL_NEAR_SLOTS 5   // near-live slot count, harus sama kayak WALL_NEAR_SLOTS_PER_SIDE di udp_listener.py
+#define RELOAD_MAX 8
+double   g_reloadPrice[RELOAD_MAX];
+double   g_reloadSize[RELOAD_MAX];
+bool     g_reloadIsBid[RELOAD_MAX];   // true = dulunya BID wall (breakdown lewatnya = ekspektasi jual lanjut kalau di-retest)
+datetime g_reloadTime[RELOAD_MAX];
+int      g_reloadCount = 0;
+// snapshot KHUSUS buat deteksi Reload Level - sengaja terpisah dari
+// g_prevBidPx/g_prevAskPx (punya WallEatRate(), diupdate per-slot pas
+// DrawWallLine jalan) biar urutan pemanggilan gak saling ganggu.
+double   g_reloadPrevBidPx[WALL_NEAR_SLOTS], g_reloadPrevBidSz[WALL_NEAR_SLOTS];
+double   g_reloadPrevAskPx[WALL_NEAR_SLOTS], g_reloadPrevAskSz[WALL_NEAR_SLOTS];
+bool     g_reloadPrevInit = false;
 
 // v52.26: wall SWEEP + reversal - Dadang: "ide gila lagi bro?" -> stop-hunt/
 // liquidity-grab detection. A big/persistent wall traded clean through
@@ -1018,6 +1052,14 @@ void UpdatePanel()
    color dpfClr;
    string dpfTxt = DailyProfileFramingText(dpfClr);
    PnlRow(x0, y, contentW, "Daily Profile", dpfTxt, dpfClr); y += 16;
+
+   color volNodeClr;
+   string volNodeTxt = VolumeNodeText(volNodeClr);
+   PnlRow(x0, y, contentW, "Volume Node", volNodeTxt, volNodeClr); y += 16;
+
+   color reloadClr;
+   string reloadTxt = ReloadLevelText(reloadClr);
+   PnlRow(x0, y, contentW, "Reload Level", reloadTxt, reloadClr); y += 16;
 
    color statusClr = (g_cmpStatus == "CF") ? PNL_EMERALD : ((g_cmpStatus == "VR") ? PNL_GOLD : PNL_LABEL);
    PnlRow(x0, y, contentW, "CMP Status", g_cmpStatus, statusClr); y += 18;
@@ -2192,6 +2234,94 @@ string DailyProfileFramingText(color &clrOut)
    clrOut = PNL_ROSE; return StringFormat("BEARISH (POC %+.2f dari kemarin)", shift);
 }
 
+// v52.84 - Volume Node: nearest HVN (harga cenderung MACET/mantul) vs
+// nearest LVN (harga cenderung LICIN/lewat cepat) ke harga sekarang. Satu
+// baris panel simpel, pilih yang JAUHNYA lebih deket ke harga sekarang biar
+// gampang dibaca - gak nampilin dua-duanya sekaligus biar gak penuh.
+string VolumeNodeText(color &clrOut)
+{
+   if(!g_bookmapOnline || (g_bookmapHvnPrice <= 0 && g_bookmapLvnPrice <= 0)) { clrOut = PNL_LABEL; return "-"; }
+   double offset = SymbolInfoDouble(_Symbol, SYMBOL_BID) - g_bookmapPrice;
+   double cur    = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double hvnMt5 = g_bookmapHvnPrice > 0 ? g_bookmapHvnPrice + offset : 0.0;
+   double lvnMt5 = g_bookmapLvnPrice > 0 ? g_bookmapLvnPrice + offset : 0.0;
+   double dHvn   = hvnMt5 > 0 ? MathAbs(cur - hvnMt5) : DBL_MAX;
+   double dLvn   = lvnMt5 > 0 ? MathAbs(cur - lvnMt5) : DBL_MAX;
+   if(dHvn == DBL_MAX && dLvn == DBL_MAX) { clrOut = PNL_LABEL; return "-"; }
+   if(dHvn <= dLvn) { clrOut = PNL_GOLD; return StringFormat("HVN %.2f (macet)", hvnMt5); }
+   clrOut = PNL_SILVER; return StringFormat("LVN %.2f (licin)", lvnMt5);
+}
+
+// v52.84 - Reload Level: level yang PERNAH dites wall kuat (>=InpReloadMinLot)
+// tapi BELAKANGAN jebol beneran (bukan cuma pindah slot) - lihat komentar
+// g_reloadPrice di atas buat penjelasan konsepnya. UpdateReloadLevels()
+// dipanggil tiap cycle bookmap update, mendeteksi transisi wall-hilang +
+// harga-udah-lewat, lalu mencatatnya ke memori. ReloadLevelText() query nya
+// buat panel - nunjukin kalau harga LAGI RETEST salah satu level itu.
+void AddReloadLevel(double mt5Price, double size, bool wasBid)
+{
+   for(int i = 0; i < g_reloadCount; i++)
+      if(MathAbs(g_reloadPrice[i] - mt5Price) < 0.5) { g_reloadTime[i] = TimeCurrent(); g_reloadSize[i] = size; return; }
+
+   int slot;
+   if(g_reloadCount < RELOAD_MAX) { slot = g_reloadCount; g_reloadCount++; }
+   else   // ring buffer penuh - timpa yang paling lama dicatat
+   {
+      slot = 0;
+      for(int i = 1; i < RELOAD_MAX; i++) if(g_reloadTime[i] < g_reloadTime[slot]) slot = i;
+   }
+   g_reloadPrice[slot] = mt5Price;
+   g_reloadSize[slot]  = size;
+   g_reloadIsBid[slot] = wasBid;
+   g_reloadTime[slot]  = TimeCurrent();
+}
+
+void UpdateReloadLevels(double bookmapPrice)
+{
+   double offset = SymbolInfoDouble(_Symbol, SYMBOL_BID) - bookmapPrice;
+   double cur    = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   if(g_reloadPrevInit)
+   {
+      for(int i = 0; i < WALL_NEAR_SLOTS; i++)
+      {
+         // BID wall (support) ada size gede kemarin, sekarang HILANG dari
+         // slot, DAN harga sekarang udah di BAWAH level itu -> jebol beneran
+         // (breakdown), bukan cuma wall geser slot.
+         if(g_reloadPrevBidPx[i] > 0 && g_reloadPrevBidSz[i] >= InpReloadMinLot
+            && g_bookmapBidPx[i] <= 0 && cur < g_reloadPrevBidPx[i] + offset)
+            AddReloadLevel(g_reloadPrevBidPx[i] + offset, g_reloadPrevBidSz[i], true);
+
+         // ASK wall (resistance) jebol ke ATAS -> breakout.
+         if(g_reloadPrevAskPx[i] > 0 && g_reloadPrevAskSz[i] >= InpReloadMinLot
+            && g_bookmapAskPx[i] <= 0 && cur > g_reloadPrevAskPx[i] + offset)
+            AddReloadLevel(g_reloadPrevAskPx[i] + offset, g_reloadPrevAskSz[i], false);
+      }
+   }
+   for(int i = 0; i < WALL_NEAR_SLOTS; i++)
+   {
+      g_reloadPrevBidPx[i] = g_bookmapBidPx[i]; g_reloadPrevBidSz[i] = g_bookmapBidSz[i];
+      g_reloadPrevAskPx[i] = g_bookmapAskPx[i]; g_reloadPrevAskSz[i] = g_bookmapAskSz[i];
+   }
+   g_reloadPrevInit = true;
+}
+
+string ReloadLevelText(color &clrOut)
+{
+   double cur     = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   datetime cutoff = TimeCurrent() - InpReloadWindowMin * 60;
+   int bestIdx = -1; double bestDist = 0.0;
+   for(int i = 0; i < g_reloadCount; i++)
+   {
+      if(g_reloadTime[i] < cutoff) continue;   // udah basi
+      double d = MathAbs(cur - g_reloadPrice[i]);
+      if(d <= InpReloadRetestUsd && (bestIdx < 0 || d < bestDist)) { bestDist = d; bestIdx = i; }
+   }
+   if(bestIdx < 0) { clrOut = PNL_LABEL; return "-"; }
+   bool expectSell = g_reloadIsBid[bestIdx];   // dulu wall BID (support) yang jebol ke bawah -> retest = ekspektasi jual lanjut
+   clrOut = expectSell ? PNL_ROSE : PNL_EMERALD;
+   return StringFormat("%s @ %.2f (%.0f lot)", expectSell ? "RELOAD JUAL" : "RELOAD BELI", g_reloadPrice[bestIdx], g_reloadSize[bestIdx]);
+}
+
 //--- Momentum filter (eksperimen, off by default): skip entry if ADX on the
 //--- last CLOSED bar is below InpADX_MinLevel (market too choppy/weak).
 //--- Always returns true if InpUseADX is off or the handle wasn't created.
@@ -3082,7 +3212,7 @@ void ReadBookmapBridge()
    int handle = FileOpen("bookmap_live_signal.csv", FILE_READ | FILE_CSV | FILE_COMMON | FILE_ANSI, ',');
    if(handle == INVALID_HANDLE) { ObjectsDeleteAll(0, WALL_PREFIX); return; }   // bridge never ran, or udp_listener.py isn't up
 
-   int totalFields = 18 + WALL_SLOTS_PER_SIDE * 3 * 2 + 6 + 2;   // timestamp,price,cvd,pulse,absorption,poc_price,poc_volume,vol_ratio,buy_vol,sell_vol,val,vah,bid_ice_px,bid_ice_sz,bid_ice_ratio,ask_ice_px,ask_ice_sz,ask_ice_ratio + (bid+ask)*(px+sz+age) per slot [v52.14: +age] + sweep_side,sweep_price,sweep_size,sweep_age_sec,sweep_status,sweep_since_sec [v52.26] + footprint_buy_vol,footprint_sell_vol [v52.79]
+   int totalFields = 18 + WALL_SLOTS_PER_SIDE * 3 * 2 + 6 + 2 + 4;   // timestamp,price,cvd,pulse,absorption,poc_price,poc_volume,vol_ratio,buy_vol,sell_vol,val,vah,bid_ice_px,bid_ice_sz,bid_ice_ratio,ask_ice_px,ask_ice_sz,ask_ice_ratio + (bid+ask)*(px+sz+age) per slot [v52.14: +age] + sweep_side,sweep_price,sweep_size,sweep_age_sec,sweep_status,sweep_since_sec [v52.26] + footprint_buy_vol,footprint_sell_vol [v52.79] + hvn_price,hvn_volume,lvn_price,lvn_volume [v52.84]
    for(int i = 0; i < totalFields && !FileIsEnding(handle); i++) FileReadString(handle);   // skip header row
    if(FileIsEnding(handle)) { FileClose(handle); ObjectsDeleteAll(0, WALL_PREFIX); return; }
 
@@ -3131,6 +3261,11 @@ void ReadBookmapBridge()
    // pre-computed ratio - matches convention of buy_vol/sell_vol above.
    double footBuyVol  = StringToDouble(FileReadString(handle));
    double footSellVol = StringToDouble(FileReadString(handle));
+   // v52.84: HVN/LVN nearest to current price - see g_bookmapHvnPrice comment.
+   double hvnPrice  = StringToDouble(FileReadString(handle));
+   double hvnVolume = StringToDouble(FileReadString(handle));
+   double lvnPrice  = StringToDouble(FileReadString(handle));
+   double lvnVolume = StringToDouble(FileReadString(handle));
    FileClose(handle);
 
    // v24 fix: use MathAbs() instead of requiring ageSec>=0 - the old check
@@ -3176,6 +3311,11 @@ void ReadBookmapBridge()
    g_bmSweepSinceSec = sweepSinceSec;
    g_bookmapFootBuyVol  = footBuyVol;    // v52.79
    g_bookmapFootSellVol = footSellVol;
+   g_bookmapHvnPrice  = hvnPrice;    // v52.84
+   g_bookmapHvnVolume = hvnVolume;
+   g_bookmapLvnPrice  = lvnPrice;
+   g_bookmapLvnVolume = lvnVolume;
+   UpdateReloadLevels(price);   // v52.84 - must run BEFORE UpdateWallLines()/WallEatRate() below, uses its own dedicated prev-snapshot so order vs those doesn't actually matter, but keeping it here alongside the other bookmap-derived updates
    SamplePocIfNewMinute();   // v52.41 - feeds IsPocMigrating()/IsRegimeTrending()
    // v52.34: zones computed+drawn FIRST - UpdateWallLines() reads
    // g_bidClustered[]/g_askClustered[] (filled by UpdateWallZones()) to
@@ -4132,6 +4272,11 @@ void WriteSultanStatus()
    string dpfTextForJson = DailyProfileFramingText(dpfClrUnused);
    json += StringFormat("\"ivb\":{\"text\":\"%s\",\"locked\":%s},", ivbTextForJson, g_ivbLocked ? "true" : "false");
    json += StringFormat("\"daily_profile\":{\"text\":\"%s\"},", dpfTextForJson);
+   color volNodeClrUnused, reloadClrUnused;
+   string volNodeTextForJson = VolumeNodeText(volNodeClrUnused);
+   string reloadTextForJson  = ReloadLevelText(reloadClrUnused);
+   json += StringFormat("\"volume_node\":{\"text\":\"%s\"},", volNodeTextForJson);
+   json += StringFormat("\"reload_level\":{\"text\":\"%s\"},", reloadTextForJson);
 
    json += "\"countdown\":{";
    json += StringFormat("\"h4\":%d,\"h1\":%d,\"m30\":%d,\"m15\":%d,\"m5\":%d,\"m1\":%d",

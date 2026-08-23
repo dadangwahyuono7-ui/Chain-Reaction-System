@@ -505,6 +505,17 @@ def write_mt5_bridge_file(result: dict, price: float):
         header += ["footprint_buy_vol", "footprint_sell_vol"]
         row += [f"{fp_now.get('buy_volume', 0.0):.1f}", f"{fp_now.get('sell_volume', 0.0):.1f}"]
 
+        # 2026-08-23 - HVN/LVN (High/Low Volume Node) nearest to current
+        # price, from the Pavlovic/Fabio bootcamp material Dadang studied:
+        # HVN = price tends to stall/bounce (thick, already-defended area),
+        # LVN = price tends to slip through fast (thin/skipped area). Same
+        # append-at-end convention as sweep/footprint above - column position
+        # of every earlier field stays untouched.
+        hvn_lvn = volume_profile.get_hvn_lvn(price)
+        header += ["hvn_price", "hvn_volume", "lvn_price", "lvn_volume"]
+        row += [f"{hvn_lvn['hvn_price']:.2f}", f"{hvn_lvn['hvn_volume']:.1f}",
+                f"{hvn_lvn['lvn_price']:.2f}", f"{hvn_lvn['lvn_volume']:.1f}"]
+
         tmp = MT5_BRIDGE_FILE + ".tmp"
         with open(tmp, "w", encoding="ascii", newline="") as f:
             w = csv.writer(f)

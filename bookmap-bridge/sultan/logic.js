@@ -515,6 +515,19 @@ function render(data) {
                   : dpfTxt.startsWith("BEARISH") ? "text-rose-400" : "text-slate-500";
   set("sig-daily-profile", dpfTxt, dpfClass);
 
+  // v52.84 - Volume Node (HVN/LVN) + Reload Level, same passthrough pattern.
+  const volNode = sig.volume_node || {};
+  const volNodeTxt = volNode.text || "-";
+  const volNodeClass = volNodeTxt.startsWith("HVN") ? "text-amber-300"
+                      : volNodeTxt.startsWith("LVN") ? "text-slate-400" : "text-slate-500";
+  set("sig-volume-node", volNodeTxt, volNodeClass);
+
+  const reload = sig.reload_level || {};
+  const reloadTxt = reload.text || "-";
+  const reloadClass = reloadTxt.startsWith("RELOAD JUAL") ? "text-rose-400"
+                     : reloadTxt.startsWith("RELOAD BELI") ? "text-emerald-400" : "text-slate-500";
+  set("sig-reload-level", reloadTxt, reloadClass);
+
   const cd = sig.countdown || {};
   const cdTxt = [
     ["H4", cd.h4], ["H1", cd.h1], ["M30", cd.m30], ["M15", cd.m15], ["M5", cd.m5], ["M1", cd.m1],

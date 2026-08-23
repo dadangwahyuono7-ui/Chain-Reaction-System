@@ -120,6 +120,44 @@ class VolumeProfileEngine:
 
         return (round(prices[lo], 2), round(prices[hi], 2))
 
+    def get_hvn_lvn(self, current_price: float, lookback_buckets: int = 60) -> Dict[str, float]:
+        """Nearest High Volume Node (HVN - price tends to STALL/bounce there,
+        lots of resting interest already traded through it) and Low Volume
+        Node (LVN - price tends to SLIP THROUGH fast, thin/skipped area) to
+        `current_price`. Same local-peak/local-valley idea as POC/VAH/VAL,
+        just finer-grained: POC is the SINGLE biggest peak in the whole
+        session, HVN/LVN here are the peak/valley NEAREST to where price
+        actually is right now, restricted to a `lookback_buckets` window
+        (60 buckets * 0.10 tick = +-6 USD GCZ6-scale) so a leftover node from
+        hours ago and far away doesn't get reported as "nearest". Returns all
+        zeros if there isn't enough profile shape yet to find one."""
+        zero = {"hvn_price": 0.0, "hvn_volume": 0.0, "lvn_price": 0.0, "lvn_volume": 0.0}
+        prices = sorted(set(self.buy_vol_at_price) | set(self.sell_vol_at_price))
+        if len(prices) < 5:
+            return zero
+        vol_at = {p: self.buy_vol_at_price.get(p, 0.0) + self.sell_vol_at_price.get(p, 0.0) for p in prices}
+
+        idx_cur = min(range(len(prices)), key=lambda i: abs(prices[i] - current_price))
+        lo = max(0, idx_cur - lookback_buckets)
+        hi = min(len(prices), idx_cur + lookback_buckets + 1)
+        window = prices[lo:hi]
+        if len(window) < 5:
+            return zero
+
+        peaks, valleys = [], []
+        for i in range(1, len(window) - 1):
+            p, v = window[i], vol_at[window[i]]
+            v_prev, v_next = vol_at[window[i - 1]], vol_at[window[i + 1]]
+            if v >= v_prev and v >= v_next and v > 0:
+                peaks.append((p, v))
+            elif v <= v_prev and v <= v_next:
+                valleys.append((p, v))
+
+        hvn = min(peaks, key=lambda pv: abs(pv[0] - current_price)) if peaks else (0.0, 0.0)
+        lvn = min(valleys, key=lambda pv: abs(pv[0] - current_price)) if valleys else (0.0, 0.0)
+        return {"hvn_price": round(hvn[0], 2), "hvn_volume": round(hvn[1], 1),
+                "lvn_price": round(lvn[0], 2), "lvn_volume": round(lvn[1], 1)}
+
     def get_snapshot(self) -> Dict[str, Any]:
         total = self.session_buy_volume + self.session_sell_volume
         buy_pct = (self.session_buy_volume / total * 100.0) if total > 0 else 50.0
