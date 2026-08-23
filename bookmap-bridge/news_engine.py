@@ -51,6 +51,19 @@ prices are already offset-converted by the EA), no GCZ6 basis
 conversion needed here. Gated on symbol containing "XAU" so a gold
 headline's price never gets compared against, say, a BTCUSD wall by
 mistake if the terminal happens to be on a different chart.
+
+2026-08-23 - Dadang: "news narasi bisa lo convert ke bahasa indonesia
+aja gwk bro hahaha." Tried the free unofficial Google Translate
+endpoint first (translate.googleapis.com, no key needed) - it 429'd
+immediately and stayed that way, so rather than build on another
+flaky free service right after the AiTrados lesson, this uses Dadang's
+OWN local Qwen3-8B (llama-server, port 8080 - same production model
+start-qwen3-8b.bat already launches) instead: no external rate limits,
+already his own infra. One batched LLM call per fetch cycle translates
+every headline+summary at once (cheaper than N separate calls), with
+a hard fallback to the original English if the local server is off or
+the response doesn't parse - translation is a nice-to-have here, not
+something this whole feature should break over.
 """
 
 import json
@@ -68,6 +81,11 @@ REQUEST_TIMEOUT_SEC = 10
 SULTAN_STATUS_FILE = r"C:\Users\R O V A\AppData\Roaming\MetaQuotes\Terminal\Common\Files\sultan_status.json"
 CONFLUENCE_THRESHOLD_USD = 15.0   # same order of magnitude as the EA's own InpWallSearchRangeUsd
 _PRICE_RE = re.compile(r'\$\s?([\d,]{3,7}(?:\.\d{1,2})?)')
+
+LLAMA_SERVER_URL = "http://127.0.0.1:8080/v1/chat/completions"
+LLAMA_MODEL_NAME = "qwen3-8b"
+LLAMA_TIMEOUT_SEC = 180   # one batched call for the whole headline list - fine against a 600s fetch interval
+_ITEM_BLOCK_RE = re.compile(r"===ITEM (\d+)===\s*JUDUL:\s*(.*?)\s*RINGKASAN:\s*(.*?)(?=\s*===ITEM \d+===|\Z)", re.S)
 
 # "OffTheWire" items are generic Reuters/AP wire content (SEC enforcement
 # actions, power-grid costs, etc.) that happens to get syndicated into
@@ -175,6 +193,63 @@ def _find_confluences(levels, zones):
     return hits
 
 
+def _translate_batch(items):
+    """Translates every item's title+summary to Indonesian in ONE local
+    LLM call, matched back by explicit item index (robust against the
+    model skipping/reordering a block) rather than by list position.
+    Mutates and returns `items` with title_id/summary_id added when
+    translation succeeds; items are left with only their original
+    English on any failure (server off, timeout, bad parse) - logged,
+    never raised, since this must not take the news feed down."""
+    if not items:
+        return items
+
+    blocks = "\n\n".join(
+        f"===ITEM {i}===\nJUDUL: {it['title']}\nRINGKASAN: {it['summary']}"
+        for i, it in enumerate(items)
+    )
+    system = (
+        "Kamu penerjemah berita pasar emas/keuangan. Terjemahkan tiap JUDUL dan "
+        "RINGKASAN di bawah ini ke Bahasa Indonesia yang natural dan lancar (bukan "
+        "terjemahan kaku kata-per-kata). Angka, harga dolar, dan nama orang/lembaga "
+        "tetap apa adanya. Balas PERSIS dengan format yang sama (===ITEM N===, "
+        "JUDUL:, RINGKASAN:) untuk SETIAP item yang diberikan, tanpa komentar "
+        "tambahan apapun di luar format itu."
+    )
+    payload = {
+        "model": LLAMA_MODEL_NAME,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": blocks},
+        ],
+        "temperature": 0.3,
+    }
+    try:
+        req = urllib.request.Request(
+            LLAMA_SERVER_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=LLAMA_TIMEOUT_SEC) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        text = data["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"[News Engine] translation skipped (local LLM at {LLAMA_SERVER_URL} unavailable): {e}", flush=True)
+        return items
+
+    translated_count = 0
+    for idx_str, title_id, summary_id in _ITEM_BLOCK_RE.findall(text):
+        idx = int(idx_str)
+        if 0 <= idx < len(items):
+            items[idx]["title_id"] = title_id.strip()
+            items[idx]["summary_id"] = summary_id.strip()
+            translated_count += 1
+    if translated_count < len(items):
+        print(f"[News Engine] translation partial: {translated_count}/{len(items)} items parsed - "
+              f"rest kept in English", flush=True)
+    return items
+
+
 def fetch_kitco_headlines(limit: int = HEADLINE_LIMIT):
     raw_items = [it for it in _fetch_next_data() if it and it.get("__typename") in INCLUDED_TYPES]
     our_zones = _load_our_zones()   # one snapshot per fetch cycle - all items in this batch compare against the same read
@@ -197,7 +272,7 @@ def fetch_kitco_headlines(limit: int = HEADLINE_LIMIT):
             "mentioned_levels": levels,
             "confluences": _find_confluences(levels, our_zones) if our_zones else [],
         })
-    return items
+    return _translate_batch(items)
 
 
 def build_conclusion(items):

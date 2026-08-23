@@ -130,6 +130,20 @@ async function loadNews() {
               &#127919; $${c.level} &asymp; ${escapeHtml(c.matched_label)} @ ${c.matched_price}
             </span>`).join("")}</div>`
         : "";
+      // 2026-08-23 - Dadang: "news narasi bisa lo convert ke bahasa
+      // indonesia aja" - news_engine.py's _translate_batch() adds
+      // title_id/summary_id via the local LLM when it's reachable;
+      // shown as primary here, with the original English kept as a
+      // toggle rather than dropped, and a plain fallback to English
+      // when translation wasn't available that cycle (server was off,
+      // etc.) so the feature never just shows nothing.
+      const hasTranslation = !!(it.title_id && it.summary_id);
+      const displayTitle = hasTranslation ? it.title_id : it.title;
+      const displaySummary = hasTranslation ? it.summary_id : it.summary;
+      const origToggle = hasTranslation
+        ? `<button class="orig-toggle text-[9px] text-slate-600 hover:text-amber-300 uppercase tracking-wide ml-2" type="button">lihat asli</button>`
+        : "";
+
       return `
         <div class="news-item">
           <a href="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer">
@@ -138,12 +152,28 @@ async function loadNews() {
               ${it.category ? `<span class="text-[9px] text-slate-500 uppercase tracking-wide">${escapeHtml(it.category)}</span>` : ""}
               ${timeLabel ? `<span class="text-[9px] text-slate-600 font-mono ml-auto">${timeLabel}</span>` : ""}
             </div>
-            <div class="news-title text-[13px] text-slate-100 font-medium leading-snug transition-colors">${escapeHtml(it.title)}</div>
-            <div class="text-[11px] text-slate-400 mt-1 leading-relaxed">${escapeHtml(it.summary)}</div>
+            <div class="news-title text-[13px] text-slate-100 font-medium leading-snug transition-colors" data-en="${escapeHtml(it.title)}" data-id="${escapeHtml(displayTitle)}">${escapeHtml(displayTitle)}</div>
+            <div class="news-summary text-[11px] text-slate-400 mt-1 leading-relaxed" data-en="${escapeHtml(it.summary)}" data-id="${escapeHtml(displaySummary)}">${escapeHtml(displaySummary)}</div>
           </a>
+          ${origToggle}
           ${confluenceHtml}
         </div>`;
     }).join("");
+
+    listEl.querySelectorAll(".orig-toggle").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const item = btn.closest(".news-item");
+        const titleEl = item.querySelector(".news-title");
+        const summaryEl = item.querySelector(".news-summary");
+        const showingEn = btn.dataset.showingEn === "1";
+        titleEl.textContent = showingEn ? titleEl.dataset.id : titleEl.dataset.en;
+        summaryEl.textContent = showingEn ? summaryEl.dataset.id : summaryEl.dataset.en;
+        btn.textContent = showingEn ? "lihat asli" : "lihat terjemahan";
+        btn.dataset.showingEn = showingEn ? "0" : "1";
+      });
+    });
   } catch (e) {
     listEl.innerHTML = `<p class="text-[11px] text-rose-400">Gagal baca berita: ${escapeHtml(String(e))}</p>`;
     textEl.textContent = "Data berita belum tersedia.";
