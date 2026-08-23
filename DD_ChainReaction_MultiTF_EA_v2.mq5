@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.83-IVBDPF"
+#define EA_VERSION "v52.83.1-IVBFIX"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -2137,11 +2137,18 @@ void UpdateIVB()
 
 string IvbText(color &clrOut)
 {
-   if(!g_ivbLocked) { clrOut = PNL_LABEL; return "belum kebentuk (nunggu 30 menit)"; }
+   // v52.83 fix - Dadang caught this live: original text ("77006.45 -
+   // 77308.04 (di BAWAH - imbalance)", ~43 chars) overflowed the panel's
+   // value column, unlike every other row's shorter format. Shortened to
+   // "<STATUS> <low>-<high>" (~23 chars), same info, fits alongside the
+   // rest of the panel.
+   if(!g_ivbLocked) { clrOut = PNL_LABEL; return "belum kebentuk"; }
    double cur = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   if(cur > g_ivbHigh)      { clrOut = PNL_EMERALD; return StringFormat("%.2f - %.2f (di ATAS - imbalance)", g_ivbLow, g_ivbHigh); }
-   else if(cur < g_ivbLow)  { clrOut = PNL_ROSE;    return StringFormat("%.2f - %.2f (di BAWAH - imbalance)", g_ivbLow, g_ivbHigh); }
-   clrOut = PNL_LABEL; return StringFormat("%.2f - %.2f (di DALAM range)", g_ivbLow, g_ivbHigh);
+   string statusTxt;
+   if(cur > g_ivbHigh)      { clrOut = PNL_EMERALD; statusTxt = "ATAS"; }
+   else if(cur < g_ivbLow)  { clrOut = PNL_ROSE;    statusTxt = "BAWAH"; }
+   else                     { clrOut = PNL_LABEL;   statusTxt = "DALAM"; }
+   return StringFormat("%s %.2f-%.2f", statusTxt, g_ivbLow, g_ivbHigh);
 }
 
 // v52.83 - Daily Profile Framing: compare TODAY's Value Area/POC against
