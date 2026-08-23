@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.84-RELOADHVN"
+#define EA_VERSION "v52.85-DNAVAULT"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -568,6 +568,11 @@ double   g_pocMinuteSamples[CVD_HIST_LEN];   // raw g_bookmapPocPrice snapshots,
 int      g_pocSampleCount = 0;
 int      g_lastPocSampleMinute = -1;
 datetime g_lastSultanExportTime = 0;          // throttle WriteSultanStatus() to ~1/sec
+// v52.85 - DNA Vault: throttle for the per-day history log append (once/min,
+// not every ~1/sec WriteSultanStatus() call) - see the append block at the
+// end of WriteSultanStatus() for why.
+int      g_dnaVaultLastMin  = -1;
+int      g_dnaVaultLastHour = -1;
 double   g_bookmapAgeMs = -1.0;               // set in ReadBookmapBridge() - bridge latency for the dashboard
 
 // v31: Strategy Tester replay of Bookmap history - Dadang: "siapin semuanya
@@ -4297,6 +4302,32 @@ void WriteSultanStatus()
    // atomic-ish swap - avoid the web server ever reading a half-written file
    FileDelete("sultan_status.json", FILE_COMMON);
    FileMove("sultan_status.json.tmp", FILE_COMMON, "sultan_status.json", FILE_COMMON);
+
+   // v52.85 - DNA Vault: Dadang, 2026-08-23: "semua data harus kerecord
+   // setiap gw start sampai off bro karena histori itu yang akan kita
+   // pelajari tiap weekend untuk upgrade". Everything EA-computed (Chain
+   // Signal, CVD Divergence, IVB, Daily Profile, Volume Node, Reload Level,
+   // momentum variants, wall/POC/VAH/VAL, sweep, macro, PnL, etc.) was
+   // live-only until now - gone the moment the terminal restarts or the day
+   // rolls over. Appends the SAME `json` payload just built above (one line
+   // per minute) to a per-day file - whatever gets added to
+   // sultan_status.json in the future is archived automatically too,
+   // instead of a second hand-maintained log schema slowly drifting out of
+   // sync with the live panel like bookmap_live_signal.csv's fields did.
+   // reuses `dtNow` already computed near the top of this function (GMT-based minute bucket)
+   if(dtNow.min != g_dnaVaultLastMin || dtNow.hour != g_dnaVaultLastHour)
+   {
+      g_dnaVaultLastMin  = dtNow.min;
+      g_dnaVaultLastHour = dtNow.hour;
+      string dnaFile = StringFormat("dna_vault_%04d-%02d-%02d.jsonl", dtNow.year, dtNow.mon, dtNow.day);
+      int dnaHandle = FileOpen(dnaFile, FILE_READ | FILE_WRITE | FILE_TXT | FILE_COMMON | FILE_ANSI | FILE_SHARE_READ);
+      if(dnaHandle != INVALID_HANDLE)
+      {
+         FileSeek(dnaHandle, 0, SEEK_END);
+         FileWriteString(dnaHandle, json + "\n");
+         FileClose(dnaHandle);
+      }
+   }
 }
 
 //--- v33: VAH/VAL lines - 2 dashed lines (lighter goldenrod than the solid
