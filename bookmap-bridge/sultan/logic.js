@@ -584,8 +584,15 @@ function _trackIceReload(side, px) {
   }
   return st.reloads;
 }
-function _wallEatRate(side, px, sz, nowMs) {
-  const key = side + "|" + fmt(px, 2);
+// 2026-08-23: keyed by side + CLUSTER BUCKET (zone midpoint rounded to
+// the nearest WALL_CLUSTER_USD step) instead of an exact price - clustering
+// merges nearby walls into zones whose bounds can shift slightly poll to
+// poll, so an exact-price key would silently stop matching. The bucket is
+// stable as long as a zone's midpoint doesn't drift by more than roughly
+// half a cluster-width between polls, which holds in practice since
+// significant walls don't teleport - only get eaten/reinforced in place.
+function _wallEatRate(side, bucketKey, sz, nowMs) {
+  const key = side + "|" + bucketKey;
   const prev = _prevWallSnapshot.get(key);
   _prevWallSnapshot.set(key, { size: sz, ts: nowMs });
   if (!prev) return null;
@@ -594,24 +601,62 @@ function _wallEatRate(side, px, sz, nowMs) {
   return (prev.size - sz) / dtSec; // positive = shrinking (being eaten)
 }
 
+// 2026-08-23 - Dadang, looking at a screenshot with ~15 individual rows
+// packed within a few dollars of each other: "range harga yang deket2 itu
+// di akumulasi aja... di kelompokan seperti di ea kita." The EA's own
+// chart-side zone boxes already merge walls within InpWallZoneClusterUsd
+// (3.0) of each other into one box with a combined lot total - this does
+// the same merge for the web ladder instead of listing every raw price.
+// Adjacent-chain clustering (each wall merges into the running zone if
+// it's within WALL_CLUSTER_USD of that zone's current price range), not
+// "within 3 USD of the first wall in the zone" - so a run of walls each
+// 1 USD apart still merges into one zone even though the ends are
+// further apart than 3 USD, matching the EA's own zone-building logic.
+const WALL_CLUSTER_USD = 3.0;
+
+function clusterWalls(sortedList, clusterUsd) {
+  if (!sortedList.length) return [];
+  const zones = [];
+  let zone = { lo: sortedList[0][0], hi: sortedList[0][0], size: sortedList[0][1], count: 1 };
+  for (let i = 1; i < sortedList.length; i++) {
+    const [px, sz] = sortedList[i];
+    const gap = Math.min(Math.abs(px - zone.lo), Math.abs(px - zone.hi));
+    if (gap <= clusterUsd) {
+      zone.lo = Math.min(zone.lo, px);
+      zone.hi = Math.max(zone.hi, px);
+      zone.size += sz;
+      zone.count++;
+    } else {
+      zones.push(zone);
+      zone = { lo: px, hi: px, size: sz, count: 1 };
+    }
+  }
+  zones.push(zone);
+  return zones;
+}
+
 function renderLadder(askLadder, bidLadder, currentPrice) {
   const el = document.getElementById("wall-ladder");
   if (!el) return;
   const nowMs = Date.now();
-  const asks = [...askLadder].sort((a, b) => b[0] - a[0]); // farthest/highest first
-  const bids = [...bidLadder].sort((a, b) => b[0] - a[0]); // nearest first
+  const asks = clusterWalls([...askLadder].sort((a, b) => b[0] - a[0]), WALL_CLUSTER_USD); // farthest/highest first
+  const bids = clusterWalls([...bidLadder].sort((a, b) => b[0] - a[0]), WALL_CLUSTER_USD); // nearest first
 
-  const row = (px, sz, cls, side) => {
-    const near = currentPrice && Math.abs(currentPrice - px) <= WALL_NEAR_THRESHOLD_USD;
-    const rate = _wallEatRate(side, px, sz, nowMs);
+  const zoneRow = (zone, cls, side) => {
+    const mid = (zone.lo + zone.hi) / 2;
+    const near = currentPrice && Math.abs(currentPrice - mid) <= WALL_NEAR_THRESHOLD_USD;
+    const priceLabel = zone.lo === zone.hi ? fmt(zone.lo, 2) : `${fmt(zone.lo, 2)}-${fmt(zone.hi, 2)}`;
+    const countTag = zone.count > 1 ? `<span class="text-slate-500 ml-1">&times;${zone.count}</span>` : "";
+    const bucketKey = Math.round(mid / WALL_CLUSTER_USD);
+    const rate = _wallEatRate(side, bucketKey, zone.size, nowMs);
     const eatTag = (rate !== null && rate >= WALL_EAT_FAST_LOT_PER_SEC)
       ? `<span class="text-amber-400 ml-1.5" title="Lagi dimakan cepat">-${rate.toFixed(1)}L/s</span>` : "";
-    return `<div class="flex justify-between px-1.5 py-0.5 ${cls} ${near ? "wall-near" : ""}"><span>${fmt(px, 2)}</span><span>${Math.round(sz)}${eatTag}</span></div>`;
+    return `<div class="flex justify-between px-1.5 py-0.5 ${cls} ${near ? "wall-near" : ""}"><span>${priceLabel}</span><span>${Math.round(zone.size)}${countTag}${eatTag}</span></div>`;
   };
 
-  let html = asks.map(([px, sz]) => row(px, sz, "text-rose-400", "ASK")).join("");
+  let html = asks.map((z) => zoneRow(z, "text-rose-400", "ASK")).join("");
   html += `<div class="text-center px-1.5 py-1 my-0.5 bg-amber-400/10 border-y border-amber-400/30 text-amber-200 font-bold price-row-live">${currentPrice ? fmt(currentPrice, 2) : "-"}</div>`;
-  html += bids.map(([px, sz]) => row(px, sz, "text-emerald-400", "BID")).join("");
+  html += bids.map((z) => zoneRow(z, "text-emerald-400", "BID")).join("");
 
   el.innerHTML = html || '<div class="text-center text-slate-600 py-6">No significant walls</div>';
 }
