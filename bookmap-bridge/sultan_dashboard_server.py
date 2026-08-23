@@ -26,9 +26,12 @@ server itself; pywebview for the native window (already a dependency of
 dashboard_web.py, same venv).
 """
 
+import hashlib
+import http.cookies
 import http.server
 import json
 import os
+import secrets
 import socketserver
 import threading
 import time
@@ -53,7 +56,6 @@ TODAY_CALENDAR_FILE = os.path.join(MT5_COMMON_FILES_DIR, "today_calendar.json")
 # already reads every fetch cycle, so a save here takes effect on its next
 # cycle with no restart needed.
 ENV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-ENV_EDITABLE_KEYS = ("TRANSLATE_API_KEY", "TRANSLATE_API_BASE", "TRANSLATE_MODEL")
 
 
 def _read_env_file():
@@ -104,6 +106,43 @@ def _write_env_updates(updates: dict):
         f.writelines(out)
     os.replace(tmp, ENV_FILE)
 
+
+# 2026-08-23 - Dadang: "kenapa gwk lo buat... untuk ganti api kai lo beri
+# admin panel aja lo bro nanti gw isi email dan pasword gw" - replaces the
+# copy-pasted ADMIN_TOKEN with a real email+password login (his own
+# credentials, set up once through the panel itself, never typed by
+# Claude). Password is salted+hashed with PBKDF2 (stdlib hashlib, no new
+# dependency) - never stored or logged in plain text. Sessions are an
+# in-memory dict (token -> expiry) since this is one process serving one
+# person; a restart just means logging in again, no persistence needed.
+SESSION_TTL_SEC = 7 * 24 * 3600   # 7 days
+PBKDF2_ITERATIONS = 200_000
+_sessions = {}   # token -> expiry unix ts
+
+
+def _hash_password(password: str, salt: str):
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), PBKDF2_ITERATIONS)
+    return digest.hex()
+
+
+def _create_session() -> str:
+    token = secrets.token_urlsafe(32)
+    _sessions[token] = time.time() + SESSION_TTL_SEC
+    return token
+
+
+def _session_valid(token: str) -> bool:
+    if not token:
+        return False
+    exp = _sessions.get(token)
+    if exp is None:
+        return False
+    if exp < time.time():
+        del _sessions[token]
+        return False
+    return True
+
+
 # 2026-08-19: Dadang wants a friend in Semarang to test the EA on HIS OWN
 # MT5/broker/account ("dia berdiri sendiri bro baca mt5 dia sendiri, hanya
 # data bookmap ikut data gw") - the friend's EA should stay fully independent
@@ -143,6 +182,9 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
         if path == "/today_calendar.json":
             self._serve_json_passthrough(TODAY_CALENDAR_FILE, b"[]")
             return
+        if path == "/api/admin/status":
+            self._admin_status()
+            return
         if path in self._INDEX_ALIASES:
             self.path = "/index.html"
         super().do_GET()
@@ -151,6 +193,15 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/api/settings/translate":
             self._save_translate_settings()
+            return
+        if path == "/api/admin/setup":
+            self._admin_setup()
+            return
+        if path == "/api/admin/login":
+            self._admin_login()
+            return
+        if path == "/api/admin/logout":
+            self._admin_logout()
             return
         self.send_error(404, "Not found")
 
@@ -162,7 +213,100 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _read_json_body(self):
+        length = int(self.headers.get("Content-Length", 0))
+        return json.loads(self.rfile.read(length) or b"{}")
+
+    def _get_session_token(self):
+        raw = self.headers.get("Cookie")
+        if not raw:
+            return None
+        jar = http.cookies.SimpleCookie()
+        jar.load(raw)
+        return jar["session"].value if "session" in jar else None
+
+    def _is_logged_in(self):
+        return _session_valid(self._get_session_token())
+
+    def _admin_status(self):
+        env = _read_env_file()
+        self._json_response(200, {
+            "setup_done": bool(env.get("ADMIN_PASSWORD_HASH")),
+            "logged_in": self._is_logged_in(),
+            "email": env.get("ADMIN_EMAIL", "") if self._is_logged_in() else "",
+        })
+
+    def _admin_setup(self):
+        env = _read_env_file()
+        if env.get("ADMIN_PASSWORD_HASH"):
+            self._json_response(409, {"ok": False, "error": "Akun admin udah pernah di-setup. Pakai login, bukan setup lagi."})
+            return
+        try:
+            body = self._read_json_body()
+        except Exception:
+            self._json_response(400, {"ok": False, "error": "Body bukan JSON valid"})
+            return
+        email = (body.get("email") or "").strip()
+        password = body.get("password") or ""
+        if not email or len(password) < 6:
+            self._json_response(400, {"ok": False, "error": "Email wajib diisi, password minimal 6 karakter"})
+            return
+        salt = secrets.token_hex(16)
+        pw_hash = _hash_password(password, salt)
+        _write_env_updates({"ADMIN_EMAIL": email, "ADMIN_PASSWORD_SALT": salt, "ADMIN_PASSWORD_HASH": pw_hash})
+        token = _create_session()
+        self.send_response(200)
+        self.send_header("Set-Cookie", f"session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_TTL_SEC}")
+        self.send_header("Content-Type", "application/json")
+        body_out = json.dumps({"ok": True}).encode("utf-8")
+        self.send_header("Content-Length", str(len(body_out)))
+        self.end_headers()
+        self.wfile.write(body_out)
+
+    def _admin_login(self):
+        env = _read_env_file()
+        stored_email = env.get("ADMIN_EMAIL", "")
+        stored_salt = env.get("ADMIN_PASSWORD_SALT", "")
+        stored_hash = env.get("ADMIN_PASSWORD_HASH", "")
+        if not stored_hash:
+            self._json_response(409, {"ok": False, "error": "Belum ada akun admin - setup dulu."})
+            return
+        try:
+            body = self._read_json_body()
+        except Exception:
+            self._json_response(400, {"ok": False, "error": "Body bukan JSON valid"})
+            return
+        email = (body.get("email") or "").strip()
+        password = body.get("password") or ""
+        candidate_hash = _hash_password(password, stored_salt) if stored_salt else ""
+        if email != stored_email or not secrets.compare_digest(candidate_hash, stored_hash):
+            self._json_response(401, {"ok": False, "error": "Email atau password salah"})
+            return
+        token = _create_session()
+        self.send_response(200)
+        self.send_header("Set-Cookie", f"session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_TTL_SEC}")
+        self.send_header("Content-Type", "application/json")
+        body_out = json.dumps({"ok": True}).encode("utf-8")
+        self.send_header("Content-Length", str(len(body_out)))
+        self.end_headers()
+        self.wfile.write(body_out)
+
+    def _admin_logout(self):
+        token = self._get_session_token()
+        if token and token in _sessions:
+            del _sessions[token]
+        self.send_response(200)
+        self.send_header("Set-Cookie", "session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
+        self.send_header("Content-Type", "application/json")
+        body_out = json.dumps({"ok": True}).encode("utf-8")
+        self.send_header("Content-Length", str(len(body_out)))
+        self.end_headers()
+        self.wfile.write(body_out)
+
     def _save_translate_settings(self):
+        if not self._is_logged_in():
+            self._json_response(401, {"ok": False, "error": "Belum login - buka /admin.html dulu"})
+            return
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length) or b"{}")
@@ -170,18 +314,17 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
             self._json_response(400, {"ok": False, "error": "Body bukan JSON valid"})
             return
 
-        env = _read_env_file()
-        admin_token = env.get("ADMIN_TOKEN", "")
-        if not admin_token or body.get("admin_token") != admin_token:
-            self._json_response(403, {"ok": False, "error": "Token admin salah atau belum di-set di .env"})
-            return
-
+        field_to_env_key = {
+            "api_key": "TRANSLATE_API_KEY",
+            "api_base": "TRANSLATE_API_BASE",
+            "model": "TRANSLATE_MODEL",
+            "analysis_model": "ANALYSIS_MODEL",
+        }
         updates = {}
-        for key in ("api_key", "api_base", "model"):
+        for key, env_key in field_to_env_key.items():
             val = (body.get(key) or "").strip()
             if val:
-                updates[{"api_key": "TRANSLATE_API_KEY", "api_base": "TRANSLATE_API_BASE",
-                          "model": "TRANSLATE_MODEL"}[key]] = val
+                updates[env_key] = val
         if not updates:
             self._json_response(400, {"ok": False, "error": "Gak ada field yang diisi"})
             return

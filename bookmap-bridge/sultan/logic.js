@@ -728,5 +728,24 @@ async function poll() {
   }
 }
 
+// 2026-08-24 - "System Pulse" card repurposed from decorative heartbeat to
+// the same AI narrative shown on the News & Catalyst tab (news_engine.py's
+// generate_ai_analysis(), written into news_feed.json). Separate, much
+// slower loop than poll() above - that file only changes once every ~10
+// min, polling it at POLL_MS (800ms) would just be waste.
+const NEWS_POLL_MS = 60000;
+async function pollNewsAnalysis() {
+  try {
+    const res = await fetch("/news_feed.json?t=" + Date.now(), { cache: "no-store" });
+    const data = await res.json();
+    set("pulse-analysis-text", data.ai_analysis || "Analisa AI belum tersedia.");
+  } catch (e) {
+    // non-fatal - main dashboard's own data keeps flowing via poll() regardless
+  } finally {
+    setTimeout(pollNewsAnalysis, NEWS_POLL_MS);
+  }
+}
+
 updateSoundButton();
 poll();
+pollNewsAnalysis();

@@ -99,15 +99,6 @@
     .wall-near { animation: wall-near-pulse 1.3s ease-in-out infinite; border-radius: 3px; }
     @keyframes price-row-breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
     .price-row-live { animation: price-row-breathe 1.8s ease-in-out infinite; }
-
-    /* v52.72c: heartbeat/ECG scroller (System Pulse panel). The polyline is
-       the same beat shape drawn 4x back to back across an 800-wide viewBox
-       (each beat is 200 wide) - shifting exactly 400px (= 2 beats, half the
-       total width) lands back on an identical-looking frame, so the loop
-       has no visible seam. Same "duplicate the content, translate by -50%"
-       trick as any seamless horizontal scroller. */
-    @keyframes heartbeat-scroll { from { transform: translateX(0); } to { transform: translateX(-400px); } }
-    .heartbeat-line { animation: heartbeat-scroll 3.2s linear infinite; }
   </style>
 </head>
 <body class="h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 flex flex-col px-4 py-3">
@@ -450,27 +441,22 @@
       </section>
 
       <!-- v52.72c/e: 4th right-column panel, same flex-1 min-h-0 ratio share
-           as the other 3 now (v52.72e made ALL panels ratio-based instead
-           of natural-height - this one just happened to be built flex-1
-           first, back when it was purely filling leftover items-stretch
-           space). Dadang, pointing at that gap: "kalo kita beri tanda detak
-           jantung gimana bro sesuai gaunge kita biar indah" - purely
-           decorative "alive" signal, same visual language as the
-           online-dot-top/pulse-dot already used for Bookmap LIVE status -
-           not wired to any real metric on purpose (a heartbeat, not
-           another data row). -->
-      <section class="panel p-3 flex flex-col items-center justify-center flex-1 min-h-0 overflow-hidden">
+           as the other 3. Was a purely decorative heartbeat/ECG animation
+           ("System Pulse") until Dadang, 2026-08-24, looking at it next to
+           the new Analisa AI card on the News & Catalyst tab: "card system
+           pulse... itu gak guna hahahaha" - narasi yang dihasilkan ai akan
+           tampil di card system pulse keren sepertinya". Repurposed to show
+           that same AI narrative (news_engine.py's generate_ai_analysis(),
+           same news_feed.json the News tab reads) right on the main
+           dashboard - kept the tiny pulse-dot as the "alive" touch instead
+           of the full SVG animation, which was taking the space this text
+           needs. -->
+      <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
         <div class="flex items-center gap-2 mb-2 shrink-0">
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
-          <span class="text-[9px] tracking-[0.2em] uppercase text-slate-500 font-medium">System Pulse</span>
+          <span class="text-[9px] tracking-[0.2em] uppercase text-slate-500 font-medium">System Pulse &middot; Analisa AI</span>
         </div>
-        <div class="w-full max-w-[380px] overflow-hidden" style="height:48px">
-          <svg width="800" height="48" viewBox="0 0 800 48" class="heartbeat-line">
-            <polyline fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-              points="0,24 40,24 50,18 60,24 75,24 80,4 85,40 90,24 105,28 115,24 200,24 240,24 250,18 260,24 275,24 280,4 285,40 290,24 305,28 315,24 400,24 440,24 450,18 460,24 475,24 480,4 485,40 490,24 505,28 515,24 600,24 640,24 650,18 660,24 675,24 680,4 685,40 690,24 705,28 715,24 800,24"
-              style="filter: drop-shadow(0 0 4px rgba(52,211,153,0.55))"/>
-          </svg>
-        </div>
+        <p class="text-[11px] text-slate-300 leading-relaxed" id="pulse-analysis-text">Memuat...</p>
       </section>
 
     </div>

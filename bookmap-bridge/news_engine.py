@@ -103,6 +103,7 @@ def _load_env():
     return env
 
 SULTAN_STATUS_FILE = r"C:\Users\R O V A\AppData\Roaming\MetaQuotes\Terminal\Common\Files\sultan_status.json"
+TODAY_CALENDAR_FILE = r"C:\Users\R O V A\AppData\Roaming\MetaQuotes\Terminal\Common\Files\today_calendar.json"
 CONFLUENCE_THRESHOLD_USD = 15.0   # same order of magnitude as the EA's own InpWallSearchRangeUsd
 _PRICE_RE = re.compile(r'\$\s?([\d,]{3,7}(?:\.\d{1,2})?)')
 
@@ -215,45 +216,27 @@ def _find_confluences(levels, zones):
     return hits
 
 
-def _translate_batch(items):
-    """Translates every item's title+summary to Indonesian in ONE API
-    call (bt/deepseek-flash), matched back by explicit item index
-    (robust against the model skipping/reordering a block) rather than
-    by list position. Mutates and returns `items` with title_id/
-    summary_id added when translation succeeds; items are left with only
-    their original English on any failure (no key configured, API
-    error, timeout, bad parse) - logged, never raised, since this must
-    not take the news feed down."""
-    if not items:
-        return items
-    # re-read .env every cycle (not once at import) so a key saved via
-    # news.html's settings form takes effect on the NEXT fetch without
-    # needing this long-lived process restarted.
+def _call_translate_api(system: str, user_content: str, model_key: str, default_model: str):
+    """Shared API caller for both translation and AI analysis - re-reads
+    .env every call (not once at import) so a key/model saved via
+    news.html's settings form takes effect on the NEXT fetch cycle
+    without this long-lived process needing a restart. Returns the
+    response text, or None on any failure (no key configured, API error,
+    timeout) - logged, never raised, since neither caller should take the
+    whole news feed down over this."""
     env = _load_env()
     api_base = env.get("TRANSLATE_API_BASE", "").rstrip("/")
     api_key = env.get("TRANSLATE_API_KEY", "")
-    model = env.get("TRANSLATE_MODEL", "bt/deepseek-flash")
+    model = env.get(model_key, default_model)
     if not api_key or not api_base:
-        print("[News Engine] translation skipped: TRANSLATE_API_KEY/TRANSLATE_API_BASE not set in .env", flush=True)
-        return items
+        print(f"[News Engine] API call skipped: TRANSLATE_API_KEY/TRANSLATE_API_BASE not set in .env", flush=True)
+        return None
 
-    blocks = "\n\n".join(
-        f"===ITEM {i}===\nJUDUL: {it['title']}\nRINGKASAN: {it['summary']}"
-        for i, it in enumerate(items)
-    )
-    system = (
-        "Kamu penerjemah berita pasar emas/keuangan. Terjemahkan tiap JUDUL dan "
-        "RINGKASAN di bawah ini ke Bahasa Indonesia yang natural dan lancar (bukan "
-        "terjemahan kaku kata-per-kata). Angka, harga dolar, dan nama orang/lembaga "
-        "tetap apa adanya. Balas PERSIS dengan format yang sama (===ITEM N===, "
-        "JUDUL:, RINGKASAN:) untuk SETIAP item yang diberikan, tanpa komentar "
-        "tambahan apapun di luar format itu."
-    )
     payload = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
-            {"role": "user", "content": blocks},
+            {"role": "user", "content": user_content},
         ],
         "temperature": 0.3,
     }
@@ -268,9 +251,145 @@ def _translate_batch(items):
         )
         with urllib.request.urlopen(req, timeout=TRANSLATE_TIMEOUT_SEC) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        text = data["choices"][0]["message"]["content"]
+        return data["choices"][0]["message"]["content"]
     except Exception as e:
-        print(f"[News Engine] translation skipped (API at {api_base} unavailable/errored): {e}", flush=True)
+        print(f"[News Engine] API call failed (model={model}, base={api_base}): {e}", flush=True)
+        return None
+
+
+def _load_engine_context():
+    """Snapshot of what OUR OWN system is currently saying - CMP cascade
+    direction per TF, Chain Signal, momentum, POC/value-area position -
+    straight from the EA's live sultan_status.json. Feeds generate_ai_
+    analysis() so the AI's read is grounded in our actual live signals,
+    not just the news in isolation. Returns None if the file can't be
+    read (EA not attached, etc.) - the analysis prompt just omits this
+    section rather than failing."""
+    try:
+        with open(SULTAN_STATUS_FILE, "r", encoding="ascii") as f:
+            data = json.load(f)
+    except Exception:
+        return None
+    regime = data.get("regime") or {}
+    sig = data.get("signals") or {}
+    loc = data.get("location") or {}
+    return {
+        "symbol": data.get("symbol"),
+        "price": data.get("price"),
+        "h4_dir": regime.get("h4"), "m30_dir": regime.get("m30"), "m5_dir": regime.get("m5"),
+        "cmp_regime": regime.get("regime"),
+        "chain_signal_layer": (sig.get("chain_signal") or {}).get("layer"),
+        "chain_signal_dir": (sig.get("chain_signal") or {}).get("dir"),
+        "momentum_m5": (sig.get("momentum_m5") or {}).get("text"),
+        "poc": loc.get("poc"),
+        "va_bias": loc.get("va_bias"),
+        "position": loc.get("position"),
+    }
+
+
+def generate_ai_analysis(items, calendar_events, engine_ctx):
+    """A real LLM-written narrative, not the keyword tally in
+    build_conclusion(). Dadang: "kenapa gak lo buat setiap reload ai
+    analisa bro kalo cuman translate kan saya [bisa sendiri]" -
+    translation alone doesn't add anything he couldn't do himself;
+    reading everything together (headlines + today's catalysts + what
+    OUR OWN engine is currently reading) and actually reasoning about it
+    is the part only an LLM can add. Uses whichever model is configured
+    (default bt/sonnet4.5 - this is the one output per cycle worth
+    spending a stronger model on, unlike the mechanical per-headline
+    translation). Returns a plain-language fallback string (not None) on
+    failure, since this is the tab's headline feature now, not a nice-
+    to-have that should just go silent."""
+    news_block = "\n".join(
+        f"- [{it['tone']}] {it['title']}: {it['summary'][:200]}" for it in items[:8]
+    ) or "(tidak ada headline)"
+    cal_lines = []
+    for ev in (calendar_events or []):
+        timing = "sudah rilis" if ev["released"] else f"{ev['mins_until']} menit lagi"
+        cal_lines.append(f"- {ev['name']} ({ev['time']}, {timing})")
+    cal_block = "\n".join(cal_lines) or "(tidak ada event flag merah hari ini)"
+    if engine_ctx:
+        engine_block = (
+            f"Simbol: {engine_ctx['symbol']} @ {engine_ctx['price']}\n"
+            f"Arah per timeframe: H4={engine_ctx['h4_dir']} / M30={engine_ctx['m30_dir']} / M5={engine_ctx['m5_dir']} "
+            f"(kondisi pasar: {engine_ctx['cmp_regime']})\n"
+            f"Chain Signal (rangkaian breakout searah terkonfirmasi): layer {engine_ctx['chain_signal_layer']}, arah {engine_ctx['chain_signal_dir']}\n"
+            f"Momentum M5: {engine_ctx['momentum_m5']}\n"
+            f"POC: {engine_ctx['poc']} | Posisi harga: {engine_ctx['position']} | VA Bias: {engine_ctx['va_bias']}"
+        )
+    else:
+        engine_block = "(data engine gak kebaca - EA mungkin belum attach atau bukan di XAUUSD)"
+
+    # 2026-08-24 - Dadang: "ganti dang nya dengan comander dadang" + "doctrin
+    # cmp vr cf lo ganti dengan doktrin chatin reaction system hilangin aja
+    # kata cmp vr cf di narasi dia" - address him properly, and describe the
+    # doctrine by its own branded name/mechanism, never the raw CMP/VR/CF
+    # jargon (this text can end up on a page reachable from
+    # trade.dadangchatai.com, same reasoning as never putting explicit
+    # BUY/SELL signals on a public surface).
+    system = (
+        "Kamu analis pasar gold (XAUUSD) buat Commander Dadang, seorang trader retail yang "
+        "membangun sistem sendiri bernama 'Chain Reaction System' - doktrin ini membaca arah "
+        "market lewat rangkaian breakout candle-close yang saling mengonfirmasi di beberapa "
+        "timeframe berurutan (H4 jadi master arah, lalu dikonfirmasi ulang di timeframe lebih "
+        "kecil sebelum dipercaya) - sebuah 'reaksi berantai' breakout, bukan indikator "
+        "tradisional. JANGAN PERNAH sebut istilah teknis mentah (jangan tulis 'CMP', 'VR', "
+        "atau 'CF') - selalu bahasakan sebagai 'doktrin Chain Reaction System' atau 'rangkaian "
+        "konfirmasi timeframe miliknya' saja. Sapa dia 'Commander Dadang', bukan 'Dang' atau "
+        "nama santai lain. Tugasmu: baca berita gold terbaru + kalender event hari ini + apa "
+        "yang lagi dibaca sistem Chain Reaction miliknya sendiri, terus kasih analisa singkat "
+        "dalam Bahasa Indonesia casual (gak usah formal banget) yang JUJUR - kalau berita dan "
+        "sistemnya SEPAKAT bilang aja, kalau BERTENTANGAN bilang juga apa adanya, jangan "
+        "dipaksain nyambung. Ini BUKAN sinyal entry - jangan pernah bilang 'BUY sekarang' atau "
+        "kasih harga TP/SL. Ini konteks buat bantu dia mikir, keputusan tetap di dia. Maksimal "
+        "4-5 kalimat, jangan bertele-tele."
+    )
+    user = (
+        f"BERITA GOLD TERBARU:\n{news_block}\n\n"
+        f"KATALIS HARI INI:\n{cal_block}\n\n"
+        f"BACAAN SISTEM CHAIN REACTION MILIK COMMANDER DADANG:\n{engine_block}\n\n"
+        f"Kasih analisa singkat."
+    )
+    # 2026-08-24 - was bt/sonnet4.5 by default, but 2 of 3 test calls came
+    # back with words glitched together (missing spaces, broken markdown,
+    # dropped letters mid-word - classic stream-reassembly bug pattern,
+    # not something on this end) while bt/deepseek-flash has been rock
+    # solid across every translation call tonight. Reliability over a
+    # marginally smarter model here - a garbled analysis is worse than a
+    # clean one. Still overridable via the admin panel if a better model
+    # proves stable later.
+    text = _call_translate_api(system, user, model_key="ANALYSIS_MODEL", default_model="bt/deepseek-flash")
+    if text is None:
+        return "Analisa AI belum tersedia siklus ini (API gak kejangkau) - baca headline & katalis di atas manual dulu bro."
+    return text.strip()
+
+
+def _translate_batch(items):
+    """Translates every item's title+summary to Indonesian in ONE API
+    call (bt/deepseek-flash), matched back by explicit item index
+    (robust against the model skipping/reordering a block) rather than
+    by list position. Mutates and returns `items` with title_id/
+    summary_id added when translation succeeds; items are left with only
+    their original English on any failure (no key configured, API
+    error, timeout, bad parse) - logged, never raised, since this must
+    not take the news feed down."""
+    if not items:
+        return items
+
+    blocks = "\n\n".join(
+        f"===ITEM {i}===\nJUDUL: {it['title']}\nRINGKASAN: {it['summary']}"
+        for i, it in enumerate(items)
+    )
+    system = (
+        "Kamu penerjemah berita pasar emas/keuangan. Terjemahkan tiap JUDUL dan "
+        "RINGKASAN di bawah ini ke Bahasa Indonesia yang natural dan lancar (bukan "
+        "terjemahan kaku kata-per-kata). Angka, harga dolar, dan nama orang/lembaga "
+        "tetap apa adanya. Balas PERSIS dengan format yang sama (===ITEM N===, "
+        "JUDUL:, RINGKASAN:) untuk SETIAP item yang diberikan, tanpa komentar "
+        "tambahan apapun di luar format itu."
+    )
+    text = _call_translate_api(system, blocks, model_key="TRANSLATE_MODEL", default_model="bt/deepseek-flash")
+    if text is None:
         return items
 
     translated_count = 0
@@ -334,14 +453,26 @@ def build_conclusion(items):
     }
 
 
+def _load_today_calendar():
+    try:
+        with open(TODAY_CALENDAR_FILE, "r", encoding="ascii") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
 def write_snapshot():
     items = fetch_kitco_headlines()
     conclusion = build_conclusion(items)
+    calendar_events = _load_today_calendar()
+    engine_ctx = _load_engine_context()
+    ai_analysis = generate_ai_analysis(items, calendar_events, engine_ctx)
     payload = {
         "updated_ts": time.time(),
         "source": "Kitco News (mining category)",
         "items": items,
         "conclusion": conclusion,
+        "ai_analysis": ai_analysis,
     }
     tmp = OUTPUT_FILE + ".tmp"
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
