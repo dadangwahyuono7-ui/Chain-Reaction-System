@@ -40,6 +40,11 @@ PORT = 8766
 
 MT5_COMMON_FILES_DIR = r"C:\Users\R O V A\AppData\Roaming\MetaQuotes\Terminal\Common\Files"
 SULTAN_STATUS_FILE = os.path.join(MT5_COMMON_FILES_DIR, "sultan_status.json")
+# 2026-08-23 - "News & Catalyst" tab: today's high-impact calendar events,
+# written by the EA's ExportTodayCalendar() (v52.86) - same
+# MQL5-can-only-write-to-its-own-sandbox reason SULTAN_STATUS_FILE needs
+# proxying.
+TODAY_CALENDAR_FILE = os.path.join(MT5_COMMON_FILES_DIR, "today_calendar.json")
 
 # 2026-08-19: Dadang wants a friend in Semarang to test the EA on HIS OWN
 # MT5/broker/account ("dia berdiri sendiri bro baca mt5 dia sendiri, hanya
@@ -76,6 +81,9 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
         if path == "/bookmap_share.json":
             self._serve_bookmap_share()
+            return
+        if path == "/today_calendar.json":
+            self._serve_json_passthrough(TODAY_CALENDAR_FILE, b"[]")
             return
         if path in self._INDEX_ALIASES:
             self.path = "/index.html"
@@ -128,6 +136,24 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(body)
         except Exception as e:
             self.send_error(500, str(e))
+
+    def _serve_json_passthrough(self, filepath, fallback_body):
+        """Generic version of _serve_sultan_status's file->HTTP proxy, used
+        for today_calendar.json (and any future MQL5-sandbox file) so each
+        new source doesn't need its own copy-pasted try/except block."""
+        try:
+            with open(filepath, "r", encoding="ascii") as f:
+                body = f.read().encode("utf-8")
+        except FileNotFoundError:
+            body = fallback_body
+        except Exception as e:
+            self.send_error(500, str(e))
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def log_message(self, fmt, *args):
         pass  # keep the console/log quiet - same JSON polled ~1x/sec

@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.85-DNAVAULT"
+#define EA_VERSION "v52.86-CATALYST"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -2726,6 +2726,53 @@ void ReadUsdFundamental()
    }
    if(bestTime > 0)
       g_usdNextMins = (int)((bestTime - TimeCurrent()) / 60);
+
+   ExportTodayCalendar();
+}
+
+// v52.86 - Today's Catalyst export for the new "News & Catalyst" web tab.
+// Dadang: "nyedot juga kapan akan ada news hari ini yang flag merah kayak
+// FOMC PPI CPI dll." Same CalendarValueHistory/CalendarEventById pattern
+// as g_usdNextEvent above, just widened from "single nearest upcoming" to
+// "every HIGH-impact USD event today" and written out for the web to read
+// (MQL5 can only write to its own Common\Files sandbox, same reason
+// sultan_status.json needs sultan_dashboard_server.py to proxy it across).
+// Deliberately just name/time/released - NOT actual/forecast/previous
+// values, which MQL5's calendar API stores as scaled fixed-point longs
+// that need per-event digit precision to decode correctly; safer to ship
+// the reliable half now than guess at the scaling and show a wrong number.
+void ExportTodayCalendar()
+{
+   datetime dayStart = iTime(_Symbol, PERIOD_D1, 0);
+   if(dayStart == 0) return;
+   datetime dayEnd = dayStart + 86400;
+
+   MqlCalendarValue todayValues[];
+   int nToday = CalendarValueHistory(todayValues, dayStart, dayEnd, NULL, "USD");
+
+   string json = "[";
+   bool first = true;
+   for(int i = 0; i < nToday; i++)
+   {
+      MqlCalendarEvent ev;
+      if(!CalendarEventById(todayValues[i].event_id, ev)) continue;
+      if(ev.importance != CALENDAR_IMPORTANCE_HIGH) continue;
+      if(!first) json += ",";
+      first = false;
+      bool released = todayValues[i].time <= TimeCurrent();
+      int minsUntil = (int)((todayValues[i].time - TimeCurrent()) / 60);
+      json += StringFormat("{\"name\":\"%s\",\"time\":\"%s\",\"released\":%s,\"mins_until\":%d}",
+                            ev.name, TimeToString(todayValues[i].time, TIME_MINUTES),
+                            released ? "true" : "false", minsUntil);
+   }
+   json += "]";
+
+   int handle = FileOpen("today_calendar.json.tmp", FILE_WRITE | FILE_TXT | FILE_COMMON | FILE_ANSI);
+   if(handle == INVALID_HANDLE) return;
+   FileWriteString(handle, json);
+   FileClose(handle);
+   FileDelete("today_calendar.json", FILE_COMMON);
+   FileMove("today_calendar.json.tmp", FILE_COMMON, "today_calendar.json", FILE_COMMON);
 }
 
 bool     g_macroActive   = false;
