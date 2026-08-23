@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.82-CVDDIVERGENCE"
+#define EA_VERSION "v52.83-IVBDPF"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -1010,6 +1010,14 @@ void UpdatePanel()
    color cvdDivClr;
    string cvdDivTxt = CvdDivergenceText(cvdDivClr);
    PnlRow(x0, y, contentW, "CVD Divergence", cvdDivTxt, cvdDivClr); y += 16;
+
+   color ivbClr;
+   string ivbTxt = IvbText(ivbClr);
+   PnlRow(x0, y, contentW, "IVB (30min)", ivbTxt, ivbClr); y += 16;
+
+   color dpfClr;
+   string dpfTxt = DailyProfileFramingText(dpfClr);
+   PnlRow(x0, y, contentW, "Daily Profile", dpfTxt, dpfClr); y += 16;
 
    color statusClr = (g_cmpStatus == "CF") ? PNL_EMERALD : ((g_cmpStatus == "VR") ? PNL_GOLD : PNL_LABEL);
    PnlRow(x0, y, contentW, "CMP Status", g_cmpStatus, statusClr); y += 18;
@@ -2076,6 +2084,105 @@ string CvdDivergenceText(color &clrOut)
    if(ageSec > 1800) { clrOut = PNL_LABEL; return "-"; }   // fade after 30 min so it never looks falsely "still live"
    clrOut = (g_cvdDivStatus == "BEARISH (exhaustion)") ? PNL_ROSE : PNL_EMERALD;
    return StringFormat("%s (%s lalu)", g_cvdDivStatus, TimeAgoText(ageSec));
+}
+
+// v52.83 - IVB (Initial Value Balance): first-30-minutes-of-the-day High/
+// Low, an order-flow reference concept Dadang found in outside research
+// material and asked to adapt into the panel, informational-only. Anchored
+// to the D1 bar's own open (broker day boundary) rather than hardcoding a
+// specific session clock time - XAUUSD trades near 24h unlike the futures
+// markets that concept normally gets applied to, so "the day's own open"
+// is the closest self-consistent anchor available without guessing a
+// session offset that could be wrong for this broker. Worth revisiting
+// once there's live data to check whether that boundary reads sensibly.
+datetime g_ivbDayStart = 0;
+double   g_ivbHigh     = 0.0;
+double   g_ivbLow      = 0.0;
+bool     g_ivbLocked   = false;
+
+void UpdateIVB()
+{
+   datetime d1Open = iTime(_Symbol, PERIOD_D1, 0);
+   if(d1Open == 0) return;
+   if(d1Open != g_ivbDayStart)
+   {
+      g_ivbDayStart = d1Open;
+      g_ivbHigh     = 0.0;
+      g_ivbLow      = 0.0;
+      g_ivbLocked   = false;
+   }
+   if(g_ivbLocked) return;
+
+   datetime windowEnd = g_ivbDayStart + 1800;   // 30 minutes
+   if(TimeCurrent() < windowEnd) return;        // still inside the window - wait for it to fully close before locking
+
+   int barEnd   = iBarShift(_Symbol, PERIOD_M5, windowEnd,     false);
+   int barStart = iBarShift(_Symbol, PERIOD_M5, g_ivbDayStart, false);
+   if(barStart < 0 || barEnd < 0 || barStart < barEnd) return;   // history not ready yet
+
+   double hi = -1.0, lo = -1.0;
+   for(int i = barEnd; i <= barStart; i++)
+   {
+      double h = iHigh(_Symbol, PERIOD_M5, i), l = iLow(_Symbol, PERIOD_M5, i);
+      if(hi < 0 || h > hi) hi = h;
+      if(lo < 0 || l < lo) lo = l;
+   }
+   if(hi > 0 && lo > 0)
+   {
+      g_ivbHigh   = hi;
+      g_ivbLow    = lo;
+      g_ivbLocked = true;
+   }
+}
+
+string IvbText(color &clrOut)
+{
+   if(!g_ivbLocked) { clrOut = PNL_LABEL; return "belum kebentuk (nunggu 30 menit)"; }
+   double cur = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   if(cur > g_ivbHigh)      { clrOut = PNL_EMERALD; return StringFormat("%.2f - %.2f (di ATAS - imbalance)", g_ivbLow, g_ivbHigh); }
+   else if(cur < g_ivbLow)  { clrOut = PNL_ROSE;    return StringFormat("%.2f - %.2f (di BAWAH - imbalance)", g_ivbLow, g_ivbHigh); }
+   clrOut = PNL_LABEL; return StringFormat("%.2f - %.2f (di DALAM range)", g_ivbLow, g_ivbHigh);
+}
+
+// v52.83 - Daily Profile Framing: compare TODAY's Value Area/POC against
+// YESTERDAY's snapshot - value shifting up/down across days = a slower,
+// higher-timeframe bias layer, separate from "VA Bias" (which reads WHERE
+// price sits right now vs today's own VA/POC, already live since v52.76).
+// Snapshots are taken already CONVERTED to XAUUSD scale (using the live
+// GCZ6-vs-XAUUSD offset at snapshot time), not raw Bookmap price - the
+// basis between those two DRIFTS day to day (confirmed earlier tonight
+// while debugging vol_compare_study.py), so comparing raw values across a
+// 24h gap would mix real value-shift with basis drift. Converting each
+// side at ITS OWN moment avoids that.
+double   g_dpfYestVah  = 0.0;
+double   g_dpfYestVal  = 0.0;
+double   g_dpfYestPoc  = 0.0;
+datetime g_dpfLastDay  = 0;
+
+void UpdateDailyProfileFraming()
+{
+   datetime d1Open = iTime(_Symbol, PERIOD_D1, 0);
+   if(d1Open == 0 || d1Open == g_dpfLastDay) return;
+
+   if(g_dpfLastDay != 0 && g_bookmapVah > 0 && g_bookmapPrice > 0)   // skip the very first run (nothing to snapshot yet)
+   {
+      double offset = SymbolInfoDouble(_Symbol, SYMBOL_BID) - g_bookmapPrice;
+      g_dpfYestVah = g_bookmapVah      + offset;
+      g_dpfYestVal = g_bookmapVal      + offset;
+      g_dpfYestPoc = g_bookmapPocPrice + offset;
+   }
+   g_dpfLastDay = d1Open;
+}
+
+string DailyProfileFramingText(color &clrOut)
+{
+   if(g_dpfYestPoc <= 0 || !g_bookmapOnline || g_bookmapPocPrice <= 0) { clrOut = PNL_LABEL; return "-"; }
+   double offset   = SymbolInfoDouble(_Symbol, SYMBOL_BID) - g_bookmapPrice;
+   double todayPoc = g_bookmapPocPrice + offset;
+   double shift    = todayPoc - g_dpfYestPoc;
+   if(MathAbs(shift) < 0.3) { clrOut = PNL_LABEL; return "NEUTRAL (range)"; }
+   if(shift > 0) { clrOut = PNL_EMERALD; return StringFormat("BULLISH (POC %+.2f dari kemarin)", shift); }
+   clrOut = PNL_ROSE; return StringFormat("BEARISH (POC %+.2f dari kemarin)", shift);
 }
 
 //--- Momentum filter (eksperimen, off by default): skip entry if ADX on the
@@ -4013,6 +4120,11 @@ void WriteSultanStatus()
    color cvdDivClrUnused;
    string cvdDivTextForJson = CvdDivergenceText(cvdDivClrUnused);
    json += StringFormat("\"cvd_divergence\":{\"text\":\"%s\",\"status\":\"%s\"},", cvdDivTextForJson, g_cvdDivStatus);
+   color ivbClrUnused, dpfClrUnused;
+   string ivbTextForJson = IvbText(ivbClrUnused);
+   string dpfTextForJson = DailyProfileFramingText(dpfClrUnused);
+   json += StringFormat("\"ivb\":{\"text\":\"%s\",\"locked\":%s},", ivbTextForJson, g_ivbLocked ? "true" : "false");
+   json += StringFormat("\"daily_profile\":{\"text\":\"%s\"},", dpfTextForJson);
 
    json += "\"countdown\":{";
    json += StringFormat("\"h4\":%d,\"h1\":%d,\"m30\":%d,\"m15\":%d,\"m5\":%d,\"m1\":%d",
@@ -5477,4 +5589,6 @@ void OnTick()
    CheckMomentumEntryTrigger();   // v52.71
    UpdateChainSignal();   // v52.80
    UpdateCvdDivergence();   // v52.82
+   UpdateIVB();   // v52.83
+   UpdateDailyProfileFraming();   // v52.83
 }

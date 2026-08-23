@@ -502,6 +502,19 @@ function render(data) {
                      : cvdDivTxt.startsWith("BULLISH") ? "text-emerald-400" : "text-slate-500";
   set("sig-cvd-div", cvdDivTxt, cvdDivClass);
 
+  // v52.83 - IVB + Daily Profile Framing web port, same passthrough pattern.
+  const ivb = sig.ivb || {};
+  const ivbTxt = ivb.text || "-";
+  const ivbClass = ivbTxt.includes("ATAS") ? "text-emerald-400"
+                  : ivbTxt.includes("BAWAH") ? "text-rose-400" : "text-slate-500";
+  set("sig-ivb", ivbTxt, ivbClass);
+
+  const dpf = sig.daily_profile || {};
+  const dpfTxt = dpf.text || "-";
+  const dpfClass = dpfTxt.startsWith("BULLISH") ? "text-emerald-400"
+                  : dpfTxt.startsWith("BEARISH") ? "text-rose-400" : "text-slate-500";
+  set("sig-daily-profile", dpfTxt, dpfClass);
+
   const cd = sig.countdown || {};
   const cdTxt = [
     ["H4", cd.h4], ["H1", cd.h1], ["M30", cd.m30], ["M15", cd.m15], ["M5", cd.m5], ["M1", cd.m1],
