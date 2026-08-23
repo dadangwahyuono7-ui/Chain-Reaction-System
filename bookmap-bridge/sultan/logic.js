@@ -494,6 +494,14 @@ function render(data) {
   const chainTxt = chainLayer > 0 ? `${chainDir} #${chainLayer} (aktif)` : "menunggu breakout searah master";
   set("sig-chain-signal", chainTxt, chainLayer > 0 ? dirColorClass(chainDir) : "text-slate-500");
 
+  // v52.82 - CVD Divergence (M5-scoped), EA does the detection+fade timer,
+  // web just displays the same text/status passthrough as everything else.
+  const cvdDiv = sig.cvd_divergence || {};
+  const cvdDivTxt = cvdDiv.text || "-";
+  const cvdDivClass = cvdDivTxt.startsWith("BEARISH") ? "text-rose-400"
+                     : cvdDivTxt.startsWith("BULLISH") ? "text-emerald-400" : "text-slate-500";
+  set("sig-cvd-div", cvdDivTxt, cvdDivClass);
+
   const cd = sig.countdown || {};
   const cdTxt = [
     ["H4", cd.h4], ["H1", cd.h1], ["M30", cd.m30], ["M15", cd.m15], ["M5", cd.m5], ["M1", cd.m1],

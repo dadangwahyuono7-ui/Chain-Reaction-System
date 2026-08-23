@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.81-WEBEXPORT"
+#define EA_VERSION "v52.82-CVDDIVERGENCE"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -1006,6 +1006,10 @@ void UpdatePanel()
    if(g_chainSigLayer > 0) { chainSigTxt = StringFormat("%s #%d (aktif)", g_chainSigMasterDir, g_chainSigLayer); chainSigClr = DirColor(g_chainSigMasterDir); }
    else                    { chainSigTxt = "menunggu breakout searah master"; chainSigClr = PNL_LABEL; }
    PnlRow(x0, y, contentW, "Chain Signal", chainSigTxt, chainSigClr); y += 16;
+
+   color cvdDivClr;
+   string cvdDivTxt = CvdDivergenceText(cvdDivClr);
+   PnlRow(x0, y, contentW, "CVD Divergence", cvdDivTxt, cvdDivClr); y += 16;
 
    color statusClr = (g_cmpStatus == "CF") ? PNL_EMERALD : ((g_cmpStatus == "VR") ? PNL_GOLD : PNL_LABEL);
    PnlRow(x0, y, contentW, "CMP Status", g_cmpStatus, statusClr); y += 18;
@@ -1990,6 +1994,88 @@ string MomentumFootprintText(color &clrOut)
    clrOut = DirColor(dir);
    string strength2 = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
    return StringFormat("%s %s %.1fx", dir, strength2, ratio);
+}
+
+// v52.82 - CVD Divergence detector, M5-scoped (Dadang, from the CVD
+// Divergences infographic he shared: "di M5 bro semua minimal m5 m1 hanya
+// buat pesan" - M5 is the floor, matches the doctrine's own H4/M30/M5-only
+// boundary). Uses the SAME 2-candle V/A-shape swing detector the whole CMP
+// doctrine is already built on (body close, not wick) to find fresh M5
+// swing highs/lows, then checks whether CVD confirmed that swing or not:
+//   - price makes a HIGHER swing high, but CVD's value at that new high is
+//     NOT higher than at the last swing high -> BEARISH divergence
+//     (buy-side exhausted / hidden sell absorption)
+//   - price makes a LOWER swing low, but CVD's value there is NOT lower
+//     than at the last swing low -> BULLISH divergence (sell-side
+//     exhausted / hidden buy absorption)
+// Deliberately does NOT distinguish "exhaustion" vs "absorption" from the
+// infographic - both produce the identical price/CVD signature, the
+// difference is narrative framing, not a separate detectable condition.
+//
+// Dadang floated using this as an INSTANT entry trigger regardless of TF -
+// discussed live, agreed to scope it to M5 and keep it INFORMATIONAL first
+// (same "record first" discipline as every other confluence row tonight),
+// not wired into TryOpen() - needs real data before it's trusted as a
+// trigger.
+string   g_cvdDivLastSwing      = "";    // "HIGH" or "LOW" - kind of the last recorded swing
+double   g_cvdDivLastSwingPx    = 0.0;
+double   g_cvdDivLastSwingCvd   = 0.0;
+string   g_cvdDivStatus         = "-";
+datetime g_cvdDivStatusTime     = 0;
+datetime g_cvdDivLastCheckedBar = 0;
+
+void UpdateCvdDivergence()
+{
+   if(!g_bookmapOnline) return;
+
+   datetime curM5Bar = iTime(_Symbol, PERIOD_M5, 0);
+   if(curM5Bar == g_cvdDivLastCheckedBar) return;   // only re-check once per fresh M5 bar
+   g_cvdDivLastCheckedBar = curM5Bar;
+
+   // bar 2 = two M5 bars ago (fully closed and confirmed, since bar 1 has
+   // already closed after it); bar 1 = the bar that just closed.
+   double o2 = iOpen(_Symbol, PERIOD_M5, 2), c2 = iClose(_Symbol, PERIOD_M5, 2);
+   double o1 = iOpen(_Symbol, PERIOD_M5, 1), c1 = iClose(_Symbol, PERIOD_M5, 1);
+   if(o2 <= 0 || o1 <= 0) return;
+
+   bool isSwingLow  = (c2 < o2) && (c1 > o1);   // bearish then bullish = V-bottom (minor support)
+   bool isSwingHigh = (c2 > o2) && (c1 < o1);   // bullish then bearish = A-top (minor resistance)
+   if(!isSwingLow && !isSwingHigh) return;
+
+   string kind     = isSwingHigh ? "HIGH" : "LOW";
+   double swingPx  = isSwingHigh ? MathMax(c2, o2) : MathMin(c2, o2);   // body-based level, same convention as minor SNR everywhere else
+   double swingCvd = g_bookmapCvd;
+
+   if(g_cvdDivLastSwing == kind)   // only compare against the last swing of the SAME kind
+   {
+      if(kind == "HIGH" && swingPx > g_cvdDivLastSwingPx && swingCvd <= g_cvdDivLastSwingCvd)
+      {
+         g_cvdDivStatus     = "BEARISH (exhaustion)";
+         g_cvdDivStatusTime = TimeCurrent();
+         Print("CVD DIVERGENCE: BEARISH - price HH ", DoubleToString(swingPx, 2),
+               " tapi CVD gak ikut (", DoubleToString(g_cvdDivLastSwingCvd, 0), " -> ", DoubleToString(swingCvd, 0), ")");
+      }
+      else if(kind == "LOW" && swingPx < g_cvdDivLastSwingPx && swingCvd >= g_cvdDivLastSwingCvd)
+      {
+         g_cvdDivStatus     = "BULLISH (exhaustion)";
+         g_cvdDivStatusTime = TimeCurrent();
+         Print("CVD DIVERGENCE: BULLISH - price LL ", DoubleToString(swingPx, 2),
+               " tapi CVD gak ikut (", DoubleToString(g_cvdDivLastSwingCvd, 0), " -> ", DoubleToString(swingCvd, 0), ")");
+      }
+   }
+
+   g_cvdDivLastSwing    = kind;
+   g_cvdDivLastSwingPx  = swingPx;
+   g_cvdDivLastSwingCvd = swingCvd;
+}
+
+string CvdDivergenceText(color &clrOut)
+{
+   if(!g_bookmapOnline || g_cvdDivStatus == "-") { clrOut = PNL_LABEL; return "-"; }
+   long ageSec = (long)(TimeCurrent() - g_cvdDivStatusTime);
+   if(ageSec > 1800) { clrOut = PNL_LABEL; return "-"; }   // fade after 30 min so it never looks falsely "still live"
+   clrOut = (g_cvdDivStatus == "BEARISH (exhaustion)") ? PNL_ROSE : PNL_EMERALD;
+   return StringFormat("%s (%s lalu)", g_cvdDivStatus, TimeAgoText(ageSec));
 }
 
 //--- Momentum filter (eksperimen, off by default): skip entry if ADX on the
@@ -3924,6 +4010,9 @@ void WriteSultanStatus()
    json += StringFormat("\"momentum_m5_bookmap\":{\"text\":\"%s\",\"dir\":\"%s\"},", momBmText, momDir);
    json += StringFormat("\"momentum_m5_footprint\":{\"text\":\"%s\",\"dir\":\"%s\"},", momFpText, momDir);
    json += StringFormat("\"chain_signal\":{\"layer\":%d,\"dir\":\"%s\"},", g_chainSigLayer, g_chainSigMasterDir);
+   color cvdDivClrUnused;
+   string cvdDivTextForJson = CvdDivergenceText(cvdDivClrUnused);
+   json += StringFormat("\"cvd_divergence\":{\"text\":\"%s\",\"status\":\"%s\"},", cvdDivTextForJson, g_cvdDivStatus);
 
    json += "\"countdown\":{";
    json += StringFormat("\"h4\":%d,\"h1\":%d,\"m30\":%d,\"m15\":%d,\"m5\":%d,\"m1\":%d",
@@ -5387,4 +5476,5 @@ void OnTick()
    CheckFusionH1H4Trigger();   // v52.45
    CheckMomentumEntryTrigger();   // v52.71
    UpdateChainSignal();   // v52.80
+   UpdateCvdDivergence();   // v52.82
 }
