@@ -187,3 +187,51 @@ function refreshAll() {
 
 refreshAll();
 setInterval(refreshAll, REFRESH_MS);
+
+// 2026-08-23 - Dadang: "kasih tempat gw pasang api key nya karena nanti
+// kedepan gw akan pasang yang premium juga bro" - settings form, POSTs to
+// sultan_dashboard_server.py's /api/settings/translate which rewrites
+// bookmap-bridge/.env. Collapsed by default, plain JS toggle + fetch.
+(function setupSettingsPanel() {
+  const toggleBtn = document.getElementById("settings-toggle");
+  const body = document.getElementById("settings-body");
+  const chevron = document.getElementById("settings-chevron");
+  if (!toggleBtn) return;
+
+  toggleBtn.addEventListener("click", () => {
+    const hidden = body.classList.toggle("hidden");
+    chevron.innerHTML = hidden ? "tampilkan &#9662;" : "sembunyikan &#9652;";
+  });
+
+  document.getElementById("settings-save").addEventListener("click", async () => {
+    const statusEl = document.getElementById("settings-status");
+    const payload = {
+      api_key: document.getElementById("set-api-key").value.trim(),
+      api_base: document.getElementById("set-api-base").value.trim(),
+      model: document.getElementById("set-model").value.trim(),
+      admin_token: document.getElementById("set-admin-token").value.trim(),
+    };
+    statusEl.textContent = "Menyimpan...";
+    statusEl.className = "text-[10.5px] text-slate-500";
+    try {
+      const res = await fetch("/api/settings/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        statusEl.textContent = `Tersimpan: ${data.saved.join(", ")}`;
+        statusEl.className = "text-[10.5px] text-emerald-400";
+        document.getElementById("set-api-key").value = "";
+        document.getElementById("set-admin-token").value = "";
+      } else {
+        statusEl.textContent = data.error || "Gagal menyimpan";
+        statusEl.className = "text-[10.5px] text-rose-400";
+      }
+    } catch (e) {
+      statusEl.textContent = "Gagal konek ke server: " + String(e);
+      statusEl.className = "text-[10.5px] text-rose-400";
+    }
+  });
+})();

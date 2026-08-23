@@ -46,6 +46,64 @@ SULTAN_STATUS_FILE = os.path.join(MT5_COMMON_FILES_DIR, "sultan_status.json")
 # proxying.
 TODAY_CALENDAR_FILE = os.path.join(MT5_COMMON_FILES_DIR, "today_calendar.json")
 
+# 2026-08-23 - lets news.html's settings form update news_engine.py's
+# translation API key/base/model without touching a file by hand - Dadang:
+# "nanti di web kasih tempat gw pasang api key nya karena nanti kedepan gw
+# akan pasang yang premium juga bro". Same bookmap-bridge/.env news_engine.py
+# already reads every fetch cycle, so a save here takes effect on its next
+# cycle with no restart needed.
+ENV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+ENV_EDITABLE_KEYS = ("TRANSLATE_API_KEY", "TRANSLATE_API_BASE", "TRANSLATE_MODEL")
+
+
+def _read_env_file():
+    env = {}
+    try:
+        with open(ENV_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    env[k.strip()] = v.strip()
+    except FileNotFoundError:
+        pass
+    return env
+
+
+def _write_env_updates(updates: dict):
+    """Rewrites only the matching KEY= lines in-place, preserving every
+    other line (comments, ADMIN_TOKEN, blank lines) exactly as-is - never
+    a full-file regenerate, so nothing about the file's own documentation
+    or unrelated settings gets lost."""
+    try:
+        with open(ENV_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        lines = []
+
+    seen = set()
+    out = []
+    for line in lines:
+        stripped = line.strip()
+        matched_key = None
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            k = stripped.split("=", 1)[0].strip()
+            if k in updates:
+                matched_key = k
+        if matched_key:
+            out.append(f"{matched_key}={updates[matched_key]}\n")
+            seen.add(matched_key)
+        else:
+            out.append(line)
+    for k, v in updates.items():
+        if k not in seen:
+            out.append(f"{k}={v}\n")
+
+    tmp = ENV_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.writelines(out)
+    os.replace(tmp, ENV_FILE)
+
 # 2026-08-19: Dadang wants a friend in Semarang to test the EA on HIS OWN
 # MT5/broker/account ("dia berdiri sendiri bro baca mt5 dia sendiri, hanya
 # data bookmap ikut data gw") - the friend's EA should stay fully independent
@@ -88,6 +146,48 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
         if path in self._INDEX_ALIASES:
             self.path = "/index.html"
         super().do_GET()
+
+    def do_POST(self):
+        path = self.path.split("?")[0]
+        if path == "/api/settings/translate":
+            self._save_translate_settings()
+            return
+        self.send_error(404, "Not found")
+
+    def _json_response(self, status: int, payload: dict):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _save_translate_settings(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except Exception:
+            self._json_response(400, {"ok": False, "error": "Body bukan JSON valid"})
+            return
+
+        env = _read_env_file()
+        admin_token = env.get("ADMIN_TOKEN", "")
+        if not admin_token or body.get("admin_token") != admin_token:
+            self._json_response(403, {"ok": False, "error": "Token admin salah atau belum di-set di .env"})
+            return
+
+        updates = {}
+        for key in ("api_key", "api_base", "model"):
+            val = (body.get(key) or "").strip()
+            if val:
+                updates[{"api_key": "TRANSLATE_API_KEY", "api_base": "TRANSLATE_API_BASE",
+                          "model": "TRANSLATE_MODEL"}[key]] = val
+        if not updates:
+            self._json_response(400, {"ok": False, "error": "Gak ada field yang diisi"})
+            return
+
+        _write_env_updates(updates)
+        self._json_response(200, {"ok": True, "saved": list(updates.keys())})
 
     def _serve_sultan_status(self):
         try:

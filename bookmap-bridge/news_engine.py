@@ -55,15 +55,23 @@ mistake if the terminal happens to be on a different chart.
 2026-08-23 - Dadang: "news narasi bisa lo convert ke bahasa indonesia
 aja gwk bro hahaha." Tried the free unofficial Google Translate
 endpoint first (translate.googleapis.com, no key needed) - it 429'd
-immediately and stayed that way, so rather than build on another
-flaky free service right after the AiTrados lesson, this uses Dadang's
-OWN local Qwen3-8B (llama-server, port 8080 - same production model
-start-qwen3-8b.bat already launches) instead: no external rate limits,
-already his own infra. One batched LLM call per fetch cycle translates
-every headline+summary at once (cheaper than N separate calls), with
-a hard fallback to the original English if the local server is off or
-the response doesn't parse - translation is a nice-to-have here, not
-something this whole feature should break over.
+immediately. Then tried Dadang's local Qwen3-8B (llama-server, port
+8080) - worked, but heavy on the RX580 ("local kan berat bro"). He
+then supplied his own key for a friend's gateway
+(balitechsolution.com, OpenAI-compatible, proxies to several models
+under a "bt/" prefix) - the first model tried (bt/haiku) 401'd
+("Kunci API tidak valid"), which looked like a dead key, but testing
+every model in the account (Dadang: "apa lo udah coba semua curl
+nya") showed 11 of 13 actually work fine - haiku and the router alias
+just aren't included in this free-member-tier key. Settled on
+bt/deepseek-flash: fast (~4s for a full paragraph) and good
+Indonesian quality. Key/base URL read from .env (bookmap-bridge/.env,
+gitignored - see root .gitignore's ".env" / ".env.*" entries, never
+committed to the GitHub backup). One batched LLM call per fetch cycle
+translates every headline+summary at once (cheaper than N separate
+calls), with a hard fallback to the original English if the API call
+fails or the response doesn't parse - translation is a nice-to-have
+here, not something this whole feature should break over.
 """
 
 import json
@@ -78,13 +86,27 @@ FETCH_INTERVAL_SEC = 600   # news doesn't need per-second polling like Bookmap
 HEADLINE_LIMIT = 15
 REQUEST_TIMEOUT_SEC = 10
 
+
+def _load_env():
+    """Tiny .env reader - no new pip dependency for just two values."""
+    env = {}
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    try:
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    env[k.strip()] = v.strip()
+    except FileNotFoundError:
+        pass
+    return env
+
 SULTAN_STATUS_FILE = r"C:\Users\R O V A\AppData\Roaming\MetaQuotes\Terminal\Common\Files\sultan_status.json"
 CONFLUENCE_THRESHOLD_USD = 15.0   # same order of magnitude as the EA's own InpWallSearchRangeUsd
 _PRICE_RE = re.compile(r'\$\s?([\d,]{3,7}(?:\.\d{1,2})?)')
 
-LLAMA_SERVER_URL = "http://127.0.0.1:8080/v1/chat/completions"
-LLAMA_MODEL_NAME = "qwen3-8b"
-LLAMA_TIMEOUT_SEC = 180   # one batched call for the whole headline list - fine against a 600s fetch interval
+TRANSLATE_TIMEOUT_SEC = 60   # one batched call for the whole headline list - deepseek-flash is fast enough this doesn't need llama.cpp's 180s budget
 _ITEM_BLOCK_RE = re.compile(r"===ITEM (\d+)===\s*JUDUL:\s*(.*?)\s*RINGKASAN:\s*(.*?)(?=\s*===ITEM \d+===|\Z)", re.S)
 
 # "OffTheWire" items are generic Reuters/AP wire content (SEC enforcement
@@ -194,14 +216,25 @@ def _find_confluences(levels, zones):
 
 
 def _translate_batch(items):
-    """Translates every item's title+summary to Indonesian in ONE local
-    LLM call, matched back by explicit item index (robust against the
-    model skipping/reordering a block) rather than by list position.
-    Mutates and returns `items` with title_id/summary_id added when
-    translation succeeds; items are left with only their original
-    English on any failure (server off, timeout, bad parse) - logged,
-    never raised, since this must not take the news feed down."""
+    """Translates every item's title+summary to Indonesian in ONE API
+    call (bt/deepseek-flash), matched back by explicit item index
+    (robust against the model skipping/reordering a block) rather than
+    by list position. Mutates and returns `items` with title_id/
+    summary_id added when translation succeeds; items are left with only
+    their original English on any failure (no key configured, API
+    error, timeout, bad parse) - logged, never raised, since this must
+    not take the news feed down."""
     if not items:
+        return items
+    # re-read .env every cycle (not once at import) so a key saved via
+    # news.html's settings form takes effect on the NEXT fetch without
+    # needing this long-lived process restarted.
+    env = _load_env()
+    api_base = env.get("TRANSLATE_API_BASE", "").rstrip("/")
+    api_key = env.get("TRANSLATE_API_KEY", "")
+    model = env.get("TRANSLATE_MODEL", "bt/deepseek-flash")
+    if not api_key or not api_base:
+        print("[News Engine] translation skipped: TRANSLATE_API_KEY/TRANSLATE_API_BASE not set in .env", flush=True)
         return items
 
     blocks = "\n\n".join(
@@ -217,7 +250,7 @@ def _translate_batch(items):
         "tambahan apapun di luar format itu."
     )
     payload = {
-        "model": LLAMA_MODEL_NAME,
+        "model": model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": blocks},
@@ -226,15 +259,18 @@ def _translate_batch(items):
     }
     try:
         req = urllib.request.Request(
-            LLAMA_SERVER_URL,
+            f"{api_base}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
         )
-        with urllib.request.urlopen(req, timeout=LLAMA_TIMEOUT_SEC) as resp:
+        with urllib.request.urlopen(req, timeout=TRANSLATE_TIMEOUT_SEC) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         text = data["choices"][0]["message"]["content"]
     except Exception as e:
-        print(f"[News Engine] translation skipped (local LLM at {LLAMA_SERVER_URL} unavailable): {e}", flush=True)
+        print(f"[News Engine] translation skipped (API at {api_base} unavailable/errored): {e}", flush=True)
         return items
 
     translated_count = 0
