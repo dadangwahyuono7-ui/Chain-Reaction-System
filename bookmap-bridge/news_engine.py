@@ -36,6 +36,21 @@ analysis - deliberately simple and inspectable (every article shows
 which words tripped its tag) rather than a black box. Good enough for
 "which way is the recent headline mix leaning", not a substitute for
 Dadang's own reading of the actual articles.
+
+2026-08-23 - Dadang: "dia bisa nyesuain data kita dari bookmap atau
+gimana bro... area SNR global yang di tandai fund manager kan biasanya
+di news juga ada." Added _extract_price_levels()/_load_our_zones()/
+_find_confluences(): pulls dollar figures mentioned in a headline
+("gold smashes $4,600/oz") and checks them against OUR OWN live
+POC/VAH/VAL/wall levels (straight from the EA's sultan_status.json,
+the same file this whole session already reads for debugging) - when
+a level the market/media is watching lines up with a level our own
+order-flow data independently flagged, that agreement is worth more
+than either signal alone. Reads XAUUSD's OWN scale (sultan_status.json
+prices are already offset-converted by the EA), no GCZ6 basis
+conversion needed here. Gated on symbol containing "XAU" so a gold
+headline's price never gets compared against, say, a BTCUSD wall by
+mistake if the terminal happens to be on a different chart.
 """
 
 import json
@@ -49,6 +64,10 @@ OUTPUT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sultan",
 FETCH_INTERVAL_SEC = 600   # news doesn't need per-second polling like Bookmap
 HEADLINE_LIMIT = 15
 REQUEST_TIMEOUT_SEC = 10
+
+SULTAN_STATUS_FILE = r"C:\Users\R O V A\AppData\Roaming\MetaQuotes\Terminal\Common\Files\sultan_status.json"
+CONFLUENCE_THRESHOLD_USD = 15.0   # same order of magnitude as the EA's own InpWallSearchRangeUsd
+_PRICE_RE = re.compile(r'\$\s?([\d,]{3,7}(?:\.\d{1,2})?)')
 
 # "OffTheWire" items are generic Reuters/AP wire content (SEC enforcement
 # actions, power-grid costs, etc.) that happens to get syndicated into
@@ -99,8 +118,66 @@ def _tag_tone(title: str, summary: str):
     return "NEUTRAL", []
 
 
+def _extract_price_levels(text: str):
+    levels = []
+    for m in _PRICE_RE.finditer(text or ""):
+        try:
+            val = float(m.group(1).replace(",", ""))
+        except ValueError:
+            continue
+        if 500 <= val <= 20000:   # plausible XAUUSD order of magnitude - filters out stray "$5 million"-type mentions that slipped past the OffTheWire filter
+            levels.append(val)
+    return levels
+
+
+def _load_our_zones():
+    """Our own live POC/VAH/VAL + wall levels, straight from the EA's
+    sultan_status.json. Returns None (not []) when the terminal isn't on
+    XAUUSD or the file can't be read - callers should skip the
+    cross-reference entirely in that case, not silently compare against
+    an empty/wrong-symbol zone list."""
+    try:
+        with open(SULTAN_STATUS_FILE, "r", encoding="ascii") as f:
+            data = json.load(f)
+    except Exception:
+        return None
+    if "XAU" not in (data.get("symbol") or "").upper():
+        return None
+
+    zones = []
+    loc = data.get("location") or {}
+    for key, label in (("poc", "POC"), ("vah", "VAH"), ("val", "VAL")):
+        v = loc.get(key)
+        if v:
+            zones.append((float(v), label))
+    liq = data.get("liquidity") or {}
+    for px, sz in (liq.get("bid_ladder") or []):
+        if px:
+            zones.append((float(px), f"Bid Wall {sz:.0f}L"))
+    for px, sz in (liq.get("ask_ladder") or []):
+        if px:
+            zones.append((float(px), f"Ask Wall {sz:.0f}L"))
+    return zones
+
+
+def _find_confluences(levels, zones):
+    if not levels or not zones:
+        return []
+    hits = []
+    for lvl in levels:
+        best = None
+        for zpx, zlabel in zones:
+            d = abs(lvl - zpx)
+            if d <= CONFLUENCE_THRESHOLD_USD and (best is None or d < best[2]):
+                best = (zpx, zlabel, d)
+        if best:
+            hits.append({"level": lvl, "matched_price": best[0], "matched_label": best[1], "distance": round(best[2], 2)})
+    return hits
+
+
 def fetch_kitco_headlines(limit: int = HEADLINE_LIMIT):
     raw_items = [it for it in _fetch_next_data() if it and it.get("__typename") in INCLUDED_TYPES]
+    our_zones = _load_our_zones()   # one snapshot per fetch cycle - all items in this batch compare against the same read
 
     items = []
     for it in raw_items[:limit]:
@@ -108,6 +185,7 @@ def fetch_kitco_headlines(limit: int = HEADLINE_LIMIT):
         summary = (it.get("teaserSnippet") or "").strip()
         tone, hits = _tag_tone(title, summary)
         url_alias = it.get("urlAlias") or ""
+        levels = _extract_price_levels(title + " " + summary)
         items.append({
             "title": title,
             "summary": summary,
@@ -116,6 +194,8 @@ def fetch_kitco_headlines(limit: int = HEADLINE_LIMIT):
             "link": f"https://www.kitco.com{url_alias}" if url_alias else "",
             "tone": tone,
             "tone_hits": hits,
+            "mentioned_levels": levels,
+            "confluences": _find_confluences(levels, our_zones) if our_zones else [],
         })
     return items
 

@@ -67,6 +67,15 @@ function verdictChipClass(verdict) {
   return "chip-neu";
 }
 
+function buildConfluenceNote(items) {
+  const withConfluence = items.filter((it) => (it.confluences || []).length > 0);
+  if (withConfluence.length === 0) {
+    return "Belum ada level yang disebut berita match sama zona Bookmap kita saat ini (atau EA lagi gak di XAUUSD).";
+  }
+  const parts = withConfluence.flatMap((it) => it.confluences.map((c) => `$${c.level}&asymp;${c.matched_label}`));
+  return `&#127919; ${withConfluence.length} berita nyebut level yang SEJALAN sama zona kita sendiri: ${parts.join(", ")}.`;
+}
+
 function buildVerdictText(conclusion) {
   const { bullish_count, bearish_count, neutral_count, total, verdict } = conclusion;
   if (total === 0) return "Belum ada headline yang kebaca.";
@@ -92,6 +101,8 @@ async function loadNews() {
     badgeEl.textContent = conclusion.verdict;
     badgeEl.className = "chip " + verdictChipClass(conclusion.verdict);
     textEl.textContent = buildVerdictText(conclusion);
+    const confluenceEl = document.getElementById("confluence-note");
+    if (confluenceEl) confluenceEl.innerHTML = buildConfluenceNote(items);
 
     if (data.updated_ts) {
       const d = new Date(data.updated_ts * 1000);
@@ -106,6 +117,19 @@ async function loadNews() {
     listEl.innerHTML = items.map((it) => {
       const toneChip = it.tone === "BULLISH" ? "chip-bull" : it.tone === "BEARISH" ? "chip-bear" : "chip-neu";
       const timeLabel = fmtNewsTime(it.created_at);
+      const confluences = it.confluences || [];
+      // 2026-08-23 - Dadang: "bisa nyesuain data kita dari bookmap...
+      // area SNR yang di tandai fund manager kan biasanya di news juga
+      // ada" - a level the market/media is watching that also lines up
+      // with OUR OWN POC/VAH/VAL/wall data (from news_engine.py's
+      // _find_confluences), shown as its own callout so it stands out
+      // from a plain headline.
+      const confluenceHtml = confluences.length
+        ? `<div class="mt-1.5 flex flex-wrap gap-1.5">${confluences.map((c) => `
+            <span class="chip" style="background:rgba(217,180,101,0.14); color:#d9b465;" title="Berita nyebut $${c.level} - deket sama ${escapeHtml(c.matched_label)} kita di ${c.matched_price} (jarak ${c.distance})">
+              &#127919; $${c.level} &asymp; ${escapeHtml(c.matched_label)} @ ${c.matched_price}
+            </span>`).join("")}</div>`
+        : "";
       return `
         <div class="news-item">
           <a href="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer">
@@ -117,6 +141,7 @@ async function loadNews() {
             <div class="news-title text-[13px] text-slate-100 font-medium leading-snug transition-colors">${escapeHtml(it.title)}</div>
             <div class="text-[11px] text-slate-400 mt-1 leading-relaxed">${escapeHtml(it.summary)}</div>
           </a>
+          ${confluenceHtml}
         </div>`;
     }).join("");
   } catch (e) {
