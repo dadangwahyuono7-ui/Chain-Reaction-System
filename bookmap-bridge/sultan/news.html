@@ -69,7 +69,14 @@
         <span class="text-[9px] font-mono text-slate-600" id="analysis-model-label">-</span>
       </div>
       <p class="text-[13.5px] text-slate-200 leading-relaxed" id="ai-analysis-text">Memuat...</p>
-      <p class="text-[9px] text-slate-600 mt-2 italic">*Ini konteks buat bantu mikir, BUKAN sinyal entry - keputusan tetap di lo bro.</p>
+      <!-- 2026-08-25 - Dadang explicitly OK'd naming actual watch-zones here
+           ("zona pantau aja untuk entri buy atau sell area nya publik gak
+           apa2 yang penting ada warning") on the condition this warning
+           stays visible - a static banner, not left to the model to
+           remember to add every single generation. -->
+      <div class="mt-2.5 rounded-md border border-amber-500/30 bg-amber-500/[0.07] px-2.5 py-1.5">
+        <p class="text-[9.5px] text-amber-300/90 leading-snug">&#9888;&#65039; <span class="font-semibold">BUKAN SARAN FINANSIAL.</span> Zona pantau di atas hasil bacaan otomatis (berita + katalis + sistem sendiri), bukan perintah entri. Keputusan &amp; risiko sepenuhnya di tangan Anda.</p>
+      </div>
     </section>
 
     <!-- KESIMPULAN (nada headline + konfluensi - stat pendukung, bukan headline lagi) -->
@@ -89,7 +96,7 @@
       <section class="panel p-4">
         <div class="flex items-center justify-between mb-3">
           <span class="section-title">Katalis Hari Ini &middot; Flag Merah</span>
-          <span class="text-[9px] font-mono text-slate-600">Semua Impact &middot; Semua Currency</span>
+          <span class="text-[9px] font-mono text-slate-600">Semua Impact &middot; USD &amp; Gold</span>
         </div>
         <div id="calendar-list" class="space-y-2">
           <p class="text-[11px] text-slate-500">Memuat...</p>

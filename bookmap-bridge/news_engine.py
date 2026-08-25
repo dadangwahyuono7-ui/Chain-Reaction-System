@@ -362,22 +362,45 @@ def generate_ai_analysis(items, calendar_events, engine_ctx):
     # jargon (this text can end up on a page reachable from
     # trade.dadangchatai.com, same reasoning as never putting explicit
     # BUY/SELL signals on a public surface).
+    #
+    # 2026-08-25 - Dadang, after I flagged that "public page" reasoning
+    # against naming actual entry zones: "beri NOT FINANSIAL ADVICE bro
+    # zona pantau aja untuk entri buy atau sell area nya publik gak apa2
+    # yang penting ada warning" - staying public is his explicit call, on
+    # the condition of a disclaimer (added as a static banner in
+    # news.html/index.html, not left to the model to remember every
+    # time) + framing as a WATCH ZONE grounded in real levels the engine
+    # already computed (POC/VAH/VAL/walls), never a bare command. Also,
+    # separately: "lo buat ai jadi master analis bukan ai yang cupu" -
+    # upgraded from a deliberately hedged, will-never-commit voice to one
+    # that takes an actual position when the data supports it.
     system = (
-        "Kamu analis pasar gold (XAUUSD) buat Commander Dadang, seorang trader retail yang "
-        "membangun sistem sendiri bernama 'Chain Reaction System' - doktrin ini membaca arah "
-        "market lewat rangkaian breakout candle-close yang saling mengonfirmasi di beberapa "
-        "timeframe berurutan (H4 jadi master arah, lalu dikonfirmasi ulang di timeframe lebih "
-        "kecil sebelum dipercaya) - sebuah 'reaksi berantai' breakout, bukan indikator "
-        "tradisional. JANGAN PERNAH sebut istilah teknis mentah (jangan tulis 'CMP', 'VR', "
-        "atau 'CF') - selalu bahasakan sebagai 'doktrin Chain Reaction System' atau 'rangkaian "
-        "konfirmasi timeframe miliknya' saja. Sapa dia 'Commander Dadang', bukan 'Dang' atau "
-        "nama santai lain. Tugasmu: baca berita gold terbaru + kalender event hari ini + apa "
-        "yang lagi dibaca sistem Chain Reaction miliknya sendiri, terus kasih analisa singkat "
-        "dalam Bahasa Indonesia casual (gak usah formal banget) yang JUJUR - kalau berita dan "
-        "sistemnya SEPAKAT bilang aja, kalau BERTENTANGAN bilang juga apa adanya, jangan "
-        "dipaksain nyambung. Ini BUKAN sinyal entry - jangan pernah bilang 'BUY sekarang' atau "
-        "kasih harga TP/SL. Ini konteks buat bantu dia mikir, keputusan tetap di dia. Maksimal "
-        "4-5 kalimat, jangan bertele-tele."
+        "Kamu MASTER ANALIS pasar gold (XAUUSD) buat Commander Dadang, seorang trader retail "
+        "yang membangun sistem sendiri bernama 'Chain Reaction System' - doktrin ini membaca "
+        "arah market lewat rangkaian breakout candle-close yang saling mengonfirmasi di "
+        "beberapa timeframe berurutan (H4 jadi master arah, lalu dikonfirmasi ulang di "
+        "timeframe lebih kecil sebelum dipercaya) - sebuah 'reaksi berantai' breakout, bukan "
+        "indikator tradisional. JANGAN PERNAH sebut istilah teknis mentah (jangan tulis 'CMP', "
+        "'VR', atau 'CF') - selalu bahasakan sebagai 'doktrin Chain Reaction System' atau "
+        "'rangkaian konfirmasi timeframe miliknya' saja. Sapa dia 'Commander Dadang', bukan "
+        "'Dang' atau nama santai lain.\n\n"
+        "Kamu BUKAN AI yang plin-plan/cupu yang selalu jawab aman tanpa berani nentuin sikap - "
+        "sebagai master analis, kalau data (berita + katalis + bacaan sistemnya sendiri + "
+        "level POC/VAH/VAL/wall dari order-flow) cukup jelas condong ke satu arah, KATAKAN "
+        "TEGAS condong kemana, jangan cuma \"bisa naik bisa turun\". Kamu BOLEH sebutkan ZONA "
+        "PANTAU harga spesifik untuk potensi BUY atau SELL (contoh: 'zona pantau BUY di "
+        "sekitar 4590-4600' atau 'kalau turun tembus 4570, waspada zona SELL') - TAPI angka "
+        "zona itu HARUS diturunkan dari level yang beneran ada di data (POC/VAH/VAL/wall/harga "
+        "sekarang), jangan pernah karang angka baru yang gak ada dasarnya. Framing-nya WAJIB "
+        "'zona pantau'/'area yang diawasi sistem', BUKAN perintah eksekusi langsung seperti "
+        "'BUY SEKARANG' atau 'ENTRI DI...', dan JANGAN kasih TP/SL spesifik (itu keputusan "
+        "manajemen risiko dia sendiri, bukan urusanmu). Kalau berita dan sistemnya BERTENTANGAN "
+        "arah, bilang apa adanya, jangan dipaksain nyambung.\n\n"
+        "Tugasmu: baca berita gold terbaru + kalender event hari ini + apa yang lagi dibaca "
+        "sistem Chain Reaction miliknya sendiri, kasih analisa dalam Bahasa Indonesia casual "
+        "(gak usah formal banget) yang JUJUR dan TEGAS. WAJIB tutup analisamu dengan satu "
+        "kalimat singkat: ini bukan saran finansial, keputusan dan risiko tetap di tangan "
+        "Commander Dadang. Maksimal 6-7 kalimat total, jangan bertele-tele."
     )
     user = (
         f"BERITA GOLD TERBARU:\n{news_block}\n\n"
@@ -489,19 +512,24 @@ def build_conclusion(items):
 
 
 def _fetch_ff_calendar():
-    """ALL impact levels (Low/Medium/High) in a rolling ~today window (6h
-    back for recently-released ones still worth context, 24h forward),
-    across ALL currencies. Returns the SAME shape the frontend already
-    expects (name/time/released/mins_until) plus bonus fields (country/
-    forecast/previous/impact) - old renderer keeps working untouched,
-    news.js can pick up the extras when it wants to.
+    """ALL impact levels (Low/Medium/High), but only USD + "All" (broad
+    global) events - not every currency - in a rolling ~today window (6h
+    back for recently-released ones still worth context, 24h forward).
+    Returns the SAME shape the frontend already expects (name/time/
+    released/mins_until) plus bonus fields (country/forecast/previous/
+    impact) - old renderer keeps working untouched, news.js can pick up
+    the extras when it wants to.
 
-    2026-08-25: was HIGH-only at first, but Dadang: "sebaiknya bukan
-    hanya yang merah deh biar web nya rame bro jadi kuning oren dan merah
-    juga masukin aja" - a week only has ~9 High-impact events total, so
-    High-only left the box empty most of the day. Frontend colors the
-    badge per level (Low=kuning, Medium=oren, High=merah) so it stays
-    scannable instead of one undifferentiated wall of events.
+    2026-08-25: was HIGH-only at first, then briefly ALL currencies, both
+    per Dadang's own asks - "sebaiknya bukan hanya yang merah deh biar
+    web nya rame bro jadi kuning oren dan merah juga masukin aja" (all
+    impact levels, box was empty most of the day with High-only), then
+    immediately narrowed back on currency: "masud gw flagnya yang ada
+    hubungan sama usd dan gold aja lainya gak usah bro yang gak ada
+    korelasinya buat apa" - EUR/JPY/AUD-specific prints don't move
+    XAUUSD, so showing them was just noise. Frontend colors the badge
+    per impact level (Low=kuning, Medium=oren, High=merah) so it stays
+    scannable.
 
     Deliberately NOT a strict "local calendar date" filter - the feed's
     own timestamps are in US Eastern, and this machine runs WIB (UTC+7):
@@ -522,6 +550,19 @@ def _fetch_ff_calendar():
     for it in raw_items:
         impact = (it.get("impact") or "").strip().lower()
         if impact not in ("low", "medium", "high"):
+            continue
+        # 2026-08-25 - Dadang, right after asking for all impact levels:
+        # "masud gw flagnya yang ada hubungan sama usd dan gold aja
+        # lainya gak usah bro yang gak ada korelasinya buat apa" - showing
+        # every currency just made the box noisy with EUR/JPY/AUD prints
+        # that don't move XAUUSD. USD is the direct driver (gold is
+        # quoted in it); "All" covers broad global events (Fed speeches,
+        # Jackson Hole) that aren't tagged to one currency but move the
+        # dollar/gold anyway. Everything else (EUR, JPY, GBP, AUD, CAD,
+        # CHF, NZD, CNY-specific prints) dropped - only matters to gold
+        # through 2-3 steps of indirection, which is what he's rejecting.
+        country = (it.get("country") or "").strip().upper()
+        if country not in ("USD", "ALL"):
             continue
         try:
             ev_time = datetime.datetime.fromisoformat(it["date"]).astimezone()

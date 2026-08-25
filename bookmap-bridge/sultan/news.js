@@ -2,9 +2,13 @@
 // written straight into this sultan/ folder by news_engine.py (no proxy
 // needed) and renders both plus a combined kesimpulan (conclusion).
 // 2026-08-25: calendar source switched from /today_calendar.json (the EA's
-// MT5-native export - USD-only, no forecast/previous) to ForexFactory (all
-// currencies, forecast/previous included, zero EA dependency) - Dadang:
+// MT5-native export - USD-only High-impact-only, no forecast/previous) to
+// ForexFactory (forecast/previous included, zero EA dependency) - Dadang:
 // "calender news kalo bisa lo tarik ke web kita... kerjakan forex faktori".
+// Currency scope settled back to USD + "All" only (not every currency) -
+// "flagnya yang ada hubungan sama usd dan gold aja" - but ALL impact
+// levels now show (not just High), filtering happens server-side in
+// news_engine.py's _fetch_ff_calendar().
 
 const REFRESH_MS = 60000;
 
