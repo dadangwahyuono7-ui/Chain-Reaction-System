@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.87-PANELFIX"
+#define EA_VERSION "v52.88-PANELFIX2"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -1376,13 +1376,37 @@ void UpdatePanel()
                     g_chainLen, g_convGrade), convClr, 13); y += 17;
             PnlTxtB(x0, y, g_convMode + (g_flowMax > 0 ? StringFormat("   flow %d/%d", g_flowScore, g_flowMax) : ""),
                     PNL_LABEL, 10); y += 15;
-            if(g_chainDone != "")
-               { PnlTxtB(x0, y, "sudah: " + g_chainDone, PNL_EMERALD, 10); y += 15; }
-            // Amber + outlined: these are the warnings, so they must not be
-            // the faintest text on the panel - they were, at plain 9px grey.
-            if(g_convAgainst1 != "") { PnlTxtB(x0, y, "lawan: " + g_convAgainst1, C'251,191,36', 10); y += 15; }
-            if(g_convAgainst2 != "") { PnlTxtB(x0, y, "lawan: " + g_convAgainst2, C'251,191,36', 10); y += 15; }
-            if(g_convAgainst3 != "") { PnlTxtB(x0, y, "lawan: " + g_convAgainst3, C'251,191,36', 10); }
+
+            // v52.87: this block's height used to be unconditional (0-4
+            // more lines depending on how many "lawan" reasons fired) while
+            // the footer below sits at a FIXED y - Dadang caught a live
+            // screenshot where a full 3-reason "lawan" stack pushed past
+            // the footer rule and out the bottom of the panel border. Now
+            // it only draws as many lines as actually fit before the
+            // footer, folding whatever doesn't fit into a "+N lagi" tag on
+            // the last visible line instead of drawing past the border.
+            string extraLines[4];
+            int nExtra = 0;
+            if(g_chainDone != "")     extraLines[nExtra++] = "sudah: " + g_chainDone;
+            if(g_convAgainst1 != "")  extraLines[nExtra++] = "lawan: " + g_convAgainst1;
+            if(g_convAgainst2 != "")  extraLines[nExtra++] = "lawan: " + g_convAgainst2;
+            if(g_convAgainst3 != "")  extraLines[nExtra++] = "lawan: " + g_convAgainst3;
+
+            int footerBoundY = oy + PNL_H - 34 - 6;
+            int maxLines = (footerBoundY - y) / 15;
+            if(maxLines < 0) maxLines = 0;
+            int toDraw = MathMin(nExtra, maxLines);
+            for(int i = 0; i < toDraw; i++)
+            {
+               string txt = extraLines[i];
+               int hidden = (i == toDraw - 1) ? (nExtra - toDraw) : 0;
+               if(hidden > 0) txt += StringFormat("  (+%d lagi)", hidden);
+               // Amber + outlined: these are the warnings, so they must not
+               // be the faintest text on the panel - they were, at plain
+               // 9px grey.
+               color lineClr = (StringFind(txt, "lawan:") == 0) ? C'251,191,36' : PNL_EMERALD;
+               PnlTxtB(x0, y, txt, lineClr, 10); y += 15;
+            }
          }
          else
          {
