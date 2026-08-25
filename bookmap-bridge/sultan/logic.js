@@ -740,11 +740,31 @@ async function poll() {
 // slower loop than poll() above - that file only changes once every ~10
 // min, polling it at POLL_MS (800ms) would just be waste.
 const NEWS_POLL_MS = 60000;
+
+function escapeHtmlNews(s) {
+  return (s || "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+// 2026-08-25 - Dadang: "zona penting nya di kasih warna bisa gak bro
+// narasi pentingnya" - same highlight as news.js's highlightZones(), kept
+// as its own local copy since this file and news.js load on separate
+// pages. The AI prompt wraps just the zona-pantau number/range in [[ ]]
+// on purpose so this doesn't have to guess at "zona pantau" phrasing.
+function highlightZonesNews(text) {
+  return escapeHtmlNews(text).replace(
+    /\[\[([^\]]+)\]\]/g,
+    '<span class="font-bold text-amber-300 bg-amber-400/10 px-1 rounded">$1</span>'
+  );
+}
+
 async function pollNewsAnalysis() {
   try {
     const res = await fetch("/news_feed.json?t=" + Date.now(), { cache: "no-store" });
     const data = await res.json();
-    set("pulse-analysis-text", data.ai_analysis || "Analisa AI belum tersedia.");
+    const el = document.getElementById("pulse-analysis-text");
+    if (el) el.innerHTML = highlightZonesNews(data.ai_analysis || "Analisa AI belum tersedia.");
   } catch (e) {
     // non-fatal - main dashboard's own data keeps flowing via poll() regardless
   } finally {

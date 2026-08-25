@@ -18,6 +18,21 @@ function escapeHtml(s) {
   }[c]));
 }
 
+// 2026-08-25 - Dadang: "zona penting nya di kasih warna bisa gak bro
+// narasi pentingnya" - the AI prompt (news_engine.py's generate_ai_
+// analysis()) now wraps just the zona-pantau number/range in [[ ]]
+// markers on purpose, specifically so this can highlight it without
+// having to guess/regex-hunt for "zona pantau" phrasing that might vary.
+// Escape the WHOLE text first (never trust AI output as raw HTML), THEN
+// replace the marker on the already-escaped string - safe either way
+// since [ and ] aren't HTML-special characters.
+function highlightZones(text) {
+  return escapeHtml(text).replace(
+    /\[\[([^\]]+)\]\]/g,
+    '<span class="font-bold text-amber-300 bg-amber-400/10 px-1 rounded">$1</span>'
+  );
+}
+
 function fmtMinsUntil(mins) {
   if (mins == null || mins < 0) return "-";
   const h = Math.floor(mins / 60);
@@ -130,7 +145,7 @@ async function loadNews() {
     if (confluenceEl) confluenceEl.innerHTML = buildConfluenceNote(items);
 
     const analysisEl = document.getElementById("ai-analysis-text");
-    if (analysisEl) analysisEl.textContent = data.ai_analysis || "Analisa AI belum tersedia.";
+    if (analysisEl) analysisEl.innerHTML = highlightZones(data.ai_analysis || "Analisa AI belum tersedia.");
 
     if (data.updated_ts) {
       const d = new Date(data.updated_ts * 1000);
