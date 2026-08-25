@@ -215,12 +215,17 @@ function render(data) {
   // 1. MARKET REGIME
   const regime = data.regime || {};
   const tbody = document.getElementById("regime-tbody");
+  // v52.94 - py-1 (8px/row across 6 TF rows) was the reason this panel
+  // measured 23px taller than its flex-allotted share at 1920x1080 (same
+  // "Signals & Timing" overflow Dadang flagged, just smaller and not the
+  // one he happened to notice). py-0.5 closes it without changing font
+  // size or removing the row dividers.
   tbody.innerHTML = REGIME_ORDER.map(({ key, label }) => {
     const dir = regime[key] || "WAIT";
     return `<tr>
-      <td class="py-1 text-slate-300">${label}</td>
-      <td class="py-1">${dirArrow(dir)}</td>
-      <td class="py-1 font-bold ${dirColorClass(dir)}">${dir}</td>
+      <td class="py-0.5 text-slate-300">${label}</td>
+      <td class="py-0.5">${dirArrow(dir)}</td>
+      <td class="py-0.5 font-bold ${dirColorClass(dir)}">${dir}</td>
     </tr>`;
   }).join("");
   // v52.73c: breakout sound per TF - Dadang: "breakout nya sesuai chain

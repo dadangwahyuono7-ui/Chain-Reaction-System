@@ -69,6 +69,12 @@
       padding: 4.5px 0; border-bottom: 1px solid rgba(148,163,184,0.07);
     }
     .stat-row:last-child { border-bottom: none; }
+    /* v52.94 - Signals & Timing panel only: even after splitting into 2
+       columns it was still ~18px taller than its flex-allotted share at
+       1920x1080 (measured directly, not guessed) - this shaves just
+       enough per-row padding to close that gap without touching every
+       other panel's rhythm. */
+    .stat-row.stat-row-tight { padding: 3px 0; }
     .stat-label {
       font-size: 10.5px; color: #94a3b8; letter-spacing: 0.03em;
     }
@@ -247,28 +253,38 @@
         <div class="flex items-center space-x-2 mb-2 shrink-0">
           <span class="num-ring">7</span><span class="section-title">Signals &amp; Timing</span>
         </div>
-        <div class="stat-row"><span class="stat-label">Barrier</span><span class="stat-value text-amber-400 text-[10.5px]" id="sig-barrier">-</span></div>
-        <div class="stat-row"><span class="stat-label">Fusion H1/H4</span><span class="stat-value text-slate-100 text-[10px]" id="sig-fusion">-</span></div>
-        <div class="stat-row"><span class="stat-label">Momentum (M5)</span><span class="stat-value text-slate-100" id="sig-momentum">-</span></div>
-        <!-- v52.81 - EA had these 3 rows already (Momentum M5 Bookmap/
-             Footprint, Chain Signal), web dashboard didn't - Dadang: "lo
-             kerjakan ke web nya, carikan lokasi yang pas jangan merusak
-             yang sudah ada." Same stat-row style/sizing as every row above,
-             no new section needed - this panel already scrolls
-             (overflow-y-auto on the <section>) so 3 more compact rows
-             don't re-introduce the pre-v52.59 overflow problem. -->
-        <div class="stat-row"><span class="stat-label">Momentum M5 Bookmap</span><span class="stat-value text-slate-100" id="sig-momentum-bookmap">-</span></div>
-        <div class="stat-row"><span class="stat-label">Momentum M5 Footprint</span><span class="stat-value text-slate-100" id="sig-momentum-footprint">-</span></div>
-        <div class="stat-row"><span class="stat-label">Chain Signal</span><span class="stat-value text-slate-100" id="sig-chain-signal">-</span></div>
-        <div class="stat-row"><span class="stat-label">CVD Divergence</span><span class="stat-value text-slate-100" id="sig-cvd-div">-</span></div>
-        <div class="stat-row"><span class="stat-label">IVB (30min)</span><span class="stat-value text-slate-100 text-[10px]" id="sig-ivb">-</span></div>
-        <div class="stat-row"><span class="stat-label">Daily Profile</span><span class="stat-value text-slate-100 text-[10px]" id="sig-daily-profile">-</span></div>
-        <!-- v52.84 - Volume Node (HVN/LVN) + Reload Level, from the Pavlovic/
-             Fabio bootcamp material - same EA-computes-web-displays passthrough
-             pattern as every row above. -->
-        <div class="stat-row"><span class="stat-label">Volume Node</span><span class="stat-value text-slate-100 text-[10px]" id="sig-volume-node">-</span></div>
-        <div class="stat-row"><span class="stat-label">Reload Level</span><span class="stat-value text-slate-100 text-[10px]" id="sig-reload-level">-</span></div>
-        <div class="stat-row"><span class="stat-label">Candle Close In</span><span class="stat-value text-slate-300 text-[9.5px] font-mono" id="sig-countdown">-</span></div>
+        <!-- v52.94 - this was a single vertical stack of stat-rows that grew
+             by 1-3 rows almost every session (v52.59, 81, 82, 83, 84) without
+             ever revisiting the layout - by the time it hit 11 rows it no
+             longer fit this panel's flex-share of the column at normal
+             zoom/resolution. Dadang: "harus saya kecilin ke 50% baru
+             keliatan ternyata" (had to zoom the WHOLE PAGE out to 50% just
+             to see the bottom rows), then "tuliasn web dan katalisnya jadi
+             kecil banget" once he did - zooming out to fit one tall panel
+             shrinks everything else too. Real fix: split into the SAME
+             2-column grid pattern every other multi-row panel here already
+             uses (Market Regime, Liquidity) instead of one long column -
+             same content, roughly half the vertical footprint, no zoom
+             workaround needed. -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Barrier</span><span class="stat-value text-amber-400 text-[10.5px]" id="sig-barrier">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Fusion H1/H4</span><span class="stat-value text-slate-100 text-[10px]" id="sig-fusion">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Momentum (M5)</span><span class="stat-value text-slate-100" id="sig-momentum">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Momentum M5 Bookmap</span><span class="stat-value text-slate-100" id="sig-momentum-bookmap">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Momentum M5 Footprint</span><span class="stat-value text-slate-100" id="sig-momentum-footprint">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Chain Signal</span><span class="stat-value text-slate-100" id="sig-chain-signal">-</span></div>
+          </div>
+          <div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">CVD Divergence</span><span class="stat-value text-slate-100 text-[10px]" id="sig-cvd-div">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">IVB (30min)</span><span class="stat-value text-slate-100 text-[10px]" id="sig-ivb">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Daily Profile</span><span class="stat-value text-slate-100 text-[10px]" id="sig-daily-profile">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Volume Node</span><span class="stat-value text-slate-100 text-[10px]" id="sig-volume-node">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Reload Level</span><span class="stat-value text-slate-100 text-[10px]" id="sig-reload-level">-</span></div>
+          </div>
+        </div>
+        <div class="gold-rule my-1 shrink-0"></div>
+        <div class="stat-row stat-row-tight"><span class="stat-label">Candle Close In</span><span class="stat-value text-slate-300 text-[9.5px] font-mono" id="sig-countdown">-</span></div>
       </section>
 
     </div>
