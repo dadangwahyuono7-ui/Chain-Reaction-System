@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.90-MOMSIMPLIFY"
+#define EA_VERSION "v52.91-FOOTERFLOAT"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -1378,16 +1378,18 @@ void UpdatePanel()
                     PNL_LABEL, 10); y += 15;
 
             // v52.87 tried capping this block's line count against the
-            // fixed footer, but that could zero it out entirely on a busy
-            // snapshot (lots of conditional rows above eating the budget)
-            // - Dadang: "ilang chain gw", the "sudah:" progress line (the
-            // actual chain) vanished completely, which is worse than the
-            // original overflow. v52.88: instead of hiding lines, MERGE
-            // all "lawan" reasons onto one compact line (·-separated) so
-            // this block needs at most 2 extra lines instead of up to 4,
-            // and "sudah" (the chain itself) always gets first claim on
-            // whatever room is left - only the lawan line gets dropped in
-            // the rare case space is still too tight for both.
+            // fixed footer, but that zeroed it out entirely on a busy
+            // snapshot ("ilang chain gw" - the "sudah:" line vanished).
+            // v52.88 merged "lawan" reasons onto one compact line to need
+            // less room. v52.91: the real fix - Dadang's screenshot showed
+            // the footer's OWN rule line drawn straight through the RANTAI
+            // header text, because the fixed footerY assumed less content
+            // above it than a fully-loaded Bookmap-LIVE snapshot actually
+            // draws. The footer below is now positioned dynamically off
+            // the real cursor position instead of a fixed offset, so it
+            // can never land on top of this block again - which means
+            // this block no longer needs to self-limit against a fixed
+            // boundary at all. Always draws both lines when present.
             string sudahLine = (g_chainDone != "") ? "sudah: " + g_chainDone : "";
             string lawanLine = "";
             if(g_convAgainst1 != "") lawanLine = g_convAgainst1;
@@ -1395,15 +1397,14 @@ void UpdatePanel()
             if(g_convAgainst3 != "") lawanLine += (lawanLine != "" ? " · " : "") + g_convAgainst3;
             if(lawanLine != "") lawanLine = "lawan: " + lawanLine;
 
-            int footerBoundY = oy + PNL_H - 34 - 4;
             g_panelCanvas.FontSet(PNL_FONT, 10, PNL_WEIGHT_BOLD);
-            if(sudahLine != "" && y + 15 <= footerBoundY)
+            if(sudahLine != "")
             {
                while(StringLen(sudahLine) > 8 && g_panelCanvas.TextWidth(sudahLine) > contentW)
                   sudahLine = StringSubstr(sudahLine, 0, StringLen(sudahLine) - 2) + "…";
                PnlTxtB(x0, y, sudahLine, PNL_EMERALD, 10); y += 15;
             }
-            if(lawanLine != "" && y + 15 <= footerBoundY)
+            if(lawanLine != "")
             {
                // Amber + outlined: these are the warnings, so they must not
                // be the faintest text on the panel - they were, at plain
@@ -1437,7 +1438,15 @@ void UpdatePanel()
    // v44.1: the system name moved to the panel HEADER (InpPanelName is now
    // "CHAIN REACTION SYSTEM" - Dadang: "sistem gw dari awal namanya chain
    // reaction system"), so the footer no longer repeats it; just the byline.
-   int footerY = oy + PNL_H - 34;
+   // v52.91: pinning it to a FIXED offset assumed the content above always
+   // fit within PNL_H - on a fully-loaded Bookmap-LIVE snapshot (every
+   // optional row on at once) it doesn't, and Dadang caught a screenshot
+   // of this footer's own rule line drawn straight through the RANTAI
+   // chain text instead of below it. Now takes whichever is LOWER: the
+   // usual fixed slot (unchanged in the normal case), or just past
+   // wherever content actually ended (busy case) - so the footer can
+   // slide down but can never again land on top of real content.
+   int footerY = (int)MathMax(oy + PNL_H - 34, y + 8);
    PnlRule(x0, footerY, contentW);
    PnlTxtB(x0 + contentW / 2, footerY + 12, "by " + InpOwnerName, PNL_LABEL, 10, TA_CENTER | TA_TOP);
 
