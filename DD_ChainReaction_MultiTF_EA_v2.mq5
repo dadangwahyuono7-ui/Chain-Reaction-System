@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.86-CATALYST"
+#define EA_VERSION "v52.87-PANELFIX"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -936,10 +936,25 @@ void PnlTxtB(int x, int y, string s, color clr, int size = 14, uint anchor = TA_
 
 void PnlRule(int x, int y, int w) { g_panelCanvas.FillRectangle(x, y, x + w, y + 1, ColorToARGB(PNL_RULE, 255)); }
 
+// v52.87 - Dadang, chart screenshot: "panel masih berantakan banyak yang
+// keluar kotak" - the value column is a FIXED pixel width (colW -
+// PNL_VALUE_COL), but every row's text was hand-length-guessed against it
+// (character-count math, not actual rendered pixels) - wrong more than
+// once already (IVB alone needed fixing twice). This measures the value's
+// REAL rendered width with the same font/size/weight it's about to be
+// drawn with (CCanvas::TextWidth(), after the matching FontSet() call)
+// and shortens with an ellipsis if it would overflow the panel's own
+// right edge - a structural backstop so this bug class can't recur no
+// matter what future row gets added or how long a price/value grows.
 void PnlRow(int x, int y, int colW, string label, string value, color valueClr)
 {
    PnlTxtB(x, y, label, PNL_LABEL, 11);
-   PnlTxtB(x + PNL_VALUE_COL, y - 1, value, valueClr, 13);
+   int valueX = x + PNL_VALUE_COL;
+   int maxW = (x + colW) - valueX;
+   g_panelCanvas.FontSet(PNL_FONT, 13, PNL_WEIGHT_BOLD);
+   while(StringLen(value) > 3 && g_panelCanvas.TextWidth(value) > maxW)
+      value = StringSubstr(value, 0, StringLen(value) - 2) + "…";
+   PnlTxtB(valueX, y - 1, value, valueClr, 13);
 }
 
 //--- same as PnlRow() but with a small colored accent bar to the left,
@@ -1988,7 +2003,7 @@ string MomentumBookmapText(color &clrOut)
    if(!agrees)
    {
       clrOut = C'251,191,36';   // amber - same "caution/conflict" tone as ARMED/pending states elsewhere, not a direction color
-      return StringFormat("%s vs CVD LAWAN (%+.0f)", dir, cvdDelta);
+      return StringFormat("%s LAWAN CVD%+.0f", dir, cvdDelta);
    }
    clrOut = DirColor(dir);
    string strength = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
@@ -2044,7 +2059,7 @@ string MomentumFootprintText(color &clrOut)
    if(!agrees)
    {
       clrOut = C'251,191,36';
-      return StringFormat("%s vs FOOTPRINT LAWAN (%+.0f)", dir, deltaMove);
+      return StringFormat("%s LAWAN FP%+.0f", dir, deltaMove);
    }
    clrOut = DirColor(dir);
    string strength2 = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
@@ -2184,18 +2199,19 @@ void UpdateIVB()
 
 string IvbText(color &clrOut)
 {
-   // v52.83 fix - Dadang caught this live: original text ("77006.45 -
-   // 77308.04 (di BAWAH - imbalance)", ~43 chars) overflowed the panel's
-   // value column, unlike every other row's shorter format. Shortened to
-   // "<STATUS> <low>-<high>" (~23 chars), same info, fits alongside the
-   // rest of the panel.
+   // v52.83 fix shortened "77006.45 - 77308.04 (di BAWAH - imbalance)"
+   // (~43 chars) to "<STATUS> <low>-<high>" (~21-22 chars) - still too
+   // wide once actually measured in pixels (v52.87: PnlRow() now measures
+   // real rendered width instead of guessing off character count, which
+   // is how this got caught). Switched to distance-past-the-boundary
+   // instead of the raw range - shorter, and arguably more useful anyway
+   // (how far outside IVB price has moved matters more once you already
+   // know which side it's on).
    if(!g_ivbLocked) { clrOut = PNL_LABEL; return "belum kebentuk"; }
    double cur = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   string statusTxt;
-   if(cur > g_ivbHigh)      { clrOut = PNL_EMERALD; statusTxt = "ATAS"; }
-   else if(cur < g_ivbLow)  { clrOut = PNL_ROSE;    statusTxt = "BAWAH"; }
-   else                     { clrOut = PNL_LABEL;   statusTxt = "DALAM"; }
-   return StringFormat("%s %.2f-%.2f", statusTxt, g_ivbLow, g_ivbHigh);
+   if(cur > g_ivbHigh)      { clrOut = PNL_EMERALD; return StringFormat("ATAS %+.2f", cur - g_ivbHigh); }
+   else if(cur < g_ivbLow)  { clrOut = PNL_ROSE;    return StringFormat("BAWAH %+.2f", cur - g_ivbLow); }
+   clrOut = PNL_LABEL; return "DALAM";
 }
 
 // v52.83 - Daily Profile Framing: compare TODAY's Value Area/POC against
@@ -2234,9 +2250,9 @@ string DailyProfileFramingText(color &clrOut)
    double offset   = SymbolInfoDouble(_Symbol, SYMBOL_BID) - g_bookmapPrice;
    double todayPoc = g_bookmapPocPrice + offset;
    double shift    = todayPoc - g_dpfYestPoc;
-   if(MathAbs(shift) < 0.3) { clrOut = PNL_LABEL; return "NEUTRAL (range)"; }
-   if(shift > 0) { clrOut = PNL_EMERALD; return StringFormat("BULLISH (POC %+.2f dari kemarin)", shift); }
-   clrOut = PNL_ROSE; return StringFormat("BEARISH (POC %+.2f dari kemarin)", shift);
+   if(MathAbs(shift) < 0.3) { clrOut = PNL_LABEL; return "NEUTRAL"; }
+   if(shift > 0) { clrOut = PNL_EMERALD; return StringFormat("BULLISH POC%+.2f", shift); }
+   clrOut = PNL_ROSE; return StringFormat("BEARISH POC%+.2f", shift);
 }
 
 // v52.84 - Volume Node: nearest HVN (harga cenderung MACET/mantul) vs
@@ -2253,8 +2269,8 @@ string VolumeNodeText(color &clrOut)
    double dHvn   = hvnMt5 > 0 ? MathAbs(cur - hvnMt5) : DBL_MAX;
    double dLvn   = lvnMt5 > 0 ? MathAbs(cur - lvnMt5) : DBL_MAX;
    if(dHvn == DBL_MAX && dLvn == DBL_MAX) { clrOut = PNL_LABEL; return "-"; }
-   if(dHvn <= dLvn) { clrOut = PNL_GOLD; return StringFormat("HVN %.2f (macet)", hvnMt5); }
-   clrOut = PNL_SILVER; return StringFormat("LVN %.2f (licin)", lvnMt5);
+   if(dHvn <= dLvn) { clrOut = PNL_GOLD; return StringFormat("HVN %.2f macet", hvnMt5); }
+   clrOut = PNL_SILVER; return StringFormat("LVN %.2f licin", lvnMt5);
 }
 
 // v52.84 - Reload Level: level yang PERNAH dites wall kuat (>=InpReloadMinLot)
@@ -2324,7 +2340,10 @@ string ReloadLevelText(color &clrOut)
    if(bestIdx < 0) { clrOut = PNL_LABEL; return "-"; }
    bool expectSell = g_reloadIsBid[bestIdx];   // dulu wall BID (support) yang jebol ke bawah -> retest = ekspektasi jual lanjut
    clrOut = expectSell ? PNL_ROSE : PNL_EMERALD;
-   return StringFormat("%s @ %.2f (%.0f lot)", expectSell ? "RELOAD JUAL" : "RELOAD BELI", g_reloadPrice[bestIdx], g_reloadSize[bestIdx]);
+   // row label already says "Reload Level" - dropping the redundant word
+   // "RELOAD" from the value itself was the difference between fitting
+   // the panel's value column and overflowing it.
+   return StringFormat("%s @%.2f %.0fL", expectSell ? "JUAL" : "BELI", g_reloadPrice[bestIdx], g_reloadSize[bestIdx]);
 }
 
 //--- Momentum filter (eksperimen, off by default): skip entry if ADX on the
