@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.95-FOOTPRINTM1"
+#define EA_VERSION "v52.96-LIVEMOMENTUM"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -1072,16 +1072,20 @@ void UpdatePanel()
    // below. The word "Entry" here was misleadingly implying action.
    PnlRow(x0, y, contentW, "M5  (CMP)",     g_scalpEntryDir,  DirColor(g_scalpEntryDir));  y += 16;
 
+   // v52.96 - switched to the LiveMomentum* trio (candle-open-anchored,
+   // display-only) - MomentumBreakoutText()/MomentumBookmapText()/
+   // MomentumFootprintText() (CMP-anchored) still exist untouched, still
+   // used by CheckMomentumEntryTrigger() via MomentumRatio() for real entries.
    color momClr;
-   string momTxt = MomentumBreakoutText(InpScalpEntryTF, g_hScalpEntry, momClr);
+   string momTxt = LiveMomentumPriceText(momClr);
    PnlRow(x0, y, contentW, "Momentum (M5)", momTxt, momClr); y += 16;
 
    color momBmClr;
-   string momBmTxt = MomentumBookmapText(momBmClr);
+   string momBmTxt = LiveMomentumBookmapText(momBmClr);
    PnlRow(x0, y, contentW, "Momentum M5 Bookmap", momBmTxt, momBmClr); y += 16;
 
    color momFpClr;
-   string momFpTxt = MomentumFootprintText(momFpClr);
+   string momFpTxt = LiveMomentumFootprintText(momFpClr);
    PnlRow(x0, y, contentW, "Momentum M5 Footprint", momFpTxt, momFpClr); y += 16;
 
    color fpM1Clr;
@@ -2177,6 +2181,133 @@ string FootprintM1Text(color &clrOut)
    if(buyPct <= 40.0) { clrOut = PNL_ROSE; return StringFormat("SELLER MASUK %.0f%%", 100.0 - buyPct); }
    clrOut = PNL_LABEL;
    return StringFormat("NETRAL %.0f/%.0f", buyPct, 100.0 - buyPct);
+}
+
+// ============================================================================
+// v52.96 - LIVE candle-anchored momentum trio, DISPLAY ONLY.
+//
+// Dadang caught that "Momentum (M5)"/"Momentum M5 Bookmap"/"Momentum M5
+// Footprint" above all silently inherited their direction word from
+// ReadCMP() - the SAME lagging status the separate "M5 (CMP)" row already
+// shows - and reset their baseline on a CMP breakout EVENT. So while a
+// candle was visibly ripping upward, all three "Momentum" rows still read
+// SELL because CMP hadn't confirmed the flip yet: "candle kenceng naik
+// datanya merah... kalo ini kita baca histori m5 namanya bukan candle
+// yang jalan." Then, precisely: "ini beda dari cmp... namanya momentum
+// bukan cmp yang kita baca" - Momentum is supposed to be its own signal,
+// not a CMP echo with a ratio number bolted on.
+//
+// Redesigned anchor: the CURRENT (still-forming) M5 candle's own OPEN,
+// not the last confirmed CMP breakout. Direction is simply "is
+// price/CVD/footprint above or below where THIS candle started" -
+// genuinely live, resets every new candle regardless of whether CMP ever
+// flips: "kita baca momentum setiap candle... itu hanya baca momentum
+// candel m5 footprint dan cvd nya."
+//
+// Scope, confirmed explicitly: "bukan buat entri bukan cf bukan cmp
+// bukan lainya" - DISPLAY ONLY. MomentumRatio()/MomentumBreakoutText()/
+// MomentumBookmapText()/MomentumFootprintText() above are UNTOUCHED and
+// still key off CMP exactly as before - CheckMomentumEntryTrigger() (the
+// real InpUseMomentumEntryTrigger entry logic) calls MomentumRatio()
+// directly and never touches anything below this point.
+// ============================================================================
+
+string LiveCandleDir(ENUM_TIMEFRAMES tf, double &distOut)
+{
+   double openPx = iOpen(_Symbol, tf, 0);
+   double curPx  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   distOut = curPx - openPx;
+   if(openPx <= 0)        return "WAIT";
+   if(curPx > openPx)     return "BUY";
+   if(curPx < openPx)     return "SELL";
+   return "WAIT";
+}
+
+string LiveMomentumPriceText(color &clrOut)
+{
+   double dist;
+   string dir = LiveCandleDir(InpScalpEntryTF, dist);
+   if(dir == "WAIT") { clrOut = PNL_LABEL; return "-"; }
+
+   int    n = 10;
+   double sumRange = 0.0;
+   for(int i = 1; i <= n; i++)
+      sumRange += (iHigh(_Symbol, InpScalpEntryTF, i) - iLow(_Symbol, InpScalpEntryTF, i));
+   double avgRange = sumRange / n;
+   if(avgRange <= 0) { clrOut = PNL_LABEL; return "-"; }
+
+   double ratio = MathAbs(dist) / avgRange;
+   clrOut = DirColor(dir);
+   string strength = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
+   return StringFormat("%s %s %.1fx", dir, strength, ratio);
+}
+
+double   g_liveMomBaseCvd = 0.0;
+datetime g_liveMomBarTime = 0;
+
+string LiveMomentumBookmapText(color &clrOut)
+{
+   if(!g_bookmapOnline) { clrOut = PNL_LABEL; return "-"; }
+   double dist;
+   string dir = LiveCandleDir(InpScalpEntryTF, dist);
+   if(dir == "WAIT") { clrOut = PNL_LABEL; return "-"; }
+
+   datetime barTime = iTime(_Symbol, InpScalpEntryTF, 0);
+   if(barTime != g_liveMomBarTime)   // fresh M5 candle - snapshot CVD as the new baseline
+   {
+      g_liveMomBarTime = barTime;
+      g_liveMomBaseCvd = g_bookmapCvd;
+   }
+
+   double cvdDelta = g_bookmapCvd - g_liveMomBaseCvd;
+   bool   agrees   = (dir == "BUY") ? (cvdDelta > 0) : (cvdDelta < 0);
+
+   double sumAbsMove = 0.0; int nMoves = 0;
+   int startIdx = CVD_HIST_LEN - g_cvdSampleCount;
+   for(int i = MathMax(startIdx, 1); i < CVD_HIST_LEN; i++)
+   {
+      sumAbsMove += MathAbs(g_cvdMinuteSamples[i] - g_cvdMinuteSamples[i - 1]);
+      nMoves++;
+   }
+   double avgMove = (nMoves > 0) ? (sumAbsMove / nMoves) : 0.0;
+   if(avgMove <= 0) { clrOut = PNL_LABEL; return "-"; }
+
+   double ratio = MathAbs(cvdDelta) / avgMove;
+   if(!agrees) { clrOut = C'251,191,36'; return dir; }
+   clrOut = DirColor(dir);
+   string strength = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
+   return StringFormat("%s %s %.1fx", dir, strength, ratio);
+}
+
+double   g_liveMomFootBaseDelta = 0.0;
+datetime g_liveMomFootBarTime   = 0;
+
+string LiveMomentumFootprintText(color &clrOut)
+{
+   if(!g_bookmapOnline) { clrOut = PNL_LABEL; return "-"; }
+   double dist;
+   string dir = LiveCandleDir(InpScalpEntryTF, dist);
+   if(dir == "WAIT") { clrOut = PNL_LABEL; return "-"; }
+
+   double curDelta = g_bookmapFootBuyVol - g_bookmapFootSellVol;
+   datetime barTime = iTime(_Symbol, InpScalpEntryTF, 0);
+   if(barTime != g_liveMomFootBarTime)   // fresh M5 candle - snapshot as the new baseline
+   {
+      g_liveMomFootBarTime   = barTime;
+      g_liveMomFootBaseDelta = curDelta;
+   }
+
+   double deltaMove = curDelta - g_liveMomFootBaseDelta;
+   bool   agrees    = (dir == "BUY") ? (deltaMove > 0) : (deltaMove < 0);
+
+   double totalVol = g_bookmapFootBuyVol + g_bookmapFootSellVol;
+   if(totalVol <= 0) { clrOut = PNL_LABEL; return "-"; }
+
+   double ratio = MathAbs(deltaMove) / totalVol * 2.0;
+   if(!agrees) { clrOut = C'251,191,36'; return dir; }
+   clrOut = DirColor(dir);
+   string strength = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
+   return StringFormat("%s %s %.1fx", dir, strength, ratio);
 }
 
 // v52.82 - CVD Divergence detector, M5-scoped (Dadang, from the CVD
@@ -4439,19 +4570,28 @@ void WriteSultanStatus()
    json += StringFormat("\"fusion\":{\"enabled\":%s,\"status\":\"%s\",\"dir\":\"%s\"},",
                          InpUseFusionH1H4 ? "true" : "false", fusionStatus, fusionDirOut);
 
+   // v52.96 - switched to the LiveMomentum* trio (candle-open-anchored,
+   // display-only) so the web dashboard shows the same corrected reading
+   // as the MT5 panel - see the LiveCandleDir()/LiveMomentum* block's
+   // comment above for why (Dadang: "namanya momentum bukan cmp yang kita
+   // baca"). momDir now comes from LiveCandleDir(), NOT ReadCMP() - the
+   // dir exported here only feeds display coloring on the web, never
+   // entry logic (CheckMomentumEntryTrigger() calls MomentumRatio()
+   // directly, untouched by this change).
    color momClrUnused;
-   string momText = MomentumBreakoutText(InpScalpEntryTF, g_hScalpEntry, momClrUnused);
-   datetime momCt; string momDir = ReadCMP(g_hScalpEntry, momCt);
+   string momText = LiveMomentumPriceText(momClrUnused);
+   double momDistUnused; string momDir = LiveCandleDir(InpScalpEntryTF, momDistUnused);
    json += StringFormat("\"momentum_m5\":{\"text\":\"%s\",\"dir\":\"%s\"},", momText, momDir);
 
    // v52.80 - export the 2 Bookmap-confluence momentum rows + Chain Signal
    // for the web dashboard port (Dadang: "kerjakan ke web nya" after
-   // confirming they were EA-only so far). Same dir (momDir, M5's own CMP)
-   // reused for all three - they're all anchored to the same M5 breakout
-   // event, just measured via different data (price/CVD/footprint).
+   // confirming they were EA-only so far). Same dir (momDir, now LIVE
+   // candle direction) reused for all three - they're all anchored to the
+   // same current M5 candle, just measured via different data
+   // (price/CVD/footprint).
    color momBmClrUnused, momFpClrUnused;
-   string momBmText = MomentumBookmapText(momBmClrUnused);
-   string momFpText = MomentumFootprintText(momFpClrUnused);
+   string momBmText = LiveMomentumBookmapText(momBmClrUnused);
+   string momFpText = LiveMomentumFootprintText(momFpClrUnused);
    json += StringFormat("\"momentum_m5_bookmap\":{\"text\":\"%s\",\"dir\":\"%s\"},", momBmText, momDir);
    json += StringFormat("\"momentum_m5_footprint\":{\"text\":\"%s\",\"dir\":\"%s\"},", momFpText, momDir);
    json += StringFormat("\"chain_signal\":{\"layer\":%d,\"dir\":\"%s\"},", g_chainSigLayer, g_chainSigMasterDir);
