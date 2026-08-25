@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.89-PANELFIX3"
+#define EA_VERSION "v52.90-MOMSIMPLIFY"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -2031,8 +2031,14 @@ string MomentumBookmapText(color &clrOut)
    double ratio = MathAbs(cvdDelta) / avgMove;
    if(!agrees)
    {
+      // v52.90 - Dadang: "disana hanya ada buy n sell bukan lawan lawan
+      // bikin pusing aja" - this field's job is to answer "what does CVD
+      // say", full stop; conflict with M5's own direction is now conveyed
+      // ONLY by the amber color (same language as every other conflict
+      // flag on the panel), not by spelling out "LAWAN" + a raw delta
+      // number in the text itself.
       clrOut = C'251,191,36';   // amber - same "caution/conflict" tone as ARMED/pending states elsewhere, not a direction color
-      return StringFormat("%s LAWAN CVD%+.0f", dir, cvdDelta);
+      return dir;
    }
    clrOut = DirColor(dir);
    string strength = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
@@ -2087,8 +2093,11 @@ string MomentumFootprintText(color &clrOut)
    double ratio = MathAbs(deltaMove) / totalVol * 2.0;
    if(!agrees)
    {
+      // v52.90 - same simplification as MomentumBookmapText() above:
+      // "LAWAN FP..." text dropped, conflict now conveyed by amber color
+      // alone so this field only ever reads "BUY" or "SELL".
       clrOut = C'251,191,36';
-      return StringFormat("%s LAWAN FP%+.0f", dir, deltaMove);
+      return dir;
    }
    clrOut = DirColor(dir);
    string strength2 = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
