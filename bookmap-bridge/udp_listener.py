@@ -505,6 +505,16 @@ def write_mt5_bridge_file(result: dict, price: float):
         header += ["footprint_buy_vol", "footprint_sell_vol"]
         row += [f"{fp_now.get('buy_volume', 0.0):.1f}", f"{fp_now.get('sell_volume', 0.0):.1f}"]
 
+        # 2026-08-25 - M1 (time-scoped, ALL prices, not just current) variant
+        # - Dadang: "footprint itu m1 aja dari bookmap nya bro supaya gw tau
+        # dari m1 bahwa seller atau buyer mulain masuk... ketika m5 ijo hanya
+        # nois dari m1 aja gitu". Explicitly informational-only, doesn't gate
+        # or replace the per-price footprint above - an early-warning read at
+        # a finer granularity than the M5-floor everything else respects.
+        fp_m1 = footprint_engine.get_footprint_in_window(60.0, now=now_ts)
+        header += ["footprint_m1_buy_vol", "footprint_m1_sell_vol"]
+        row += [f"{fp_m1.get('buy_volume', 0.0):.1f}", f"{fp_m1.get('sell_volume', 0.0):.1f}"]
+
         # 2026-08-23 - HVN/LVN (High/Low Volume Node) nearest to current
         # price, from the Pavlovic/Fabio bootcamp material Dadang studied:
         # HVN = price tends to stall/bounce (thick, already-defended area),

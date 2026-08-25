@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.93-FULLAUDIT"
+#define EA_VERSION "v52.95-FOOTPRINTM1"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -340,6 +340,8 @@ double   g_bookmapPrice     = 0.0;   // Bookmap's OWN instrument price (GCZ6 fut
 double   g_bookmapCvd       = 0.0;
 double   g_bookmapFootBuyVol  = 0.0;   // v52.79: buy/sell volume traded AT the current Bookmap price (rolling window, see FootprintEngine)
 double   g_bookmapFootSellVol = 0.0;
+double   g_bookmapFootM1BuyVol  = 0.0;   // v52.95: TIME-scoped (last 60s, any price) - early-warning read, informational only
+double   g_bookmapFootM1SellVol = 0.0;
 double   g_bookmapPulsePct  = 0.0;   // = buyer_aggression_pct 0-100 (kekuatan buyer/seller)
 string   g_bookmapAbsorption = "NONE";
 // v29: Volume Profile (session, resets 07:00 WIB like CVD) - POC = price
@@ -1081,6 +1083,10 @@ void UpdatePanel()
    color momFpClr;
    string momFpTxt = MomentumFootprintText(momFpClr);
    PnlRow(x0, y, contentW, "Momentum M5 Footprint", momFpTxt, momFpClr); y += 16;
+
+   color fpM1Clr;
+   string fpM1Txt = FootprintM1Text(fpM1Clr);
+   PnlRow(x0, y, contentW, "Footprint (M1)", fpM1Txt, fpM1Clr); y += 16;
 
    string chainSigTxt; color chainSigClr;
    if(g_chainSigLayer > 0) { chainSigTxt = StringFormat("%s #%d (aktif)", g_chainSigMasterDir, g_chainSigLayer); chainSigClr = DirColor(g_chainSigMasterDir); }
@@ -2146,6 +2152,31 @@ string MomentumFootprintText(color &clrOut)
    clrOut = DirColor(dir);
    string strength2 = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
    return StringFormat("%s %s %.1fx", dir, strength2, ratio);
+}
+
+// v52.95 - "Footprint (M1)": Dadang wants to know from the M1 timeframe
+// specifically whether buyers or sellers are starting to step in, as an
+// early-warning read independent of M5's own CMP state - "supaya gw tau
+// dari m1 bahwa seller atau buyer mulain masuk... ketika m5 ijo hanya
+// nois dari m1 aja gitu" (so I know from M1 that a buyer/seller is
+// starting to come in - so I can tell when an M5 green candle is just
+// noise from M1's perspective). Deliberately NOT anchored to the M5
+// breakout event the way MomentumFootprintText() above is - reads live,
+// all the time, mirroring FootprintEngine.get_footprint_in_window()'s own
+// BUY_DOMINANT/SELL_DOMINANT/NEUTRAL thresholds (60/40%) on the Python
+// side. Purely informational - explicitly agreed with Dadang this doesn't
+// gate or replace anything else on the panel, and doesn't move the M5
+// floor the rest of the system respects.
+string FootprintM1Text(color &clrOut)
+{
+   if(!g_bookmapOnline) { clrOut = PNL_LABEL; return "-"; }
+   double totalVol = g_bookmapFootM1BuyVol + g_bookmapFootM1SellVol;
+   if(totalVol <= 0) { clrOut = PNL_LABEL; return "-"; }
+   double buyPct = g_bookmapFootM1BuyVol / totalVol * 100.0;
+   if(buyPct >= 60.0) { clrOut = PNL_EMERALD; return StringFormat("BUYER MASUK %.0f%%", buyPct); }
+   if(buyPct <= 40.0) { clrOut = PNL_ROSE; return StringFormat("SELLER MASUK %.0f%%", 100.0 - buyPct); }
+   clrOut = PNL_LABEL;
+   return StringFormat("NETRAL %.0f/%.0f", buyPct, 100.0 - buyPct);
 }
 
 // v52.82 - CVD Divergence detector, M5-scoped (Dadang, from the CVD
@@ -3365,7 +3396,7 @@ void ReadBookmapBridge()
    int handle = FileOpen("bookmap_live_signal.csv", FILE_READ | FILE_CSV | FILE_COMMON | FILE_ANSI, ',');
    if(handle == INVALID_HANDLE) { ObjectsDeleteAll(0, WALL_PREFIX); return; }   // bridge never ran, or udp_listener.py isn't up
 
-   int totalFields = 18 + WALL_SLOTS_PER_SIDE * 3 * 2 + 6 + 2 + 4;   // timestamp,price,cvd,pulse,absorption,poc_price,poc_volume,vol_ratio,buy_vol,sell_vol,val,vah,bid_ice_px,bid_ice_sz,bid_ice_ratio,ask_ice_px,ask_ice_sz,ask_ice_ratio + (bid+ask)*(px+sz+age) per slot [v52.14: +age] + sweep_side,sweep_price,sweep_size,sweep_age_sec,sweep_status,sweep_since_sec [v52.26] + footprint_buy_vol,footprint_sell_vol [v52.79] + hvn_price,hvn_volume,lvn_price,lvn_volume [v52.84]
+   int totalFields = 18 + WALL_SLOTS_PER_SIDE * 3 * 2 + 6 + 2 + 2 + 4;   // timestamp,price,cvd,pulse,absorption,poc_price,poc_volume,vol_ratio,buy_vol,sell_vol,val,vah,bid_ice_px,bid_ice_sz,bid_ice_ratio,ask_ice_px,ask_ice_sz,ask_ice_ratio + (bid+ask)*(px+sz+age) per slot [v52.14: +age] + sweep_side,sweep_price,sweep_size,sweep_age_sec,sweep_status,sweep_since_sec [v52.26] + footprint_buy_vol,footprint_sell_vol [v52.79] + footprint_m1_buy_vol,footprint_m1_sell_vol [v52.95] + hvn_price,hvn_volume,lvn_price,lvn_volume [v52.84]
    for(int i = 0; i < totalFields && !FileIsEnding(handle); i++) FileReadString(handle);   // skip header row
    if(FileIsEnding(handle)) { FileClose(handle); ObjectsDeleteAll(0, WALL_PREFIX); return; }
 
@@ -3414,6 +3445,11 @@ void ReadBookmapBridge()
    // pre-computed ratio - matches convention of buy_vol/sell_vol above.
    double footBuyVol  = StringToDouble(FileReadString(handle));
    double footSellVol = StringToDouble(FileReadString(handle));
+   // v52.95: M1 (time-scoped, all prices, last 60s) footprint - Dadang:
+   // "footprint itu m1 aja dari bookmap nya bro supaya gw tau dari m1
+   // bahwa seller atau buyer mulain masuk". Informational only.
+   double footM1BuyVol  = StringToDouble(FileReadString(handle));
+   double footM1SellVol = StringToDouble(FileReadString(handle));
    // v52.84: HVN/LVN nearest to current price - see g_bookmapHvnPrice comment.
    double hvnPrice  = StringToDouble(FileReadString(handle));
    double hvnVolume = StringToDouble(FileReadString(handle));
@@ -3464,6 +3500,8 @@ void ReadBookmapBridge()
    g_bmSweepSinceSec = sweepSinceSec;
    g_bookmapFootBuyVol  = footBuyVol;    // v52.79
    g_bookmapFootSellVol = footSellVol;
+   g_bookmapFootM1BuyVol  = footM1BuyVol;    // v52.95
+   g_bookmapFootM1SellVol = footM1SellVol;
    g_bookmapHvnPrice  = hvnPrice;    // v52.84
    g_bookmapHvnVolume = hvnVolume;
    g_bookmapLvnPrice  = lvnPrice;

@@ -36,6 +36,47 @@ class FootprintEngine:
         while self.trades and self.trades[0][0] < cutoff:
             self.trades.popleft()
 
+    def get_footprint_in_window(self, seconds: float, now: float = None) -> Dict[str, Any]:
+        """TIME-scoped variant (all prices, last N seconds) - the ORIGINAL
+        per-price version above answers "who's aggressing AT this wall";
+        this one answers "who's aggressing RIGHT NOW, at any price" -
+        Dadang, 2026-08-25: "footprint itu m1 aja dari bookmap nya bro
+        supaya gw tau dari m1 bahwa seller atau buyer mulain masuk" - an
+        early-warning read using the same trade log, explicitly informational
+        only (not a gate, not a replacement for the per-price version above).
+        window_sec=120 default already covers a 60s (M1) lookback with room
+        to spare, so no change needed to how long trades are retained."""
+        if now is None:
+            now = time.time()
+        cutoff = now - seconds
+        buy_vol = 0.0
+        sell_vol = 0.0
+        for ts, _price, size, is_buyer_taker in self.trades:
+            if ts < cutoff:
+                continue
+            if is_buyer_taker:
+                buy_vol += size
+            else:
+                sell_vol += size
+
+        total = buy_vol + sell_vol
+        if total <= 0:
+            return {"status": "NEUTRAL", "buy_volume": 0.0, "sell_volume": 0.0, "buy_pct": 50.0}
+
+        buy_pct = buy_vol / total * 100.0
+        if buy_pct >= 60.0:
+            status = "BUY_DOMINANT"
+        elif buy_pct <= 40.0:
+            status = "SELL_DOMINANT"
+        else:
+            status = "NEUTRAL"
+        return {
+            "status": status,
+            "buy_volume": round(buy_vol, 1),
+            "sell_volume": round(sell_vol, 1),
+            "buy_pct": round(buy_pct, 1),
+        }
+
     def get_footprint_at_price(self, target_price: float) -> Dict[str, Any]:
         buy_vol = 0.0
         sell_vol = 0.0
