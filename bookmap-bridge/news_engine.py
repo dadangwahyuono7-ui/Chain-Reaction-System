@@ -299,7 +299,16 @@ def _load_engine_context():
     analysis() so the AI's read is grounded in our actual live signals,
     not just the news in isolation. Returns None if the file can't be
     read (EA not attached, etc.) - the analysis prompt just omits this
-    section rather than failing."""
+    section rather than failing.
+
+    2026-08-25 - Dadang: "AI analisinya masih keliatan blm master...
+    masak gak bisa lo jadikan master analisis beneran" - traced it to
+    this function only ever exposing POC (a single point), never VAH/VAL
+    or nearest wall prices, even though the prompt now explicitly invites
+    the model to name a "zona pantau" range. Can't blame the model for
+    not naming a zone it was never given the boundaries for. Added
+    VAH/VAL + nearest bid/ask wall (same fields _load_our_zones() already
+    reads for the news-confluence feature, just also surfaced here)."""
     try:
         with open(SULTAN_STATUS_FILE, "r", encoding="ascii") as f:
             data = json.load(f)
@@ -308,6 +317,9 @@ def _load_engine_context():
     regime = data.get("regime") or {}
     sig = data.get("signals") or {}
     loc = data.get("location") or {}
+    liq = data.get("liquidity") or {}
+    bid_ladder = liq.get("bid_ladder") or []
+    ask_ladder = liq.get("ask_ladder") or []
     return {
         "symbol": data.get("symbol"),
         "price": data.get("price"),
@@ -317,8 +329,12 @@ def _load_engine_context():
         "chain_signal_dir": (sig.get("chain_signal") or {}).get("dir"),
         "momentum_m5": (sig.get("momentum_m5") or {}).get("text"),
         "poc": loc.get("poc"),
+        "vah": loc.get("vah"),
+        "val": loc.get("val"),
         "va_bias": loc.get("va_bias"),
         "position": loc.get("position"),
+        "nearest_bid_wall": bid_ladder[0] if bid_ladder else None,
+        "nearest_ask_wall": ask_ladder[0] if ask_ladder else None,
     }
 
 
@@ -344,13 +360,27 @@ def generate_ai_analysis(items, calendar_events, engine_ctx):
         cal_lines.append(f"- {ev['name']} ({ev['time']}, {timing})")
     cal_block = "\n".join(cal_lines) or "(tidak ada event flag merah hari ini)"
     if engine_ctx:
+        # 2026-08-25 - VAH/VAL + nearest walls added (see _load_engine_
+        # context()'s comment) - without real boundary numbers the model
+        # had nothing to build an actual "zona pantau" range out of, no
+        # matter how the prompt asked it to.
+        wall_lines = []
+        if engine_ctx.get("nearest_bid_wall"):
+            px, sz = engine_ctx["nearest_bid_wall"]
+            wall_lines.append(f"Bid Wall terdekat: {px} ({sz:.0f} lot)")
+        if engine_ctx.get("nearest_ask_wall"):
+            px, sz = engine_ctx["nearest_ask_wall"]
+            wall_lines.append(f"Ask Wall terdekat: {px} ({sz:.0f} lot)")
+        wall_block = " | ".join(wall_lines) if wall_lines else "(gak ada wall signifikan kebaca)"
         engine_block = (
             f"Simbol: {engine_ctx['symbol']} @ {engine_ctx['price']}\n"
             f"Arah per timeframe: H4={engine_ctx['h4_dir']} / M30={engine_ctx['m30_dir']} / M5={engine_ctx['m5_dir']} "
             f"(kondisi pasar: {engine_ctx['cmp_regime']})\n"
             f"Chain Signal (rangkaian breakout searah terkonfirmasi): layer {engine_ctx['chain_signal_layer']}, arah {engine_ctx['chain_signal_dir']}\n"
             f"Momentum M5: {engine_ctx['momentum_m5']}\n"
-            f"POC: {engine_ctx['poc']} | Posisi harga: {engine_ctx['position']} | VA Bias: {engine_ctx['va_bias']}"
+            f"POC: {engine_ctx['poc']} | VAH: {engine_ctx['vah']} | VAL: {engine_ctx['val']} | "
+            f"Posisi harga: {engine_ctx['position']} | VA Bias: {engine_ctx['va_bias']}\n"
+            f"{wall_block}"
         )
     else:
         engine_block = "(data engine gak kebaca - EA mungkin belum attach atau bukan di XAUUSD)"
