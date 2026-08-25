@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.91-FOOTERFLOAT"
+#define EA_VERSION "v52.92-PANELWIDEN"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -873,7 +873,7 @@ color PNL_BG      = C'14,16,23';
 color PNL_RULE    = C'52,45,30';
 color PNL_SHADOW  = C'0,0,0';
 
-int PNL_PX = 12, PNL_PY = 18, PNL_W = 310, PNL_H = 808;   // v52.16: +18 for "Regime" row. v52.26: +18 for "Wall Sweep" row. v52.35: -34 for removed Win Rate/Closed Profit rows. v52.36: +16 for "VA Bias" row. v52.42: +16 reserved for conditional "VA Retest" row. v52.45: +16 reserved for conditional "Fusion H1/H4" row. v52.47: +16 reserved for conditional "Barrier (H4)" row. v52.49: -48, moved 3 candle-close-countdown rows off-panel onto chart (see UpdateCandleOpenMarker) - panel was too tall to fit on screen. v52.51: -96, removed 6 wall-summary rows (redundant with on-chart wall labels). v52.52: +16 for "Momentum (M5)" row. v52.62: -56 (shrunk Price Pressure gauge -40, merged USD+Efek-ke-Gold into 1 row -16) - recurring "panel kepotong" complaint even after v52.49/v52.51 trims; MT5 clips the canvas at the chart subwindow's own pixel boundary, unrelated to any internal margin, so the only real fix is a shorter total canvas. v52.71: +16 reserved for conditional "Momentum Entry" row (OFF by default, InpUseMomentumEntryTrigger)
+int PNL_PX = 12, PNL_PY = 18, PNL_W = 350, PNL_H = 808;   // v52.16: +18 for "Regime" row. v52.26: +18 for "Wall Sweep" row. v52.35: -34 for removed Win Rate/Closed Profit rows. v52.36: +16 for "VA Bias" row. v52.42: +16 reserved for conditional "VA Retest" row. v52.45: +16 reserved for conditional "Fusion H1/H4" row. v52.47: +16 reserved for conditional "Barrier (H4)" row. v52.49: -48, moved 3 candle-close-countdown rows off-panel onto chart (see UpdateCandleOpenMarker) - panel was too tall to fit on screen. v52.51: -96, removed 6 wall-summary rows (redundant with on-chart wall labels). v52.52: +16 for "Momentum (M5)" row. v52.62: -56 (shrunk Price Pressure gauge -40, merged USD+Efek-ke-Gold into 1 row -16) - recurring "panel kepotong" complaint even after v52.49/v52.51 trims; MT5 clips the canvas at the chart subwindow's own pixel boundary, unrelated to any internal margin, so the only real fix is a shorter total canvas. v52.71: +16 reserved for conditional "Momentum Entry" row (OFF by default, InpUseMomentumEntryTrigger). v52.92: PNL_W 310->350 - Dadang, screenshot of the merged 3-reason "lawan" line running past the right border: "keluar panel bro paqnjangin dikit kotak nya" - WIDTH was never touched by any earlier pass (all the above are HEIGHT), so a long combined line had less horizontal room than it needed.
 int PNL_MARGIN = 14, PNL_RADIUS = 10, PNL_BORDER = 2;
 int PNL_VALUE_COL = 140; // fixed x-offset (from a row's left edge) where the value text starts
 
@@ -950,7 +950,12 @@ void PnlRow(int x, int y, int colW, string label, string value, color valueClr)
 {
    PnlTxtB(x, y, label, PNL_LABEL, 11);
    int valueX = x + PNL_VALUE_COL;
-   int maxW = (x + colW) - valueX;
+   // v52.92: -4px safety margin - PnlTxtB() draws a 2px outline stroke
+   // around the glyph (see its own comment), which bleeds a few pixels
+   // past what TextWidth() reports for the bare glyph. Without this, text
+   // measured as "just barely fits" could still visually clip its outline
+   // past the column edge.
+   int maxW = (x + colW) - valueX - 4;
    g_panelCanvas.FontSet(PNL_FONT, 13, PNL_WEIGHT_BOLD);
    while(StringLen(value) > 3 && g_panelCanvas.TextWidth(value) > maxW)
       value = StringSubstr(value, 0, StringLen(value) - 2) + "…";
@@ -1397,10 +1402,15 @@ void UpdatePanel()
             if(g_convAgainst3 != "") lawanLine += (lawanLine != "" ? " · " : "") + g_convAgainst3;
             if(lawanLine != "") lawanLine = "lawan: " + lawanLine;
 
+            // v52.92: -4px safety margin, same reasoning as PnlRow() - the
+            // outline stroke bleeds a few px past the raw TextWidth().
+            // Dadang caught the 3-reason merged "lawan" line running past
+            // the right border ("keluar panel bro").
+            int lawanMaxW = contentW - 4;
             g_panelCanvas.FontSet(PNL_FONT, 10, PNL_WEIGHT_BOLD);
             if(sudahLine != "")
             {
-               while(StringLen(sudahLine) > 8 && g_panelCanvas.TextWidth(sudahLine) > contentW)
+               while(StringLen(sudahLine) > 8 && g_panelCanvas.TextWidth(sudahLine) > lawanMaxW)
                   sudahLine = StringSubstr(sudahLine, 0, StringLen(sudahLine) - 2) + "…";
                PnlTxtB(x0, y, sudahLine, PNL_EMERALD, 10); y += 15;
             }
@@ -1409,7 +1419,7 @@ void UpdatePanel()
                // Amber + outlined: these are the warnings, so they must not
                // be the faintest text on the panel - they were, at plain
                // 9px grey.
-               while(StringLen(lawanLine) > 8 && g_panelCanvas.TextWidth(lawanLine) > contentW)
+               while(StringLen(lawanLine) > 8 && g_panelCanvas.TextWidth(lawanLine) > lawanMaxW)
                   lawanLine = StringSubstr(lawanLine, 0, StringLen(lawanLine) - 2) + "…";
                PnlTxtB(x0, y, lawanLine, C'251,191,36', 10); y += 15;
             }
