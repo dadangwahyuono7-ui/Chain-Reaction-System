@@ -74,6 +74,7 @@ fails or the response doesn't parse - translation is a nice-to-have
 here, not something this whole feature should break over.
 """
 
+import datetime
 import json
 import os
 import re
@@ -82,6 +83,19 @@ import urllib.request
 
 KITCO_PAGE_URL = "https://www.kitco.com/news/category/mining/rss"
 OUTPUT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sultan", "news_feed.json")
+# 2026-08-25 - ForexFactory calendar, replacing today_calendar.json (the
+# EA's MT5-native export) as the source for the News tab's "Katalis Hari
+# Ini". Dadang: "calender news kalo bisa lo tarik ke web kita" - confirmed
+# feasible 2026-08-24, built now on his go-ahead ("kerjakan forex faktori").
+# Strictly richer than the MT5 calendar it replaces: ALL currencies (not
+# just USD - Jackson Hole/ECB/BOJ-type events matter for gold too), the
+# WHOLE WEEK (not just today), forecast/previous as clean strings, and
+# zero EA/MT5 dependency (works even if the terminal isn't running).
+# No key/signup needed - unofficial but stable, re-verified live 2026-08-25
+# before wiring this in (same "record/verify before trusting" discipline
+# as everything else built from a single feed test this session).
+FF_CALENDAR_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+FF_CALENDAR_OUTPUT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sultan", "ff_calendar.json")
 FETCH_INTERVAL_SEC = 600   # news doesn't need per-second polling like Bookmap
 HEADLINE_LIMIT = 15
 REQUEST_TIMEOUT_SEC = 10
@@ -216,22 +230,8 @@ def _find_confluences(levels, zones):
     return hits
 
 
-def _call_translate_api(system: str, user_content: str, model_key: str, default_model: str):
-    """Shared API caller for both translation and AI analysis - re-reads
-    .env every call (not once at import) so a key/model saved via
-    news.html's settings form takes effect on the NEXT fetch cycle
-    without this long-lived process needing a restart. Returns the
-    response text, or None on any failure (no key configured, API error,
-    timeout) - logged, never raised, since neither caller should take the
-    whole news feed down over this."""
-    env = _load_env()
-    api_base = env.get("TRANSLATE_API_BASE", "").rstrip("/")
-    api_key = env.get("TRANSLATE_API_KEY", "")
-    model = env.get(model_key, default_model)
-    if not api_key or not api_base:
-        print(f"[News Engine] API call skipped: TRANSLATE_API_KEY/TRANSLATE_API_BASE not set in .env", flush=True)
-        return None
-
+def _post_chat_completion(api_base: str, api_key: str, model: str, system: str, user_content: str):
+    """One raw call - raises on any failure, caller decides what to do."""
     payload = {
         "model": model,
         "messages": [
@@ -240,21 +240,56 @@ def _call_translate_api(system: str, user_content: str, model_key: str, default_
         ],
         "temperature": 0.3,
     }
-    try:
-        req = urllib.request.Request(
-            f"{api_base}/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=TRANSLATE_TIMEOUT_SEC) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return data["choices"][0]["message"]["content"]
-    except Exception as e:
-        print(f"[News Engine] API call failed (model={model}, base={api_base}): {e}", flush=True)
+    req = urllib.request.Request(
+        f"{api_base}/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=TRANSLATE_TIMEOUT_SEC) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return data["choices"][0]["message"]["content"]
+
+
+def _call_translate_api(system: str, user_content: str, model_key: str, default_model: str):
+    """Shared API caller for both translation and AI analysis - re-reads
+    .env every call (not once at import) so a key/model saved via
+    news.html's settings form takes effect on the NEXT fetch cycle
+    without this long-lived process needing a restart. Returns the
+    response text, or None on any failure (no key configured, API error,
+    timeout) - logged, never raised, since neither caller should take the
+    whole news feed down over this.
+
+    2026-08-25 - Dadang gave a second ("free, unlimited") key specifically
+    to rotate to if the primary ("pro") key dies - same balitech gateway,
+    same models, just a different account behind it. TRANSLATE_API_KEY_BACKUP
+    is tried automatically whenever the primary call fails for ANY reason
+    (expired key, suspended account like the bt/sonnet4.5-thinking incident
+    earlier tonight, network blip) - same model, same prompt, just a
+    different key. No manual "which key is active" toggle needed."""
+    env = _load_env()
+    api_base = env.get("TRANSLATE_API_BASE", "").rstrip("/")
+    primary_key = env.get("TRANSLATE_API_KEY", "")
+    backup_key = env.get("TRANSLATE_API_KEY_BACKUP", "")
+    model = env.get(model_key, default_model)
+    if not primary_key or not api_base:
+        print(f"[News Engine] API call skipped: TRANSLATE_API_KEY/TRANSLATE_API_BASE not set in .env", flush=True)
         return None
+
+    try:
+        return _post_chat_completion(api_base, primary_key, model, system, user_content)
+    except Exception as e:
+        print(f"[News Engine] primary key API call failed (model={model}, base={api_base}): {e}", flush=True)
+        if not backup_key:
+            return None
+        try:
+            print(f"[News Engine] retrying with backup key (model={model})", flush=True)
+            return _post_chat_completion(api_base, backup_key, model, system, user_content)
+        except Exception as e2:
+            print(f"[News Engine] backup key API call also failed (model={model}, base={api_base}): {e2}", flush=True)
+            return None
 
 
 def _load_engine_context():
@@ -453,12 +488,79 @@ def build_conclusion(items):
     }
 
 
+def _fetch_ff_calendar():
+    """HIGH-impact events in a rolling ~today window (6h back for recently-
+    released ones still worth context, 24h forward), across ALL
+    currencies. Returns the SAME shape the frontend already expects
+    (name/time/released/mins_until) plus bonus fields (country/forecast/
+    previous) - old renderer keeps working untouched, news.js can pick up
+    the extras when it wants to.
+
+    Deliberately NOT a strict "local calendar date" filter - the feed's
+    own timestamps are in US Eastern, and this machine runs WIB (UTC+7):
+    an event ForexFactory lists as "today" in Eastern terms can already be
+    "tomorrow" once converted to local time (confirmed live 2026-08-25 -
+    3 AUD CPI events at 21:30 Eastern landed on the WRONG local date and
+    silently emptied the whole box). A rolling window sidesteps that
+    timezone-boundary trap entirely instead of trying to get the "which
+    calendar day" math exactly right."""
+    req = urllib.request.Request(FF_CALENDAR_URL, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SEC) as resp:
+        raw_items = json.loads(resp.read().decode("utf-8"))
+
+    now = datetime.datetime.now().astimezone()
+    window_start = now - datetime.timedelta(hours=6)
+    window_end = now + datetime.timedelta(hours=24)
+    out = []
+    for it in raw_items:
+        if (it.get("impact") or "").strip().lower() != "high":
+            continue
+        try:
+            ev_time = datetime.datetime.fromisoformat(it["date"]).astimezone()
+        except Exception:
+            continue
+        if not (window_start <= ev_time <= window_end):
+            continue
+        mins_until = int((ev_time - now).total_seconds() // 60)
+        # the rolling window can span into tomorrow (or dip into
+        # yesterday) - bare "HH:MM" would be ambiguous once that happens,
+        # so only drop the date when it actually matches today.
+        time_fmt = "%H:%M" if ev_time.date() == now.date() else "%d/%m %H:%M"
+        out.append({
+            "name": f"{it.get('country', '')} - {it.get('title', '')}".strip(" -"),
+            "time": ev_time.strftime(time_fmt),
+            "released": mins_until <= 0,
+            "mins_until": mins_until,
+            "country": it.get("country", ""),
+            "forecast": it.get("forecast", ""),
+            "previous": it.get("previous", ""),
+        })
+    out.sort(key=lambda e: e["mins_until"])
+    return out
+
+
 def _load_today_calendar():
+    """2026-08-25: was the EA's MT5-native today_calendar.json (USD-only,
+    HIGH-impact-only, no forecast/previous - MQL5's fixed-point scaling
+    made those risky to export). Replaced with ForexFactory (see
+    _fetch_ff_calendar()) - richer and has zero EA dependency. Falls back
+    to the old EA export only if the ForexFactory fetch itself fails
+    (network hiccup, feed moved) rather than leaving the tab empty."""
     try:
-        with open(TODAY_CALENDAR_FILE, "r", encoding="ascii") as f:
-            return json.load(f)
-    except Exception:
-        return []
+        events = _fetch_ff_calendar()
+        os.makedirs(os.path.dirname(FF_CALENDAR_OUTPUT_FILE), exist_ok=True)
+        tmp = FF_CALENDAR_OUTPUT_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(events, f, ensure_ascii=False)
+        os.replace(tmp, FF_CALENDAR_OUTPUT_FILE)
+        return events
+    except Exception as e:
+        print(f"[News Engine] ForexFactory calendar fetch failed, falling back to EA export: {e}", flush=True)
+        try:
+            with open(TODAY_CALENDAR_FILE, "r", encoding="ascii") as f:
+                return json.load(f)
+        except Exception:
+            return []
 
 
 def write_snapshot():

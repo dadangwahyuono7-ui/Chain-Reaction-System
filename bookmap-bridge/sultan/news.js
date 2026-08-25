@@ -1,7 +1,10 @@
-// News & Catalyst tab - polls /today_calendar.json (EA, via
-// sultan_dashboard_server.py proxy) and /news_feed.json (news_engine.py,
-// written straight into this sultan/ folder, no proxy needed) and renders
-// both plus a combined kesimpulan (conclusion).
+// News & Catalyst tab - polls /ff_calendar.json and /news_feed.json, both
+// written straight into this sultan/ folder by news_engine.py (no proxy
+// needed) and renders both plus a combined kesimpulan (conclusion).
+// 2026-08-25: calendar source switched from /today_calendar.json (the EA's
+// MT5-native export - USD-only, no forecast/previous) to ForexFactory (all
+// currencies, forecast/previous included, zero EA dependency) - Dadang:
+// "calender news kalo bisa lo tarik ke web kita... kerjakan forex faktori".
 
 const REFRESH_MS = 60000;
 
@@ -32,10 +35,10 @@ function fmtNewsTime(iso) {
 async function loadCalendar() {
   const el = document.getElementById("calendar-list");
   try {
-    const res = await fetch("/today_calendar.json", { cache: "no-store" });
+    const res = await fetch("/ff_calendar.json", { cache: "no-store" });
     const events = await res.json();
     if (!Array.isArray(events) || events.length === 0) {
-      el.innerHTML = `<p class="text-[11px] text-slate-500">Gak ada event high-impact USD hari ini (atau EA belum kebaca kalender - broker/tester bisa gak nyediain data ini).</p>`;
+      el.innerHTML = `<p class="text-[11px] text-slate-500">Gak ada event high-impact hari ini.</p>`;
       return;
     }
     el.innerHTML = events.map((ev) => {
@@ -44,11 +47,18 @@ async function loadCalendar() {
         ? `<span class="chip chip-neu">SUDAH RILIS</span>`
         : `<span class="chip chip-red-flag">FLAG MERAH</span>`;
       const timing = released ? "" : `<div class="text-[10px] text-slate-500 mt-0.5">${fmtMinsUntil(ev.mins_until)}</div>`;
+      // forecast/previous - bonus fields ForexFactory has that the old
+      // MT5-native calendar couldn't safely export (MQL5 fixed-point
+      // scaling risk on arbitrary numeric strings).
+      const fp = (ev.forecast || ev.previous)
+        ? `<div class="text-[10px] text-slate-600 font-mono mt-0.5">f: ${escapeHtml(ev.forecast || "-")} &middot; p: ${escapeHtml(ev.previous || "-")}</div>`
+        : "";
       return `
         <div class="flex items-start justify-between gap-3 pb-2 border-b border-slate-800/40 last:border-none last:pb-0">
           <div class="min-w-0">
             <div class="text-[12px] text-slate-200 font-medium truncate">${escapeHtml(ev.name)}</div>
             <div class="text-[10px] text-slate-500 font-mono mt-0.5">${escapeHtml(ev.time)}</div>
+            ${fp}
           </div>
           <div class="text-right shrink-0">
             ${badge}
