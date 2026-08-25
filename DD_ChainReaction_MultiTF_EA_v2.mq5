@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.96-LIVEMOMENTUM"
+#define EA_VERSION "v52.97-MOMSTABLE"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -280,6 +280,7 @@ input group "=== PANEL ==="
 input bool                 InpShowPanel    = true;           // Tampilkan dashboard di chart
 input string                InpPanelName    = "CHAIN REACTION SYSTEM"; // Judul panel
 input string                InpOwnerName    = "Commander Dadang Wahyuono"; // Nama pemilik
+input int                   InpMomentumHoldSec = 2;   // v52.97 - detik minimal arah baru harus konsisten sebelum baris Momentum (M5/Bookmap/Footprint) boleh flip tampilannya - saring kedip cepat tanpa nunggu candle close. Dadang: "kalo bolak balik stress"
 
 //======================================================================
 string   g_masterDir        = "WAIT";   // H4
@@ -2223,11 +2224,55 @@ string LiveCandleDir(ENUM_TIMEFRAMES tf, double &distOut)
    return "WAIT";
 }
 
+// v52.97 - Dadang, right after the Live Momentum trio went genuinely
+// tick-by-tick: "sekarang jadi cepet banget gimana cara nya kita tau itu
+// akan bertahan agak lama... kalo bolak balik stress" - fully live meant
+// direction could flicker BUY/SELL/BUY within a couple seconds whenever
+// price chopped right around the candle's open. Requires a NEW direction
+// to be seen consistently for InpMomentumHoldSec before it's actually
+// displayed (filters sub-threshold noise, still far more responsive than
+// waiting a full candle close), and tracks how long the DISPLAYED
+// direction has held so the row can show "(sejak Xs)" - lets him see at a
+// glance whether a read is fresh/shaky or has actually been holding.
+struct MomentumStability
+{
+   string   dir;            // currently DISPLAYED direction
+   datetime dirSince;       // when this displayed direction was confirmed
+   string   pendingDir;     // a candidate new direction, not yet confirmed
+   datetime pendingSince;   // when pendingDir first started being proposed
+};
+
+string StabilizeDir(MomentumStability &st, string rawDir, int &secHeldOut)
+{
+   datetime now = TimeCurrent();
+   if(st.dir == "")   // first read ever - nothing to debounce against yet
+   {
+      st.dir = rawDir; st.dirSince = now; st.pendingDir = ""; st.pendingSince = 0;
+   }
+   else if(rawDir == st.dir)
+   {
+      st.pendingDir = ""; st.pendingSince = 0;   // raw agrees with what's shown - no pending flip
+   }
+   else if(rawDir == "BUY" || rawDir == "SELL")
+   {
+      if(st.pendingDir != rawDir) { st.pendingDir = rawDir; st.pendingSince = now; }
+      else if(now - st.pendingSince >= InpMomentumHoldSec)
+      {
+         st.dir = rawDir; st.dirSince = now; st.pendingDir = ""; st.pendingSince = 0;   // held long enough - flip
+      }
+   }
+   secHeldOut = (int)(now - st.dirSince);
+   return st.dir;
+}
+
+MomentumStability g_stabMomPrice, g_stabMomBookmap, g_stabMomFootprint;
+
 string LiveMomentumPriceText(color &clrOut)
 {
    double dist;
-   string dir = LiveCandleDir(InpScalpEntryTF, dist);
-   if(dir == "WAIT") { clrOut = PNL_LABEL; return "-"; }
+   string rawDir = LiveCandleDir(InpScalpEntryTF, dist);
+   if(rawDir == "WAIT" && g_stabMomPrice.dir == "") { clrOut = PNL_LABEL; return "-"; }
+   int secHeld; string dir = StabilizeDir(g_stabMomPrice, rawDir, secHeld);
 
    int    n = 10;
    double sumRange = 0.0;
@@ -2239,7 +2284,7 @@ string LiveMomentumPriceText(color &clrOut)
    double ratio = MathAbs(dist) / avgRange;
    clrOut = DirColor(dir);
    string strength = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
-   return StringFormat("%s %s %.1fx", dir, strength, ratio);
+   return StringFormat("%s %s %.1fx (%s)", dir, strength, ratio, TimeAgoText(secHeld));
 }
 
 double   g_liveMomBaseCvd = 0.0;
@@ -2249,8 +2294,9 @@ string LiveMomentumBookmapText(color &clrOut)
 {
    if(!g_bookmapOnline) { clrOut = PNL_LABEL; return "-"; }
    double dist;
-   string dir = LiveCandleDir(InpScalpEntryTF, dist);
-   if(dir == "WAIT") { clrOut = PNL_LABEL; return "-"; }
+   string rawDir = LiveCandleDir(InpScalpEntryTF, dist);
+   if(rawDir == "WAIT" && g_stabMomBookmap.dir == "") { clrOut = PNL_LABEL; return "-"; }
+   int secHeld; string dir = StabilizeDir(g_stabMomBookmap, rawDir, secHeld);
 
    datetime barTime = iTime(_Symbol, InpScalpEntryTF, 0);
    if(barTime != g_liveMomBarTime)   // fresh M5 candle - snapshot CVD as the new baseline
@@ -2273,10 +2319,10 @@ string LiveMomentumBookmapText(color &clrOut)
    if(avgMove <= 0) { clrOut = PNL_LABEL; return "-"; }
 
    double ratio = MathAbs(cvdDelta) / avgMove;
-   if(!agrees) { clrOut = C'251,191,36'; return dir; }
+   if(!agrees) { clrOut = C'251,191,36'; return StringFormat("%s (%s)", dir, TimeAgoText(secHeld)); }
    clrOut = DirColor(dir);
    string strength = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
-   return StringFormat("%s %s %.1fx", dir, strength, ratio);
+   return StringFormat("%s %s %.1fx (%s)", dir, strength, ratio, TimeAgoText(secHeld));
 }
 
 double   g_liveMomFootBaseDelta = 0.0;
@@ -2286,8 +2332,9 @@ string LiveMomentumFootprintText(color &clrOut)
 {
    if(!g_bookmapOnline) { clrOut = PNL_LABEL; return "-"; }
    double dist;
-   string dir = LiveCandleDir(InpScalpEntryTF, dist);
-   if(dir == "WAIT") { clrOut = PNL_LABEL; return "-"; }
+   string rawDir = LiveCandleDir(InpScalpEntryTF, dist);
+   if(rawDir == "WAIT" && g_stabMomFootprint.dir == "") { clrOut = PNL_LABEL; return "-"; }
+   int secHeld; string dir = StabilizeDir(g_stabMomFootprint, rawDir, secHeld);
 
    double curDelta = g_bookmapFootBuyVol - g_bookmapFootSellVol;
    datetime barTime = iTime(_Symbol, InpScalpEntryTF, 0);
@@ -2304,10 +2351,10 @@ string LiveMomentumFootprintText(color &clrOut)
    if(totalVol <= 0) { clrOut = PNL_LABEL; return "-"; }
 
    double ratio = MathAbs(deltaMove) / totalVol * 2.0;
-   if(!agrees) { clrOut = C'251,191,36'; return dir; }
+   if(!agrees) { clrOut = C'251,191,36'; return StringFormat("%s (%s)", dir, TimeAgoText(secHeld)); }
    clrOut = DirColor(dir);
    string strength = (ratio >= 1.5) ? "STRONG" : (ratio >= 0.5) ? "NORMAL" : "WEAK";
-   return StringFormat("%s %s %.1fx", dir, strength, ratio);
+   return StringFormat("%s %s %.1fx (%s)", dir, strength, ratio, TimeAgoText(secHeld));
 }
 
 // v52.82 - CVD Divergence detector, M5-scoped (Dadang, from the CVD
@@ -4574,26 +4621,28 @@ void WriteSultanStatus()
    // display-only) so the web dashboard shows the same corrected reading
    // as the MT5 panel - see the LiveCandleDir()/LiveMomentum* block's
    // comment above for why (Dadang: "namanya momentum bukan cmp yang kita
-   // baca"). momDir now comes from LiveCandleDir(), NOT ReadCMP() - the
-   // dir exported here only feeds display coloring on the web, never
-   // entry logic (CheckMomentumEntryTrigger() calls MomentumRatio()
-   // directly, untouched by this change).
+   // baca"). The dir exported here only feeds display coloring on the
+   // web, never entry logic (CheckMomentumEntryTrigger() calls
+   // MomentumRatio() directly, untouched by this change).
+   // v52.97 - each row now reads its OWN g_stabMom*.dir (the STABILIZED
+   // direction, set as a side effect of calling its Live*Text() function
+   // just above) instead of a fresh/shared LiveCandleDir() call - with
+   // debouncing, the 3 rows can legitimately be mid-transition at
+   // different moments, so sharing one dir value across all three (fine
+   // when they were CMP-anchored and always identical) would desync the
+   // web's color from its own text.
    color momClrUnused;
    string momText = LiveMomentumPriceText(momClrUnused);
-   double momDistUnused; string momDir = LiveCandleDir(InpScalpEntryTF, momDistUnused);
-   json += StringFormat("\"momentum_m5\":{\"text\":\"%s\",\"dir\":\"%s\"},", momText, momDir);
+   json += StringFormat("\"momentum_m5\":{\"text\":\"%s\",\"dir\":\"%s\"},", momText, g_stabMomPrice.dir);
 
    // v52.80 - export the 2 Bookmap-confluence momentum rows + Chain Signal
    // for the web dashboard port (Dadang: "kerjakan ke web nya" after
-   // confirming they were EA-only so far). Same dir (momDir, now LIVE
-   // candle direction) reused for all three - they're all anchored to the
-   // same current M5 candle, just measured via different data
-   // (price/CVD/footprint).
+   // confirming they were EA-only so far).
    color momBmClrUnused, momFpClrUnused;
    string momBmText = LiveMomentumBookmapText(momBmClrUnused);
    string momFpText = LiveMomentumFootprintText(momFpClrUnused);
-   json += StringFormat("\"momentum_m5_bookmap\":{\"text\":\"%s\",\"dir\":\"%s\"},", momBmText, momDir);
-   json += StringFormat("\"momentum_m5_footprint\":{\"text\":\"%s\",\"dir\":\"%s\"},", momFpText, momDir);
+   json += StringFormat("\"momentum_m5_bookmap\":{\"text\":\"%s\",\"dir\":\"%s\"},", momBmText, g_stabMomBookmap.dir);
+   json += StringFormat("\"momentum_m5_footprint\":{\"text\":\"%s\",\"dir\":\"%s\"},", momFpText, g_stabMomFootprint.dir);
    json += StringFormat("\"chain_signal\":{\"layer\":%d,\"dir\":\"%s\"},", g_chainSigLayer, g_chainSigMasterDir);
    color cvdDivClrUnused;
    string cvdDivTextForJson = CvdDivergenceText(cvdDivClrUnused);
