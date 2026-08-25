@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v52.92-PANELWIDEN"
+#define EA_VERSION "v52.93-FULLAUDIT"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -873,7 +873,7 @@ color PNL_BG      = C'14,16,23';
 color PNL_RULE    = C'52,45,30';
 color PNL_SHADOW  = C'0,0,0';
 
-int PNL_PX = 12, PNL_PY = 18, PNL_W = 350, PNL_H = 808;   // v52.16: +18 for "Regime" row. v52.26: +18 for "Wall Sweep" row. v52.35: -34 for removed Win Rate/Closed Profit rows. v52.36: +16 for "VA Bias" row. v52.42: +16 reserved for conditional "VA Retest" row. v52.45: +16 reserved for conditional "Fusion H1/H4" row. v52.47: +16 reserved for conditional "Barrier (H4)" row. v52.49: -48, moved 3 candle-close-countdown rows off-panel onto chart (see UpdateCandleOpenMarker) - panel was too tall to fit on screen. v52.51: -96, removed 6 wall-summary rows (redundant with on-chart wall labels). v52.52: +16 for "Momentum (M5)" row. v52.62: -56 (shrunk Price Pressure gauge -40, merged USD+Efek-ke-Gold into 1 row -16) - recurring "panel kepotong" complaint even after v52.49/v52.51 trims; MT5 clips the canvas at the chart subwindow's own pixel boundary, unrelated to any internal margin, so the only real fix is a shorter total canvas. v52.71: +16 reserved for conditional "Momentum Entry" row (OFF by default, InpUseMomentumEntryTrigger). v52.92: PNL_W 310->350 - Dadang, screenshot of the merged 3-reason "lawan" line running past the right border: "keluar panel bro paqnjangin dikit kotak nya" - WIDTH was never touched by any earlier pass (all the above are HEIGHT), so a long combined line had less horizontal room than it needed.
+int PNL_PX = 12, PNL_PY = 18, PNL_W = 350, PNL_H = 900;   // v52.93: 808->900 - actually summed every y+= in UpdatePanel() for the worst realistic case (Bookmap LIVE + VA Retest + Fusion H1/H4 + Barrier + Momentum Entry all ON, mega sweep, USD bias+news, conviction block with sudah+lawan both present - very plausible right now, this branch IS the Fusion H1/H4 feature) and it comes to ~862px before the footer even starts, already past the OLD 808 border and close to blowing through the canvas bitmap's own buffer (bmpH = PNL_H + margins) entirely - not just "outside the gold box" but potentially silently clipped/undrawn. +92 gives real margin instead of another guess. Same "MT5 clips at the chart subwindow's own boundary" risk noted below applies in the other direction now - if this ever reads as too tall on Dadang's screen, that's the trade-off surfacing, distinct from every overflow bug fixed this session. v52.16: +18 for "Regime" row. v52.26: +18 for "Wall Sweep" row. v52.35: -34 for removed Win Rate/Closed Profit rows. v52.36: +16 for "VA Bias" row. v52.42: +16 reserved for conditional "VA Retest" row. v52.45: +16 reserved for conditional "Fusion H1/H4" row. v52.47: +16 reserved for conditional "Barrier (H4)" row. v52.49: -48, moved 3 candle-close-countdown rows off-panel onto chart (see UpdateCandleOpenMarker) - panel was too tall to fit on screen. v52.51: -96, removed 6 wall-summary rows (redundant with on-chart wall labels). v52.52: +16 for "Momentum (M5)" row. v52.62: -56 (shrunk Price Pressure gauge -40, merged USD+Efek-ke-Gold into 1 row -16) - recurring "panel kepotong" complaint even after v52.49/v52.51 trims; MT5 clips the canvas at the chart subwindow's own pixel boundary, unrelated to any internal margin, so the only real fix is a shorter total canvas. v52.71: +16 reserved for conditional "Momentum Entry" row (OFF by default, InpUseMomentumEntryTrigger). v52.92: PNL_W 310->350 - Dadang, screenshot of the merged 3-reason "lawan" line running past the right border: "keluar panel bro paqnjangin dikit kotak nya" - WIDTH was never touched by any earlier pass (all the above are HEIGHT), so a long combined line had less horizontal room than it needed.
 int PNL_MARGIN = 14, PNL_RADIUS = 10, PNL_BORDER = 2;
 int PNL_VALUE_COL = 140; // fixed x-offset (from a row's left edge) where the value text starts
 
@@ -932,6 +932,23 @@ void PnlTxtB(int x, int y, string s, color clr, int size = 14, uint anchor = TA_
          if(dx != 0 || dy != 0)
             g_panelCanvas.TextOut(x + dx, y + dy, s, argbOutline, anchor);
    g_panelCanvas.TextOut(x, y, s, argbFill, anchor);
+}
+
+// v52.93 - full-width audit after 6 straight patch cycles on this panel
+// (Dadang: "kenapa lo jadi bodoh bro" - fair, this should've been one
+// pass from the start). PnlRow() got the TextWidth() truncation
+// structural fix in v52.87/92, but a handful of FULL-WIDTH lines
+// (version/owner header, the RANTAI chain header) are drawn with plain
+// PnlTxtB() straight off x0 and were never given the same protection -
+// both happen to sit close to budget already and get longer as more
+// version suffixes / grade words are added over time. Same pattern as
+// PnlRow(), generalized for any left-anchored full-width line.
+void PnlTxtBFit(int x, int y, string s, color clr, int size, int maxW)
+{
+   g_panelCanvas.FontSet(PNL_FONT, size, PNL_WEIGHT_BOLD);
+   while(StringLen(s) > 8 && g_panelCanvas.TextWidth(s) > maxW - 4)
+      s = StringSubstr(s, 0, StringLen(s) - 2) + "…";
+   PnlTxtB(x, y, s, clr, size);
 }
 
 void PnlRule(int x, int y, int w) { g_panelCanvas.FillRectangle(x, y, x + w, y + 1, ColorToARGB(PNL_RULE, 255)); }
@@ -1029,7 +1046,11 @@ void UpdatePanel()
    int x0 = ox + 14, y = oy + 12, contentW = PNL_W - 28;
 
    PnlTxtB(x0, y, InpPanelName, PNL_GOLD, 14); y += 19;
-   PnlTxtB(x0, y, "[ " + EA_VERSION + " ]  " + InpOwnerName, PNL_LABEL, 10); y += 15;
+   // v52.93: EA_VERSION grows a little every fix pass (each one appends a
+   // new suffix) - not truncation-safe before, so this line was on a slow
+   // collision course with the panel edge purely from version-string
+   // creep, independent of any market data.
+   PnlTxtBFit(x0, y, "[ " + EA_VERSION + " ]  " + InpOwnerName, PNL_LABEL, 10, contentW); y += 15;
    PnlTxtB(x0, y, "Engine: H1-CONFIRMED CUTLOSS", PNL_EMERALD, 10); y += 17;
    PnlRule(x0, y, contentW); y += 10;
 
@@ -1377,8 +1398,12 @@ void UpdatePanel()
          if(g_convDir == "BUY" || g_convDir == "SELL")
          {
             // Chain depth leads (that IS the system), flow confirms on top.
-            PnlTxtB(x0, y, StringFormat("%s  RANTAI %d/6  ·  %s", g_convDir,
-                    g_chainLen, g_convGrade), convClr, 13); y += 17;
+            // v52.93: worst case ("SELL  RANTAI 6/6  ·  TAHAN - NEWS") ran
+            // close enough to the old 282px budget to be a real risk once
+            // any grade word grew - same TextWidth() safety net as
+            // everywhere else on the panel now.
+            PnlTxtBFit(x0, y, StringFormat("%s  RANTAI %d/6  ·  %s", g_convDir,
+                    g_chainLen, g_convGrade), convClr, 13, contentW); y += 17;
             PnlTxtB(x0, y, g_convMode + (g_flowMax > 0 ? StringFormat("   flow %d/%d", g_flowScore, g_flowMax) : ""),
                     PNL_LABEL, 10); y += 15;
 
