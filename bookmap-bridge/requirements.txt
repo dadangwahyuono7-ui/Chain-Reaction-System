@@ -8,3 +8,7 @@
 # folder - this list was built by grepping actual imports, not guessed.
 MetaTrader5==5.0.5735
 pywebview==6.2.1
+# 2026-08-25 - CPU/Memory/Disk usage for the new "System Status" screen in
+# the native Android app (Dadang's own mini-PC monitoring, see his design
+# mockup) - read live in sultan_dashboard_server.py's /api/system_health.
+psutil==7.2.2

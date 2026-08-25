@@ -38,6 +38,7 @@ import time
 import urllib.error
 import urllib.request
 
+import psutil
 import webview
 
 FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sultan")
@@ -193,6 +194,9 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
         if path == "/api/admin/models":
             self._admin_list_models()
             return
+        if path == "/api/system_health":
+            self._system_health()
+            return
         if path in self._INDEX_ALIASES:
             self.path = "/index.html"
         super().do_GET()
@@ -235,6 +239,21 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def _is_logged_in(self):
         return _session_valid(self._get_session_token())
+
+    def _system_health(self):
+        # 2026-08-25 - Dadang's Android app design mockup has a "System
+        # Status" screen with CPU/Memory/Disk Usage (monitoring whatever
+        # PC/mini-PC actually runs this backend) - didn't exist anywhere
+        # in this project before. psutil.cpu_percent(interval=None) reads
+        # against the LAST call (primed once at import time below, see
+        # _PSUTIL_CPU_PRIMED) - non-blocking, unlike passing an interval
+        # here which would stall this request for that many seconds.
+        disk = psutil.disk_usage(os.path.abspath(__file__)[:3] or "C:\\")
+        self._json_response(200, {
+            "cpu_pct": round(psutil.cpu_percent(interval=None), 1),
+            "memory_pct": round(psutil.virtual_memory().percent, 1),
+            "disk_pct": round(disk.percent, 1),
+        })
 
     def _admin_status(self):
         env = _read_env_file()
@@ -471,6 +490,10 @@ class ThreadedHTTPServer(socketserver.ThreadingTCPServer):
 
 
 def start_server():
+    # priming call for _system_health()'s psutil.cpu_percent(interval=None) -
+    # the first-ever call always returns a meaningless 0.0, subsequent calls
+    # measure against the previous call's timestamp instead.
+    psutil.cpu_percent(interval=None)
     with ThreadedHTTPServer(("0.0.0.0", PORT), SultanRequestHandler) as httpd:
         httpd.serve_forever()
 
