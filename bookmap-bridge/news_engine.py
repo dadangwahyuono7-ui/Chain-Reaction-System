@@ -489,12 +489,19 @@ def build_conclusion(items):
 
 
 def _fetch_ff_calendar():
-    """HIGH-impact events in a rolling ~today window (6h back for recently-
-    released ones still worth context, 24h forward), across ALL
-    currencies. Returns the SAME shape the frontend already expects
-    (name/time/released/mins_until) plus bonus fields (country/forecast/
-    previous) - old renderer keeps working untouched, news.js can pick up
-    the extras when it wants to.
+    """ALL impact levels (Low/Medium/High) in a rolling ~today window (6h
+    back for recently-released ones still worth context, 24h forward),
+    across ALL currencies. Returns the SAME shape the frontend already
+    expects (name/time/released/mins_until) plus bonus fields (country/
+    forecast/previous/impact) - old renderer keeps working untouched,
+    news.js can pick up the extras when it wants to.
+
+    2026-08-25: was HIGH-only at first, but Dadang: "sebaiknya bukan
+    hanya yang merah deh biar web nya rame bro jadi kuning oren dan merah
+    juga masukin aja" - a week only has ~9 High-impact events total, so
+    High-only left the box empty most of the day. Frontend colors the
+    badge per level (Low=kuning, Medium=oren, High=merah) so it stays
+    scannable instead of one undifferentiated wall of events.
 
     Deliberately NOT a strict "local calendar date" filter - the feed's
     own timestamps are in US Eastern, and this machine runs WIB (UTC+7):
@@ -513,7 +520,8 @@ def _fetch_ff_calendar():
     window_end = now + datetime.timedelta(hours=24)
     out = []
     for it in raw_items:
-        if (it.get("impact") or "").strip().lower() != "high":
+        impact = (it.get("impact") or "").strip().lower()
+        if impact not in ("low", "medium", "high"):
             continue
         try:
             ev_time = datetime.datetime.fromisoformat(it["date"]).astimezone()
@@ -534,8 +542,13 @@ def _fetch_ff_calendar():
             "country": it.get("country", ""),
             "forecast": it.get("forecast", ""),
             "previous": it.get("previous", ""),
+            "impact": impact,
         })
-    out.sort(key=lambda e: e["mins_until"])
+    # High first among simultaneous/near-simultaneous events, then soonest -
+    # a High 10 minutes out is more worth seeing above the fold than a Low
+    # 2 minutes out once "rame" means dozens of rows instead of a handful.
+    impact_rank = {"high": 0, "medium": 1, "low": 2}
+    out.sort(key=lambda e: (e["mins_until"] // 30, impact_rank.get(e["impact"], 3), e["mins_until"]))
     return out
 
 

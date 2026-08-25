@@ -32,20 +32,31 @@ function fmtNewsTime(iso) {
   }
 }
 
+// 2026-08-25 - Dadang: "sebaiknya bukan hanya yang merah deh biar web
+// nya rame bro jadi kuning oren dan merah juga masukin aja" - all 3
+// ForexFactory impact levels now come through (was High/merah-only),
+// each keeping its own flag color instead of one undifferentiated list.
+const IMPACT_FLAG = {
+  high:   { cls: "chip-red-flag",    label: "FLAG MERAH" },
+  medium: { cls: "chip-orange-flag", label: "FLAG ORANGE" },
+  low:    { cls: "chip-yellow-flag", label: "FLAG KUNING" },
+};
+
 async function loadCalendar() {
   const el = document.getElementById("calendar-list");
   try {
     const res = await fetch("/ff_calendar.json", { cache: "no-store" });
     const events = await res.json();
     if (!Array.isArray(events) || events.length === 0) {
-      el.innerHTML = `<p class="text-[11px] text-slate-500">Gak ada event high-impact hari ini.</p>`;
+      el.innerHTML = `<p class="text-[11px] text-slate-500">Gak ada event ekonomi dalam 24 jam ke depan.</p>`;
       return;
     }
     el.innerHTML = events.map((ev) => {
       const released = !!ev.released;
+      const flag = IMPACT_FLAG[ev.impact] || IMPACT_FLAG.low;
       const badge = released
         ? `<span class="chip chip-neu">SUDAH RILIS</span>`
-        : `<span class="chip chip-red-flag">FLAG MERAH</span>`;
+        : `<span class="chip ${flag.cls}">${flag.label}</span>`;
       const timing = released ? "" : `<div class="text-[10px] text-slate-500 mt-0.5">${fmtMinsUntil(ev.mins_until)}</div>`;
       // forecast/previous - bonus fields ForexFactory has that the old
       // MT5-native calendar couldn't safely export (MQL5 fixed-point
