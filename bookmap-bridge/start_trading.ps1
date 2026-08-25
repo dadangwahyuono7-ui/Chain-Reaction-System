@@ -50,7 +50,7 @@ Write-Host "============================================"
 # dijalanin berkali-kali) menghilangkan seluruh kelas masalah itu.
 Write-Host "[0] Bersihin sisa proses lama..."
 Get-CimInstance Win32_Process -Filter "name='python.exe' or name='pythonw.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -match 'udp_listener|dashboard_web|sultan_dashboard_server|tunnel_gate' } |
+    Where-Object { $_.CommandLine -match 'udp_listener|dashboard_web|sultan_dashboard_server|tunnel_gate|news_engine' } |
     ForEach-Object {
         Write-Host "    stop PID $($_.ProcessId)"
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
@@ -66,9 +66,17 @@ Write-Host "[1/3] UDP Listener - core engine (hidden, background)..."
 Start-Process "$venvPython" -ArgumentList "udp_listener.py" -WorkingDirectory "$bridge" -WindowStyle Hidden -RedirectStandardOutput "$bridge\udp_listener.log" -RedirectStandardError "$bridge\udp_listener_err.log"
 Start-Sleep -Seconds 3
 
-Write-Host "[2/3] Sultan Sniper Engine Dashboard (window bakal nongol, maximized)..."
+Write-Host "[2/4] Sultan Sniper Engine Dashboard (window bakal nongol, maximized)..."
 Start-Process "$venvPythonW" -ArgumentList "sultan_dashboard_server.py" -WorkingDirectory "$bridge" -RedirectStandardOutput "$bridge\sultan_dashboard.log" -RedirectStandardError "$bridge\sultan_dashboard_err.log"
 Start-Sleep -Seconds 3
+
+# 2026-08-25: this was never in here - it was added straight from a live
+# session with `python news_engine.py` and nothing else ever restarted it.
+# After a reboot it just silently never came back (found frozen at ~32h
+# stale when Dadang asked why the News tab's AI wasn't analyzing anymore).
+Write-Host "[3/4] News & Catalyst engine (hidden, background)..."
+Start-Process "$venvPython" -ArgumentList "news_engine.py" -WorkingDirectory "$bridge" -WindowStyle Hidden -RedirectStandardOutput "$bridge\news_engine.log" -RedirectStandardError "$bridge\news_engine_err.log"
+Start-Sleep -Seconds 2
 
 # 2026-08-14: akses dari luar rumah. Dadang: "web ini akan aktif ketika gw
 # aktifin aja bukan on 24 jam, jadi masukin ke start gw supaya bareng jalan
@@ -77,7 +85,7 @@ Start-Sleep -Seconds 3
 # Tanpa password (keputusan Dadang: akun demo). tunnel_gate.py masih ada di
 # folder ini kalau suatu saat mau dipasang lagi - arahin config.yml ke 8767
 # terus jalanin gate-nya sebelum baris cloudflared di bawah.
-Write-Host "[3/3] Cloudflare Tunnel -> https://trade.dadangchatai.com/dashboard ..."
+Write-Host "[4/4] Cloudflare Tunnel -> https://trade.dadangchatai.com/dashboard ..."
 # 2026-08-20: was a single hardcoded path - only ever worked if cloudflared
 # happened to be installed at that exact spot. Check PATH first (works for
 # any install method: winget, choco, manual), then the two common manual-
@@ -115,6 +123,7 @@ Write-Host ""
 Write-Host "  Log kalau mau cek error:"
 Write-Host "    $bridge\udp_listener.log"
 Write-Host "    $bridge\sultan_dashboard.log"
+Write-Host "    $bridge\news_engine.log"
 Write-Host "    $bridge\cloudflared.log"
 Write-Host ""
 Write-Host "  MASIH MANUAL (gak bisa diotomatisin dari sini):"

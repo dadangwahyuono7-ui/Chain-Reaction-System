@@ -1,13 +1,14 @@
 # Chain Reaction - stop the background processes started by start_trading.ps1
-# (udp_listener.py, sultan_dashboard_server.py, cloudflared).
+# (udp_listener.py, sultan_dashboard_server.py, news_engine.py, cloudflared).
 # Does NOT touch MT5 or Bookmap - those you close yourself.
 #
 # 2026-08-20: target list was stale - tv_poll.mjs (TradingView, retired
 # 2026-08-11) and dashboard_web.py (removed from start_trading.ps1 same day
 # as this fix) were still listed while sultan_dashboard_server.py (the one
 # actually started now) was missing entirely.
+# 2026-08-25: added news_engine.py, now that start_trading.ps1 launches it too.
 
-$targets = @("udp_listener.py", "sultan_dashboard_server.py")
+$targets = @("udp_listener.py", "sultan_dashboard_server.py", "news_engine.py")
 $killed = 0
 
 foreach ($proc in Get-CimInstance Win32_Process | Where-Object { $_.Name -eq "python.exe" -or $_.Name -eq "pythonw.exe" }) {
