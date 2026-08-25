@@ -218,14 +218,15 @@ function render(data) {
   // v52.94 - py-1 (8px/row across 6 TF rows) was the reason this panel
   // measured 23px taller than its flex-allotted share at 1920x1080 (same
   // "Signals & Timing" overflow Dadang flagged, just smaller and not the
-  // one he happened to notice). py-0.5 closes it without changing font
-  // size or removing the row dividers.
+  // one he happened to notice). v52.95 - the panel-wide font bump ("teks
+  // lo besarin aja") re-grew this table's row height, so tightened once
+  // more to py-px (1px) to keep it fitting.
   tbody.innerHTML = REGIME_ORDER.map(({ key, label }) => {
     const dir = regime[key] || "WAIT";
     return `<tr>
-      <td class="py-0.5 text-slate-300">${label}</td>
-      <td class="py-0.5">${dirArrow(dir)}</td>
-      <td class="py-0.5 font-bold ${dirColorClass(dir)}">${dir}</td>
+      <td class="py-px text-slate-300">${label}</td>
+      <td class="py-px">${dirArrow(dir)}</td>
+      <td class="py-px font-bold ${dirColorClass(dir)}">${dir}</td>
     </tr>`;
   }).join("");
   // v52.73c: breakout sound per TF - Dadang: "breakout nya sesuai chain

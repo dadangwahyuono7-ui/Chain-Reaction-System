@@ -61,7 +61,7 @@
       font-family: 'JetBrains Mono', monospace;
     }
     .section-title {
-      font-size: 11px; font-weight: 600; letter-spacing: 0.14em;
+      font-size: 12.5px; font-weight: 600; letter-spacing: 0.14em;
       text-transform: uppercase; color: #94a3b8;
     }
     .stat-row {
@@ -73,13 +73,14 @@
        columns it was still ~18px taller than its flex-allotted share at
        1920x1080 (measured directly, not guessed) - this shaves just
        enough per-row padding to close that gap without touching every
-       other panel's rhythm. */
+       other panel's rhythm. v52.95: panel widened to 3 columns instead
+       (see below), so this is back to the normal 4.5px pitch. */
     .stat-row.stat-row-tight { padding: 3px 0; }
     .stat-label {
-      font-size: 10.5px; color: #94a3b8; letter-spacing: 0.03em;
+      font-size: 12px; color: #94a3b8; letter-spacing: 0.03em;
     }
     .stat-value {
-      font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+      font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700;
     }
     .accent-bid { border-left: 2px solid rgba(52,211,153,0.55); padding-left: 10px; }
     .accent-ask { border-left: 2px solid rgba(251,113,133,0.55); padding-left: 10px; }
@@ -108,7 +109,16 @@
   </style>
 </head>
 <body class="h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 flex flex-col px-4 py-3">
-  <div class="max-w-[1560px] w-full mx-auto flex flex-col flex-1 min-h-0">
+  <!-- v52.95 - Dadang: "kenapa gak 50% aja biar semua masuk tapi lo lebarin
+       dan teks lo besarin aja" - he was running the browser at 50% zoom
+       specifically because that DOUBLES the CSS-pixel viewport (a 1920px
+       screen becomes ~3840 CSS px wide/tall at 50%), giving this page's
+       fixed-px panels room to fit - but zoom also shrinks the physical
+       render size of that same text, hence "kekecilan". Real fix: use
+       more of the ACTUAL 1920px screen width at 100% zoom (was capped at
+       1560px, leaving ~360px unused) instead of relying on zoom to
+       manufacture extra room. -->
+  <div class="max-w-[1900px] w-full mx-auto flex flex-col flex-1 min-h-0">
 
     <!-- Crest header (compact, single row) -->
     <header class="flex items-center justify-between pb-2.5 shrink-0">
@@ -116,11 +126,11 @@
         <!-- 2026-08-23 - "News & Catalyst" tab link. Dadang: "buat aja 1
              tab baru kusus news" - own page (news.html), not a panel row
              here, so this is just the doorway to it. -->
-        <a href="/news.html" class="text-[10px] tracking-[0.15em] uppercase text-slate-500 hover:text-amber-300 transition-colors">News &amp; Catalyst &rarr;</a>
+        <a href="/news.html" class="text-[11.5px] tracking-[0.15em] uppercase text-slate-500 hover:text-amber-300 transition-colors">News &amp; Catalyst &rarr;</a>
       </div>
       <div class="text-center">
         <h1 class="font-crest text-[22px] leading-none font-bold tracking-[0.1em] text-amber-100" style="text-shadow:0 0 20px rgba(217,180,101,0.18)">CHAIN&nbsp;REACTION&nbsp;SYSTEM</h1>
-        <p class="text-[9.5px] tracking-[0.2em] uppercase text-slate-400 font-medium mt-1">Commander Dadang Wahyuono</p>
+        <p class="text-[11px] tracking-[0.2em] uppercase text-slate-400 font-medium mt-1">Commander Dadang Wahyuono</p>
       </div>
       <div class="w-36 flex flex-col items-end">
         <div class="flex items-center space-x-1.5">
@@ -129,12 +139,12 @@
                terus2an" - a browser mute toggle is one click, no dialog,
                state persisted so it stays off across reloads/sessions
                instead of quietly reverting. -->
-          <button onclick="testSounds()" class="text-[10px] px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 hover:border-amber-400/40 hover:text-amber-300 transition-colors" title="Coba semua suara: Sweep + D1/H4/H1/M30/M15/M5 (gak kena mute)">&#9654;</button>
-          <button id="sound-toggle" onclick="toggleSound()" class="text-[10px] px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 hover:border-amber-400/40 hover:text-amber-300 transition-colors" title="Suara alert Sweep &amp; Breakout tiap TF">&#128266;</button>
+          <button onclick="testSounds()" class="text-[11.5px] px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 hover:border-amber-400/40 hover:text-amber-300 transition-colors" title="Coba semua suara: Sweep + D1/H4/H1/M30/M15/M5 (gak kena mute)">&#9654;</button>
+          <button id="sound-toggle" onclick="toggleSound()" class="text-[11.5px] px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 hover:border-amber-400/40 hover:text-amber-300 transition-colors" title="Suara alert Sweep &amp; Breakout tiap TF">&#128266;</button>
           <span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-400/70" id="online-dot-top"></span>
-          <span class="text-[9px] tracking-[0.15em] uppercase text-slate-500" id="online-text">Connecting</span>
+          <span class="text-[10.5px] tracking-[0.15em] uppercase text-slate-500" id="online-text">Connecting</span>
         </div>
-        <span class="text-[8.5px] font-mono text-slate-600" id="ea-version">v?</span>
+        <span class="text-[10px] font-mono text-slate-600" id="ea-version">v?</span>
       </div>
     </header>
     <div class="gold-rule mb-3 shrink-0"></div>
@@ -165,81 +175,81 @@
 
       <!-- 1. MARKET REGIME -->
       <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
-        <div class="flex items-center space-x-2 mb-2 shrink-0">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
           <span class="num-ring">1</span><span class="section-title">Market Regime</span>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <table class="w-full text-left">
             <thead>
               <tr class="text-slate-500 border-b border-slate-800/60">
-                <th class="pb-1 text-[9.5px] font-medium tracking-wider uppercase">TF</th>
-                <th class="pb-1 text-[9.5px] font-medium tracking-wider uppercase"></th>
-                <th class="pb-1 text-[9.5px] font-medium tracking-wider uppercase">Status</th>
+                <th class="pb-1 text-[11px] font-medium tracking-wider uppercase">TF</th>
+                <th class="pb-1 text-[11px] font-medium tracking-wider uppercase"></th>
+                <th class="pb-1 text-[11px] font-medium tracking-wider uppercase">Status</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-800/30 font-mono text-[11px]" id="regime-tbody"></tbody>
+            <tbody class="divide-y divide-slate-800/30 font-mono text-[12.5px]" id="regime-tbody"></tbody>
           </table>
           <div>
-            <div class="stat-row"><span class="stat-label">Trend Alignment</span><span class="stat-value text-slate-100" id="regime-alignment">-</span></div>
-            <div class="stat-row"><span class="stat-label">HTF Bias</span><span class="stat-value text-slate-100" id="regime-bias">-</span></div>
-            <div class="stat-row"><span class="stat-label">M5 Status</span><span class="stat-value text-slate-100" id="regime-m5status">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Trend Alignment</span><span class="stat-value text-slate-100" id="regime-alignment">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">HTF Bias</span><span class="stat-value text-slate-100" id="regime-bias">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">M5 Status</span><span class="stat-value text-slate-100" id="regime-m5status">-</span></div>
           </div>
         </div>
-        <div class="gold-rule my-2 shrink-0"></div>
-        <div class="text-center text-[11px] font-semibold tracking-[0.2em] shrink-0" id="regime-label">REGIME &mdash; &mdash;</div>
+        <div class="gold-rule my-1 shrink-0"></div>
+        <div class="text-center text-[12.5px] font-semibold tracking-[0.2em] shrink-0" id="regime-label">REGIME &mdash; &mdash;</div>
       </section>
 
       <!-- 3. LIQUIDITY (BOOKMAP) -->
       <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
-        <div class="flex items-center space-x-2 mb-2 shrink-0">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
           <span class="num-ring">3</span><span class="section-title">Liquidity</span>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div class="space-y-1.5">
             <div class="accent-bid">
-              <div class="text-[9.5px] tracking-wider uppercase text-emerald-400/90 font-medium">Bid Wall &middot; Nearest</div>
+              <div class="text-[11px] tracking-wider uppercase text-emerald-400/90 font-medium">Bid Wall &middot; Nearest</div>
               <div class="stat-value text-slate-100" id="liq-bidwall">-</div>
             </div>
             <div class="accent-ask">
-              <div class="text-[9.5px] tracking-wider uppercase text-rose-400/90 font-medium">Ask Wall &middot; Nearest</div>
+              <div class="text-[11px] tracking-wider uppercase text-rose-400/90 font-medium">Ask Wall &middot; Nearest</div>
               <div class="stat-value text-slate-100" id="liq-askwall">-</div>
             </div>
             <div class="stat-row"><span class="stat-label">Nearest Wall</span><span class="stat-value text-slate-100" id="liq-nearest">-</span></div>
             <div class="stat-row"><span class="stat-label">Imbalance (A&minus;B)</span><span class="stat-value text-slate-100" id="liq-imbalance">-</span></div>
           </div>
           <div>
-            <div class="text-[9.5px] tracking-wider uppercase text-slate-500 font-medium mb-1">Wall Summary</div>
-            <div class="stat-row"><span class="stat-label text-emerald-400/80">Bid Walls</span><span class="stat-value text-slate-100" id="liq-bidcount">-</span></div>
-            <div class="stat-row"><span class="stat-label text-rose-400/80">Ask Walls</span><span class="stat-value text-slate-100" id="liq-askcount">-</span></div>
-            <div class="stat-row"><span class="stat-label text-emerald-400/80">Bid Lot</span><span class="stat-value text-slate-100" id="liq-bidtotal">-</span></div>
-            <div class="stat-row"><span class="stat-label text-rose-400/80">Ask Lot</span><span class="stat-value text-slate-100" id="liq-asktotal">-</span></div>
+            <div class="text-[11px] tracking-wider uppercase text-slate-500 font-medium mb-1">Wall Summary</div>
+            <div class="stat-row stat-row-tight"><span class="stat-label text-emerald-400/80">Bid Walls</span><span class="stat-value text-slate-100" id="liq-bidcount">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label text-rose-400/80">Ask Walls</span><span class="stat-value text-slate-100" id="liq-askcount">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label text-emerald-400/80">Bid Lot</span><span class="stat-value text-slate-100" id="liq-bidtotal">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label text-rose-400/80">Ask Lot</span><span class="stat-value text-slate-100" id="liq-asktotal">-</span></div>
           </div>
         </div>
-        <div class="gold-rule my-2 shrink-0"></div>
-        <div class="text-center text-[11px] font-semibold tracking-[0.2em] shrink-0" id="sweep-label">WALL SWEEP &mdash; &mdash;</div>
+        <div class="gold-rule my-1 shrink-0"></div>
+        <div class="text-center text-[12.5px] font-semibold tracking-[0.2em] shrink-0" id="sweep-label">WALL SWEEP &mdash; &mdash;</div>
       </section>
 
       <!-- 5. CONTEXT SUMMARY -->
       <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
-        <div class="flex items-center space-x-2 mb-2 shrink-0">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
           <span class="num-ring">5</span><span class="section-title">Context Summary</span>
         </div>
         <div class="grid grid-cols-5 text-center" id="context-grid">
-          <div class="border-r border-slate-800/40"><div class="text-[8.5px] tracking-wider uppercase text-slate-500 mb-1">Bias</div><div class="stat-value text-[11px]" id="ctx-bias">-</div></div>
-          <div class="border-r border-slate-800/40"><div class="text-[8.5px] tracking-wider uppercase text-slate-500 mb-1">Flow</div><div class="stat-value text-[11px]" id="ctx-flow">-</div></div>
-          <div class="border-r border-slate-800/40"><div class="text-[8.5px] tracking-wider uppercase text-slate-500 mb-1">Liquidity</div><div class="stat-value text-[10px]" id="ctx-liquidity">-</div></div>
-          <div class="border-r border-slate-800/40"><div class="text-[8.5px] tracking-wider uppercase text-slate-500 mb-1">Location</div><div class="stat-value text-[10px]" id="ctx-location">-</div></div>
-          <div><div class="text-[8.5px] tracking-wider uppercase text-slate-500 mb-1">Regime</div><div class="stat-value text-[10px]" id="ctx-regime">-</div></div>
+          <div class="border-r border-slate-800/40"><div class="text-[10px] tracking-wider uppercase text-slate-500 mb-1">Bias</div><div class="stat-value text-[12.5px]" id="ctx-bias">-</div></div>
+          <div class="border-r border-slate-800/40"><div class="text-[10px] tracking-wider uppercase text-slate-500 mb-1">Flow</div><div class="stat-value text-[12.5px]" id="ctx-flow">-</div></div>
+          <div class="border-r border-slate-800/40"><div class="text-[10px] tracking-wider uppercase text-slate-500 mb-1">Liquidity</div><div class="stat-value text-[11.5px]" id="ctx-liquidity">-</div></div>
+          <div class="border-r border-slate-800/40"><div class="text-[10px] tracking-wider uppercase text-slate-500 mb-1">Location</div><div class="stat-value text-[11.5px]" id="ctx-location">-</div></div>
+          <div><div class="text-[10px] tracking-wider uppercase text-slate-500 mb-1">Regime</div><div class="stat-value text-[11.5px]" id="ctx-regime">-</div></div>
         </div>
         <!-- v44.1: the conviction block pushed this column past the viewport,
              so the two stacked rules collapsed into one and the CONTEXT line
              and headline now share a row - same information, ~45px shorter. -->
         <div class="gold-rule my-2"></div>
         <div class="flex items-baseline justify-center gap-3 flex-wrap">
-          <span class="text-[10px] font-semibold tracking-[0.18em] text-amber-200" id="ctx-action">&mdash;</span>
+          <span class="text-[11.5px] font-semibold tracking-[0.18em] text-amber-200" id="ctx-action">&mdash;</span>
           <span class="stat-value text-[14px]" id="conv-headline">&mdash;</span>
         </div>
-        <div class="text-center text-[10px] font-semibold text-amber-400 mt-0.5 leading-snug" id="conv-against"></div>
+        <div class="text-center text-[11.5px] font-semibold text-amber-400 mt-0.5 leading-snug" id="conv-against"></div>
       </section>
 
       <!-- 7. SIGNALS & TIMING - v52.59: compacted to 1 line per item
@@ -250,7 +260,7 @@
            "AWAS ..." warning line covering all 5 tracked TFs (M5-H4), not
            a per-TF stat-row. -->
       <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
-        <div class="flex items-center space-x-2 mb-2 shrink-0">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
           <span class="num-ring">7</span><span class="section-title">Signals &amp; Timing</span>
         </div>
         <!-- v52.94 - this was a single vertical stack of stat-rows that grew
@@ -266,25 +276,27 @@
              uses (Market Regime, Liquidity) instead of one long column -
              same content, roughly half the vertical footprint, no zoom
              workaround needed. -->
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-3 gap-4">
           <div>
-            <div class="stat-row stat-row-tight"><span class="stat-label">Barrier</span><span class="stat-value text-amber-400 text-[10.5px]" id="sig-barrier">-</span></div>
-            <div class="stat-row stat-row-tight"><span class="stat-label">Fusion H1/H4</span><span class="stat-value text-slate-100 text-[10px]" id="sig-fusion">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Barrier</span><span class="stat-value text-amber-400 text-[12px]" id="sig-barrier">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Fusion H1/H4</span><span class="stat-value text-slate-100 text-[11.5px]" id="sig-fusion">-</span></div>
             <div class="stat-row stat-row-tight"><span class="stat-label">Momentum (M5)</span><span class="stat-value text-slate-100" id="sig-momentum">-</span></div>
-            <div class="stat-row stat-row-tight"><span class="stat-label">Momentum M5 Bookmap</span><span class="stat-value text-slate-100" id="sig-momentum-bookmap">-</span></div>
-            <div class="stat-row stat-row-tight"><span class="stat-label">Momentum M5 Footprint</span><span class="stat-value text-slate-100" id="sig-momentum-footprint">-</span></div>
             <div class="stat-row stat-row-tight"><span class="stat-label">Chain Signal</span><span class="stat-value text-slate-100" id="sig-chain-signal">-</span></div>
           </div>
           <div>
-            <div class="stat-row stat-row-tight"><span class="stat-label">CVD Divergence</span><span class="stat-value text-slate-100 text-[10px]" id="sig-cvd-div">-</span></div>
-            <div class="stat-row stat-row-tight"><span class="stat-label">IVB (30min)</span><span class="stat-value text-slate-100 text-[10px]" id="sig-ivb">-</span></div>
-            <div class="stat-row stat-row-tight"><span class="stat-label">Daily Profile</span><span class="stat-value text-slate-100 text-[10px]" id="sig-daily-profile">-</span></div>
-            <div class="stat-row stat-row-tight"><span class="stat-label">Volume Node</span><span class="stat-value text-slate-100 text-[10px]" id="sig-volume-node">-</span></div>
-            <div class="stat-row stat-row-tight"><span class="stat-label">Reload Level</span><span class="stat-value text-slate-100 text-[10px]" id="sig-reload-level">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Mom. M5 Bookmap</span><span class="stat-value text-slate-100" id="sig-momentum-bookmap">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Mom. M5 Footprint</span><span class="stat-value text-slate-100" id="sig-momentum-footprint">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">CVD Divergence</span><span class="stat-value text-slate-100 text-[11.5px]" id="sig-cvd-div">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">IVB (30min)</span><span class="stat-value text-slate-100 text-[11.5px]" id="sig-ivb">-</span></div>
+          </div>
+          <div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Daily Profile</span><span class="stat-value text-slate-100 text-[11.5px]" id="sig-daily-profile">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Volume Node</span><span class="stat-value text-slate-100 text-[11.5px]" id="sig-volume-node">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Reload Level</span><span class="stat-value text-slate-100 text-[11.5px]" id="sig-reload-level">-</span></div>
           </div>
         </div>
         <div class="gold-rule my-1 shrink-0"></div>
-        <div class="stat-row stat-row-tight"><span class="stat-label">Candle Close In</span><span class="stat-value text-slate-300 text-[9.5px] font-mono" id="sig-countdown">-</span></div>
+        <div class="stat-row stat-row-tight"><span class="stat-label">Candle Close In</span><span class="stat-value text-slate-300 text-[11px] font-mono" id="sig-countdown">-</span></div>
       </section>
 
     </div>
@@ -296,8 +308,8 @@
          simple donut showing session Buy% vs Sell% (vol_ratio_buy_pct). -->
     <div class="flex flex-col shrink-0 w-[230px] min-h-0">
       <section class="panel p-2 flex flex-col flex-1 min-h-0 overflow-hidden">
-        <div class="text-center text-[9px] tracking-[0.15em] uppercase text-slate-500 font-medium mb-1 shrink-0">Wall Ladder</div>
-        <div class="overflow-y-auto font-mono text-[10px] shrink-0" id="wall-ladder" style="max-height:55%"></div>
+        <div class="text-center text-[10.5px] tracking-[0.15em] uppercase text-slate-500 font-medium mb-1 shrink-0">Wall Ladder</div>
+        <div class="overflow-y-auto font-mono text-[11.5px] shrink-0" id="wall-ladder" style="max-height:55%"></div>
 
         <div class="gold-rule my-2 shrink-0"></div>
         <!-- v38: Dadang pointed at Bookmap's own "Price Change" widget
@@ -308,7 +320,7 @@
              already flowing into flow-pulse as plain text. No EA/MT5 change
              needed - the -100..+100 remap happens client-side in logic.js. -->
         <div class="flex-1 min-h-0 flex flex-col items-center justify-center">
-          <div class="text-[9px] tracking-[0.15em] uppercase text-slate-500 font-medium mb-1">Price Pressure</div>
+          <div class="text-[10.5px] tracking-[0.15em] uppercase text-slate-500 font-medium mb-1">Price Pressure</div>
           <svg width="140" height="90" viewBox="0 0 140 90">
             <defs>
               <linearGradient id="pulse-grad" x1="12" y1="0" x2="128" y2="0" gradientUnits="userSpaceOnUse">
@@ -339,8 +351,8 @@
                here can never disagree with what actually fires an entry). -->
           <div class="w-full mt-2.5 pt-2 border-t border-slate-800/50">
             <div class="flex items-center justify-between mb-1.5">
-              <span class="text-[8.5px] tracking-[0.15em] uppercase text-slate-500 font-medium">Bacaan Bookmap</span>
-              <span id="bmread-verdict" class="text-[9px] font-bold font-mono px-2 py-0.5 rounded-full bg-slate-800/70 text-slate-400">&mdash;</span>
+              <span class="text-[10px] tracking-[0.15em] uppercase text-slate-500 font-medium">Bacaan Bookmap</span>
+              <span id="bmread-verdict" class="text-[10.5px] font-bold font-mono px-2 py-0.5 rounded-full bg-slate-800/70 text-slate-400">&mdash;</span>
             </div>
             <!-- v52.9: Dadang - "gak jelas bro" - 5 columns in a 200px-wide
                  column left ~33px per tile, too narrow for even short
@@ -349,23 +361,23 @@
                  every stat-row elsewhere on this dashboard, no more boxed
                  tiles (those ate space without adding clarity). -->
             <div class="grid grid-cols-2 gap-x-3 gap-y-1">
-              <div class="flex items-center justify-between text-[9.5px]" title="Wall terdekat">
+              <div class="flex items-center justify-between text-[11px]" title="Wall terdekat">
                 <span class="text-slate-500">Wall</span>
                 <span class="font-mono font-semibold text-slate-200" id="bmread-wall">-</span>
               </div>
-              <div class="flex items-center justify-between text-[9.5px]" title="Cumulative Volume Delta">
+              <div class="flex items-center justify-between text-[11px]" title="Cumulative Volume Delta">
                 <span class="text-slate-500">CVD</span>
                 <span class="font-mono font-semibold" id="bmread-cvd">-</span>
               </div>
-              <div class="flex items-center justify-between text-[9.5px]" title="Absorption">
+              <div class="flex items-center justify-between text-[11px]" title="Absorption">
                 <span class="text-slate-500">Absorb</span>
                 <span class="font-mono font-semibold" id="bmread-absorb">-</span>
               </div>
-              <div class="flex items-center justify-between text-[9.5px]" title="Iceberg order">
+              <div class="flex items-center justify-between text-[11px]" title="Iceberg order">
                 <span class="text-slate-500">Iceberg</span>
                 <span class="font-mono font-semibold text-fuchsia-400" id="bmread-iceberg">-</span>
               </div>
-              <div class="flex items-center justify-between text-[9.5px]" title="Lokasi vs Value Area">
+              <div class="flex items-center justify-between text-[11px]" title="Lokasi vs Value Area">
                 <span class="text-slate-500">Lokasi</span>
                 <span class="font-mono font-semibold text-slate-200" id="bmread-location">-</span>
               </div>
@@ -380,7 +392,7 @@
 
       <!-- 2. BOOKMAP FLOW -->
       <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
-        <div class="flex items-center space-x-2 mb-2 shrink-0">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
           <span class="num-ring">2</span><span class="section-title">Bookmap Flow</span>
         </div>
         <div class="grid grid-cols-2 gap-6">
@@ -395,14 +407,14 @@
             <div class="flex-1 relative" style="min-height:96px">
               <canvas id="delta-canvas" class="absolute inset-0 w-full h-full"></canvas>
             </div>
-            <div class="text-center text-[10px] font-semibold tracking-widest pt-2" id="flow-dominant">FLOW &mdash;</div>
+            <div class="text-center text-[11.5px] font-semibold tracking-widest pt-2" id="flow-dominant">FLOW &mdash;</div>
           </div>
         </div>
       </section>
 
       <!-- 4. LOCATION -->
       <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
-        <div class="flex items-center space-x-2 mb-2 shrink-0">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
           <span class="num-ring">4</span><span class="section-title">Location</span>
         </div>
         <div class="grid grid-cols-2 gap-4">
@@ -416,7 +428,7 @@
           </div>
           <div class="flex flex-col justify-center space-y-3">
             <div>
-              <div class="flex justify-between text-[9px] font-mono text-slate-500 mb-1.5">
+              <div class="flex justify-between text-[10.5px] font-mono text-slate-500 mb-1.5">
                 <span id="loc-val-label">Low</span><span id="loc-vah-label">High</span>
               </div>
               <div class="relative h-[3px] bg-slate-800/80 rounded-full">
@@ -432,14 +444,14 @@
 
       <!-- 6. DATA STATUS -->
       <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
-        <div class="flex items-center space-x-2 mb-2 shrink-0">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
           <span class="num-ring">6</span><span class="section-title">Data Status</span>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
             <div class="stat-row"><span class="stat-label">Bookmap</span><span class="stat-value text-slate-100" id="ds-bookmap">-</span></div>
             <div class="stat-row"><span class="stat-label">Bridge Latency</span><span class="stat-value text-slate-100" id="ds-latency">-</span></div>
-            <div class="stat-row"><span class="stat-label">MT5 Source</span><span class="stat-value text-emerald-400 text-[10px]">DD_CMP_Indicator</span></div>
+            <div class="stat-row"><span class="stat-label">MT5 Source</span><span class="stat-value text-emerald-400 text-[11.5px]">DD_CMP_Indicator</span></div>
             <!-- v42: macro correlation (6E = dollar proxy). Informational
                  only - never gates an entry, just flags when the dollar is
                  pushing against the direction the engine is working. -->
@@ -451,7 +463,7 @@
             <div class="stat-row"><span class="stat-label">Balance / Equity</span></div>
             <div class="stat-value text-slate-100" id="ds-balance">-</div>
             <div class="stat-row mt-2"><span class="stat-label">Last Update</span></div>
-            <div class="stat-value text-[10px]" id="ds-updated">-</div>
+            <div class="stat-value text-[11.5px]" id="ds-updated">-</div>
           </div>
         </div>
       </section>
@@ -470,14 +482,14 @@
       <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
         <div class="flex items-center gap-2 mb-2 shrink-0">
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
-          <span class="text-[9px] tracking-[0.2em] uppercase text-slate-500 font-medium">System Pulse &middot; Analisa AI</span>
+          <span class="text-[10.5px] tracking-[0.2em] uppercase text-slate-500 font-medium">System Pulse &middot; Analisa AI</span>
         </div>
-        <p class="text-[11px] text-slate-300 leading-relaxed" id="pulse-analysis-text">Memuat...</p>
+        <p class="text-[12.5px] text-slate-300 leading-relaxed" id="pulse-analysis-text">Memuat...</p>
         <!-- 2026-08-25: this narrative can now name actual watch-zones (see
              news_engine.py's generate_ai_analysis() prompt) - Dadang OK'd it
              staying public on the condition the warning stays visible
              wherever the narrative shows up, not just on the News tab. -->
-        <p class="text-[8.5px] text-amber-400/70 mt-1.5 shrink-0">&#9888;&#65039; Bukan saran finansial - keputusan &amp; risiko di tangan Anda.</p>
+        <p class="text-[10px] text-amber-400/70 mt-1.5 shrink-0">&#9888;&#65039; Bukan saran finansial - keputusan &amp; risiko di tangan Anda.</p>
       </section>
 
     </div>
@@ -485,7 +497,7 @@
     </div>
 
     <footer class="text-center pt-2 shrink-0">
-      <p class="text-[8px] tracking-[0.15em] uppercase text-slate-700">Sourced directly from MetaTrader 5 &middot; No TradingView dependency</p>
+      <p class="text-[9.5px] tracking-[0.15em] uppercase text-slate-700">Sourced directly from MetaTrader 5 &middot; No TradingView dependency</p>
     </footer>
 
   </div>
