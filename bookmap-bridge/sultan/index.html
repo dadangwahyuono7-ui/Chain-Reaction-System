@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chain Reaction System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    /* v52.72e: fluid 100vh/100vw layout, following the sizing methodology
+       Dadang shared from a terminal he'd built before - fixed-width side
+       columns, flexible center, and (the actual fix for the "kudu zoom
+       manual" saga) panels sized by FLEX RATIO within a fixed-height
+       viewport instead of natural content height + hoping the total fits.
+       No outer scrollbar - "persis seperti terminal institusional
+       sungguhan". html needs height:100% for body's h-screen (100vh) to
+       have a real 100%-height ancestor to size against. */
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    body { font-family: 'Inter', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .font-crest { font-family: 'Cormorant Garamond', serif; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+
+    .panel {
+      background: linear-gradient(180deg, rgba(15,23,42,0.7) 0%, rgba(15,23,42,0.35) 100%);
+      border: 1px solid rgba(148,163,184,0.10);
+      border-radius: 18px;
+      box-shadow: 0 12px 40px -18px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.04);
+      backdrop-filter: blur(8px);
+      transition: border-color 200ms ease, box-shadow 200ms ease;
+    }
+    .panel:hover {
+      border-color: rgba(217,180,101,0.22);
+      box-shadow: 0 16px 50px -18px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    /* v52.72b: "buat 4k mungkin ukurannya" + "sama aja bro" - first attempt
+       gated the bigger size behind a viewport-width media query (2xl /
+       min-width:2400px), which never fired: Windows display scaling on a
+       big/4K monitor reports a much smaller CSS viewport than the physical
+       screen - so the threshold silently never triggered and nothing
+       looked different. Widened the container unconditionally instead
+       (see body>div max-w below) - that part stuck.
+       v52.72d: had ALSO added a blanket `zoom: 1.18` here on top of that -
+       Dadang: "50% zoom baru keliatan semua" (had to zoom the BROWSER out
+       to 50% just to see the whole page) - the CSS zoom was stacking with
+       his own browser zoom (already visible in his screenshot at 67%),
+       fighting it instead of leaving it as the one control that actually
+       fits content to HIS specific screen. Removed - the wider container
+       alone is enough of a size bump; browser zoom (already right there in
+       the toolbar, already how he was fitting it to his screen) is the
+       correct tool for the rest, not another multiplier baked into the
+       page underneath it. */
+    .num-ring {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px; border-radius: 9999px;
+      border: 1px solid rgba(217,180,101,0.45); color: #d9b465;
+      font-size: 10px; font-weight: 600; flex-shrink: 0;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .section-title {
+      font-size: 12.5px; font-weight: 600; letter-spacing: 0.14em;
+      text-transform: uppercase; color: #94a3b8;
+    }
+    .stat-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 4.5px 0; border-bottom: 1px solid rgba(148,163,184,0.07);
+    }
+    .stat-row:last-child { border-bottom: none; }
+    /* v52.94 - Signals & Timing panel only: even after splitting into 2
+       columns it was still ~18px taller than its flex-allotted share at
+       1920x1080 (measured directly, not guessed) - this shaves just
+       enough per-row padding to close that gap without touching every
+       other panel's rhythm. v52.95: panel widened to 3 columns instead
+       (see below), so this is back to the normal 4.5px pitch. */
+    .stat-row.stat-row-tight { padding: 3px 0; }
+    .stat-label {
+      font-size: 12px; color: #94a3b8; letter-spacing: 0.03em;
+    }
+    .stat-value {
+      font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700;
+    }
+    .accent-bid { border-left: 2px solid rgba(52,211,153,0.55); padding-left: 10px; }
+    .accent-ask { border-left: 2px solid rgba(251,113,133,0.55); padding-left: 10px; }
+    .gold-rule {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(217,180,101,0.55), transparent);
+    }
+    .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+    @keyframes pulse-dot { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+    /* v37: "lebih hidup" - Dadang: "lo buat web dhasboard py nya lebih
+       hidup biar gw gak bosan". Flash-on-change for fast-ticking values
+       (green flash = went up, red = went down) + a pulsing glow on wall
+       rows the price is currently approaching. */
+    @keyframes flash-up   { 0% { background-color: rgba(52,211,153,0.32); } 100% { background-color: transparent; } }
+    @keyframes flash-down { 0% { background-color: rgba(244,63,94,0.32); } 100% { background-color: transparent; } }
+    .flash-up   { animation: flash-up 700ms ease-out; }
+    .flash-down { animation: flash-down 700ms ease-out; }
+    @keyframes wall-near-pulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.45); }
+      50%     { box-shadow: 0 0 0 4px rgba(251,191,36,0.0); background-color: rgba(251,191,36,0.12); }
+    }
+    .wall-near { animation: wall-near-pulse 1.3s ease-in-out infinite; border-radius: 3px; }
+    @keyframes price-row-breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+    .price-row-live { animation: price-row-breathe 1.8s ease-in-out infinite; }
+
+    /* 2026-08-26: S&D PRICE MAP - Dadang: "ketika price memasuki area itu
+       harus pulse berkedip atau ada warning area sampai suplay atau demand".
+       Two distinct pulses: a strong colored ring on the exact zone row price
+       is currently sitting inside (supply=rose, demand=emerald), and a
+       softer opacity-breathe on the "MENDEKATI ZONA .../ZONA SEMPIT"
+       banner text - same visual language wall-near-pulse already uses for
+       "this is live/relevant right now" elsewhere on the page. */
+    @keyframes zone-pulse-rose { 0%,100% { box-shadow: 0 0 0 0 rgba(251,113,133,0.55); } 50% { box-shadow: 0 0 0 5px rgba(251,113,133,0); background-color: rgba(251,113,133,0.08); } }
+    @keyframes zone-pulse-emer { 0%,100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.55); }  50% { box-shadow: 0 0 0 5px rgba(52,211,153,0); background-color: rgba(52,211,153,0.08); } }
+    .zone-inside-supply { animation: zone-pulse-rose 1.3s ease-in-out infinite; border-color: rgba(251,113,133,0.6) !important; }
+    .zone-inside-demand { animation: zone-pulse-emer 1.3s ease-in-out infinite; border-color: rgba(52,211,153,0.6) !important; }
+    @keyframes zone-warn-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .zone-warn { animation: zone-warn-pulse 1.1s ease-in-out infinite; }
+  </style>
+</head>
+<body class="h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 flex flex-col px-4 py-3">
+  <!-- v52.95 - Dadang: "kenapa gak 50% aja biar semua masuk tapi lo lebarin
+       dan teks lo besarin aja" - he was running the browser at 50% zoom
+       specifically because that DOUBLES the CSS-pixel viewport (a 1920px
+       screen becomes ~3840 CSS px wide/tall at 50%), giving this page's
+       fixed-px panels room to fit - but zoom also shrinks the physical
+       render size of that same text, hence "kekecilan". Real fix: use
+       more of the ACTUAL 1920px screen width at 100% zoom (was capped at
+       1560px, leaving ~360px unused) instead of relying on zoom to
+       manufacture extra room. -->
+  <div class="max-w-[1900px] w-full mx-auto flex flex-col flex-1 min-h-0">
+
+    <!-- Crest header (compact, single row) -->
+    <header class="flex items-center justify-between pb-2.5 shrink-0">
+      <div class="w-36">
+        <!-- 2026-08-23 - "News & Catalyst" tab link. Dadang: "buat aja 1
+             tab baru kusus news" - own page (news.html), not a panel row
+             here, so this is just the doorway to it. -->
+        <a href="/news.html" class="text-[11.5px] tracking-[0.15em] uppercase text-slate-500 hover:text-amber-300 transition-colors">News &amp; Catalyst &rarr;</a>
+      </div>
+      <div class="text-center">
+        <h1 class="font-crest text-[22px] leading-none font-bold tracking-[0.1em] text-amber-100" style="text-shadow:0 0 20px rgba(217,180,101,0.18)">CHAIN&nbsp;REACTION&nbsp;SYSTEM</h1>
+        <p class="text-[11px] tracking-[0.2em] uppercase text-slate-400 font-medium mt-1">Commander Dadang Wahyuono</p>
+      </div>
+      <div class="w-36 flex flex-col items-end">
+        <div class="flex items-center space-x-1.5">
+          <!-- v52.73: sound alerts moved here from the EA (PlaySound()) -
+               Dadang: "kalo di ea apa bisa distop manual, kawatirnya bunyi
+               terus2an" - a browser mute toggle is one click, no dialog,
+               state persisted so it stays off across reloads/sessions
+               instead of quietly reverting. -->
+          <button onclick="testSounds()" class="text-[11.5px] px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 hover:border-amber-400/40 hover:text-amber-300 transition-colors" title="Coba semua suara: Sweep + D1/H4/H1/M30/M15/M5 (gak kena mute)">&#9654;</button>
+          <button id="sound-toggle" onclick="toggleSound()" class="text-[11.5px] px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 hover:border-amber-400/40 hover:text-amber-300 transition-colors" title="Suara alert Sweep &amp; Breakout tiap TF">&#128266;</button>
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-400/70" id="online-dot-top"></span>
+          <span class="text-[10.5px] tracking-[0.15em] uppercase text-slate-500" id="online-text">Connecting</span>
+        </div>
+        <span class="text-[10px] font-mono text-slate-600" id="ea-version">v?</span>
+      </div>
+    </header>
+    <div class="gold-rule mb-3 shrink-0"></div>
+
+    <!-- v37: 3 independent flex columns (left stack | wall ladder | right
+         stack) - NOT CSS grid-template-areas (the areas version overlapped
+         badly in the actual pywebview window, see old notes).
+         v52.72e: row is now flex-1 min-h-0, filling whatever height is left
+         under the header within the h-screen body - and every panel inside
+         left/right columns is flex-1 min-h-0 (a RATIO share of the column's
+         height) instead of shrink-0 (its own natural content height). This
+         is the actual fix for the "kudu zoom manual buat liat semua" saga:
+         previously the page's total height was whatever the content
+         happened to add up to, and fitting an arbitrary screen meant either
+         guessing pixel sizes right or making Dadang zoom his browser to
+         compensate. Now the page height is ALWAYS exactly the screen
+         height by construction (h-screen + flex ratios), same sizing
+         methodology Dadang described from a terminal he'd built before -
+         fixed-width side/gutter columns, flexible center, ratio-based
+         vertical panels, no outer scrollbar. overflow-y-auto stays on each
+         panel as a safety net only (kicks in if a panel's own content is
+         genuinely too tall for its ratio share on some edge case screen -
+         shouldn't trigger in normal use). -->
+    <div class="flex gap-4 flex-1 min-h-0">
+
+    <!-- LEFT COLUMN -->
+    <div class="flex flex-col gap-3 flex-1 min-w-0 min-h-0">
+
+      <!-- 1. MARKET REGIME -->
+      <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
+          <span class="num-ring">1</span><span class="section-title">Market Regime</span>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <table class="w-full text-left">
+            <thead>
+              <tr class="text-slate-500 border-b border-slate-800/60">
+                <th class="pb-1 text-[11px] font-medium tracking-wider uppercase">TF</th>
+                <th class="pb-1 text-[11px] font-medium tracking-wider uppercase"></th>
+                <th class="pb-1 text-[11px] font-medium tracking-wider uppercase">Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/30 font-mono text-[12.5px]" id="regime-tbody"></tbody>
+          </table>
+          <div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Trend Alignment</span><span class="stat-value text-slate-100" id="regime-alignment">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">HTF Bias</span><span class="stat-value text-slate-100" id="regime-bias">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">M5 Status</span><span class="stat-value text-slate-100" id="regime-m5status">-</span></div>
+          </div>
+        </div>
+        <div class="gold-rule my-1 shrink-0"></div>
+        <div class="text-center text-[12.5px] font-semibold tracking-[0.2em] shrink-0" id="regime-label">REGIME &mdash; &mdash;</div>
+      </section>
+
+      <!-- 3. LIQUIDITY (BOOKMAP) -->
+      <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
+          <span class="num-ring">3</span><span class="section-title">Liquidity</span>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="space-y-1.5">
+            <div class="accent-bid">
+              <div class="text-[11px] tracking-wider uppercase text-emerald-400/90 font-medium">Bid Wall &middot; Nearest</div>
+              <div class="stat-value text-slate-100" id="liq-bidwall">-</div>
+            </div>
+            <div class="accent-ask">
+              <div class="text-[11px] tracking-wider uppercase text-rose-400/90 font-medium">Ask Wall &middot; Nearest</div>
+              <div class="stat-value text-slate-100" id="liq-askwall">-</div>
+            </div>
+            <div class="stat-row"><span class="stat-label">Nearest Wall</span><span class="stat-value text-slate-100" id="liq-nearest">-</span></div>
+            <div class="stat-row"><span class="stat-label">Imbalance (A&minus;B)</span><span class="stat-value text-slate-100" id="liq-imbalance">-</span></div>
+          </div>
+          <div>
+            <div class="text-[11px] tracking-wider uppercase text-slate-500 font-medium mb-1">Wall Summary</div>
+            <div class="stat-row stat-row-tight"><span class="stat-label text-emerald-400/80">Bid Walls</span><span class="stat-value text-slate-100" id="liq-bidcount">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label text-rose-400/80">Ask Walls</span><span class="stat-value text-slate-100" id="liq-askcount">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label text-emerald-400/80">Bid Lot</span><span class="stat-value text-slate-100" id="liq-bidtotal">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label text-rose-400/80">Ask Lot</span><span class="stat-value text-slate-100" id="liq-asktotal">-</span></div>
+          </div>
+        </div>
+        <div class="gold-rule my-1 shrink-0"></div>
+        <div class="text-center text-[12.5px] font-semibold tracking-[0.2em] shrink-0" id="sweep-label">WALL SWEEP &mdash; &mdash;</div>
+      </section>
+
+      <!-- 5. CONTEXT SUMMARY -->
+      <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
+          <span class="num-ring">5</span><span class="section-title">Context Summary</span>
+        </div>
+        <div class="grid grid-cols-5 text-center" id="context-grid">
+          <div class="border-r border-slate-800/40"><div class="text-[10px] tracking-wider uppercase text-slate-500 mb-1">Bias</div><div class="stat-value text-[12.5px]" id="ctx-bias">-</div></div>
+          <div class="border-r border-slate-800/40"><div class="text-[10px] tracking-wider uppercase text-slate-500 mb-1">Flow</div><div class="stat-value text-[12.5px]" id="ctx-flow">-</div></div>
+          <div class="border-r border-slate-800/40"><div class="text-[10px] tracking-wider uppercase text-slate-500 mb-1">Liquidity</div><div class="stat-value text-[11.5px]" id="ctx-liquidity">-</div></div>
+          <div class="border-r border-slate-800/40"><div class="text-[10px] tracking-wider uppercase text-slate-500 mb-1">Location</div><div class="stat-value text-[11.5px]" id="ctx-location">-</div></div>
+          <div><div class="text-[10px] tracking-wider uppercase text-slate-500 mb-1">Regime</div><div class="stat-value text-[11.5px]" id="ctx-regime">-</div></div>
+        </div>
+        <!-- v44.1: the conviction block pushed this column past the viewport,
+             so the two stacked rules collapsed into one and the CONTEXT line
+             and headline now share a row - same information, ~45px shorter. -->
+        <div class="gold-rule my-2"></div>
+        <div class="flex items-baseline justify-center gap-3 flex-wrap">
+          <span class="text-[11.5px] font-semibold tracking-[0.18em] text-amber-200" id="ctx-action">&mdash;</span>
+          <span class="stat-value text-[14px]" id="conv-headline">&mdash;</span>
+        </div>
+        <div class="text-center text-[11.5px] font-semibold text-amber-400 mt-0.5 leading-snug" id="conv-against"></div>
+      </section>
+
+      <!-- 7. SIGNALS & TIMING - v52.59: compacted to 1 line per item
+           (was a 3-stat-row block + a 6-cell grid, tall enough to push the
+           page past the viewport) - Dadang: "kalo mau lihat semuanya harus
+           kecilin dan tak terlihat bro" + "barrier tidak perlu ditulis
+           besar hanya dijadikan peringatan aja". Barrier is now ONE short
+           "AWAS ..." warning line covering all 5 tracked TFs (M5-H4), not
+           a per-TF stat-row. -->
+      <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
+          <span class="num-ring">7</span><span class="section-title">Signals &amp; Timing</span>
+        </div>
+        <!-- v52.94 - this was a single vertical stack of stat-rows that grew
+             by 1-3 rows almost every session (v52.59, 81, 82, 83, 84) without
+             ever revisiting the layout - by the time it hit 11 rows it no
+             longer fit this panel's flex-share of the column at normal
+             zoom/resolution. Dadang: "harus saya kecilin ke 50% baru
+             keliatan ternyata" (had to zoom the WHOLE PAGE out to 50% just
+             to see the bottom rows), then "tuliasn web dan katalisnya jadi
+             kecil banget" once he did - zooming out to fit one tall panel
+             shrinks everything else too. Real fix: split into the SAME
+             2-column grid pattern every other multi-row panel here already
+             uses (Market Regime, Liquidity) instead of one long column -
+             same content, roughly half the vertical footprint, no zoom
+             workaround needed. -->
+        <div class="grid grid-cols-3 gap-4">
+          <div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Barrier</span><span class="stat-value text-amber-400 text-[12px]" id="sig-barrier">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Fusion H1/H4</span><span class="stat-value text-slate-100 text-[11.5px]" id="sig-fusion">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Momentum (M5)</span><span class="stat-value text-slate-100" id="sig-momentum">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Chain Signal</span><span class="stat-value text-slate-100" id="sig-chain-signal">-</span></div>
+          </div>
+          <div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Mom. M5 Bookmap</span><span class="stat-value text-slate-100" id="sig-momentum-bookmap">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Mom. M5 Footprint</span><span class="stat-value text-slate-100" id="sig-momentum-footprint">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">CVD Divergence</span><span class="stat-value text-slate-100 text-[11.5px]" id="sig-cvd-div">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">IVB (30min)</span><span class="stat-value text-slate-100 text-[11.5px]" id="sig-ivb">-</span></div>
+          </div>
+          <div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Daily Profile</span><span class="stat-value text-slate-100 text-[11.5px]" id="sig-daily-profile">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Volume Node</span><span class="stat-value text-slate-100 text-[11.5px]" id="sig-volume-node">-</span></div>
+            <div class="stat-row stat-row-tight"><span class="stat-label">Reload Level</span><span class="stat-value text-slate-100 text-[11.5px]" id="sig-reload-level">-</span></div>
+          </div>
+        </div>
+        <div class="gold-rule my-1 shrink-0"></div>
+        <div class="stat-row stat-row-tight"><span class="stat-label">Candle Close In</span><span class="stat-value text-slate-300 text-[11px] font-mono" id="sig-countdown">-</span></div>
+      </section>
+
+    </div>
+
+    <!-- MIDDLE COLUMN: WALL LADDER + BUY/SELL GAUGE - fills the gutter
+         Dadang pointed at. Ladder = same "significant wall" data as section
+         3 (>=10 lot only, not full raw depth - see memory notes). Gauge
+         fills the leftover space below it (Dadang: "misal gaunge") - a
+         simple donut showing session Buy% vs Sell% (vol_ratio_buy_pct). -->
+    <div class="flex flex-col shrink-0 w-[230px] min-h-0">
+      <section class="panel p-2 flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div class="text-center text-[10.5px] tracking-[0.15em] uppercase text-slate-500 font-medium mb-1 shrink-0">Wall Ladder</div>
+        <div class="overflow-y-auto font-mono text-[11.5px] shrink-0" id="wall-ladder" style="max-height:55%"></div>
+
+        <div class="gold-rule my-2 shrink-0"></div>
+        <!-- v38: Dadang pointed at Bookmap's own "Price Change" widget
+             (screenshot: red/gray/green semicircle dial + needle, -75%,
+             "Price down / Price up") and said "gw butuh ini bro" - this
+             replicates it exactly, using the SAME pulse_pct data (Bookmap's
+             Price Change algorithm, see market_pulse_engine.py) that was
+             already flowing into flow-pulse as plain text. No EA/MT5 change
+             needed - the -100..+100 remap happens client-side in logic.js. -->
+        <div class="flex-1 min-h-0 flex flex-col items-center justify-center">
+          <div class="text-[10.5px] tracking-[0.15em] uppercase text-slate-500 font-medium mb-1">Price Pressure</div>
+          <svg width="140" height="90" viewBox="0 0 140 90">
+            <defs>
+              <linearGradient id="pulse-grad" x1="12" y1="0" x2="128" y2="0" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#f43f5e"/>
+                <stop offset="50%" stop-color="#64748b"/>
+                <stop offset="100%" stop-color="#34d399"/>
+              </linearGradient>
+            </defs>
+            <path d="M 12 62 A 58 58 0 0 1 128 62" fill="none" stroke="url(#pulse-grad)" stroke-width="9" stroke-linecap="round" opacity="0.9"/>
+            <line id="pulse-needle" x1="70" y1="62" x2="70" y2="16" stroke="#e2e8f0" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="70" cy="62" r="4.5" fill="#0f172a" stroke="#e2e8f0" stroke-width="1.5"/>
+            <text x="14" y="82" font-size="7.5" fill="#64748b" font-family="Inter, sans-serif">Price down</text>
+            <text x="126" y="82" font-size="7.5" fill="#64748b" text-anchor="end" font-family="Inter, sans-serif">Price up</text>
+            <text id="pulse-value" x="70" y="83" font-size="13" font-weight="700" fill="#e2e8f0" text-anchor="middle" font-family="'JetBrains Mono', monospace">-</text>
+          </svg>
+
+          <!-- v52.8: Dadang - "gaunge nya lo naikin dikit dan bookmap tadi
+               lo taruh bawahnya di sini" (v52.7's single wrapped text line
+               looked like raw debug output next to the polished gauge -
+               "buat yang bagus dong bro jngan norak gitu") - rebuilt as 5
+               small tiles, matching the num-ring/gold-rule/mono-value
+               language used everywhere else on this dashboard instead of
+               inventing a new visual style. Adding this pushes the whole
+               centered group (gauge+this) up within its flex box, which is
+               the "naikin dikit" - no separate positioning hack needed.
+               Same source as always (WriteSultanStatus()'s bookmap_read,
+               verdict = BookmapTriggerDirection() on the EA side - a tile
+               here can never disagree with what actually fires an entry). -->
+          <div class="w-full mt-2.5 pt-2 border-t border-slate-800/50">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-[10px] tracking-[0.15em] uppercase text-slate-500 font-medium">Bacaan Bookmap</span>
+              <span id="bmread-verdict" class="text-[10.5px] font-bold font-mono px-2 py-0.5 rounded-full bg-slate-800/70 text-slate-400">&mdash;</span>
+            </div>
+            <!-- v52.9: Dadang - "gak jelas bro" - 5 columns in a 200px-wide
+                 column left ~33px per tile, too narrow for even short
+                 values ("BID 13L" truncated to "BID…"). 2 columns x 3 rows
+                 instead - each cell ~90px wide, label-left/value-right like
+                 every stat-row elsewhere on this dashboard, no more boxed
+                 tiles (those ate space without adding clarity). -->
+            <div class="grid grid-cols-2 gap-x-3 gap-y-1">
+              <div class="flex items-center justify-between text-[11px]" title="Wall terdekat">
+                <span class="text-slate-500">Wall</span>
+                <span class="font-mono font-semibold text-slate-200" id="bmread-wall">-</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px]" title="Cumulative Volume Delta">
+                <span class="text-slate-500">CVD</span>
+                <span class="font-mono font-semibold" id="bmread-cvd">-</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px]" title="Absorption">
+                <span class="text-slate-500">Absorb</span>
+                <span class="font-mono font-semibold" id="bmread-absorb">-</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px]" title="Iceberg order">
+                <span class="text-slate-500">Iceberg</span>
+                <span class="font-mono font-semibold text-fuchsia-400" id="bmread-iceberg">-</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px]" title="Lokasi vs Value Area">
+                <span class="text-slate-500">Lokasi</span>
+                <span class="font-mono font-semibold text-slate-200" id="bmread-location">-</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 8. S&D PRICE MAP - 2026-08-26: Dadang wanted the FULL S&D layout
+         (zone tested count/total lot/strength, pulse when price enters a
+         zone, warning as price approaches supply/demand) ported here from
+         the MT5 chart panel, which now only keeps a condensed version -
+         "NAH INI BARU FULL KETIKA DI WEB BRO EDIT WEB NYA" / "DI WEB KITA
+         JUGA HARUS ADA INI... SILAGKAN ROMBAK TOTAL WEB NYA". Own column
+         (not squeezed into the wall-ladder gutter) since it carries real
+         detail: up to 3 nearest SUPPLY + 3 nearest DEMAND zones, each with
+         range/strength/lot/diuji/serap - straight passthrough of
+         WriteSultanStatus()'s new "sd_zones" block, same EA-computes/
+         web-just-displays pattern as everything else on this dashboard.
+         Public-surface note: this page is reachable via the public tunnel
+         (trade.dadangchatai.com) - the FOKUS headline is deliberately
+         worded "ZONA PANTAU" (observation), never a bare "BUY NOW" command,
+         and carries its own "bukan saran finansial" banner - see
+         feedback_no_explicit_signals_on_public_surfaces in memory. -->
+    <div class="flex flex-col shrink-0 w-[300px] min-h-0">
+      <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
+        <div class="flex items-center space-x-2 mb-1.5 shrink-0">
+          <span class="num-ring">8</span><span class="section-title">S&amp;D Price Map</span>
+        </div>
+
+        <div class="text-center shrink-0 mb-1.5">
+          <div class="text-[15px] font-bold tracking-[0.1em]" id="sdm-focus">ZONA PANTAU &mdash;</div>
+          <div class="text-[10.5px] text-slate-400 mt-0.5 leading-snug" id="sdm-reason">-</div>
+        </div>
+        <div class="gold-rule mb-1.5 shrink-0"></div>
+
+        <div class="shrink-0 mb-1">
+          <div class="stat-row stat-row-tight"><span class="stat-label">Harga Sekarang</span><span class="stat-value text-white" id="sdm-price">-</span></div>
+          <div class="stat-row stat-row-tight"><span class="stat-label">Posisi</span><span class="stat-value text-[11.5px]" id="sdm-location">-</span></div>
+          <div class="stat-row stat-row-tight"><span class="stat-label">Buyer / Seller</span><span class="stat-value" id="sdm-bs">-</span></div>
+        </div>
+
+        <div id="sdm-warning" class="hidden shrink-0"></div>
+
+        <!-- 2026-08-26: S&D Momentum Break Engine (MT5 v53.18+) - same
+             WICK_BREAK/CLOSE_BREAK/MOMENTUM_BREAK/BREAK_CONFIRMED/
+             FALSE_BREAK/REJECTION state already driving the MT5 panel's
+             "Break Status" row, straight passthrough via sd_zones.break.
+             Dadang: "apa perubahan tadi sudah lo update ke ai web dan web
+             bro yang break out SND tadi?" -->
+        <div class="stat-row stat-row-tight shrink-0"><span class="stat-label">Break Status</span><span class="stat-value text-[11px]" id="sdm-break">-</span></div>
+
+        <div class="shrink-0 mt-1">
+          <div class="text-[10px] tracking-[0.15em] uppercase text-rose-400/80 font-semibold mb-1">&#9650; Supply (Atas)</div>
+          <div class="space-y-1" id="sdm-supply-list"></div>
+        </div>
+
+        <div class="gold-rule my-1.5 shrink-0"></div>
+
+        <div class="shrink-0">
+          <div class="text-[10px] tracking-[0.15em] uppercase text-emerald-400/80 font-semibold mb-1">&#9660; Demand (Bawah)</div>
+          <div class="space-y-1" id="sdm-demand-list"></div>
+        </div>
+
+        <div class="mt-auto pt-1.5 shrink-0">
+          <p class="text-[9px] text-amber-400/70 text-center leading-snug">&#9888;&#65039; Zona pantau, bukan saran finansial &mdash; keputusan &amp; risiko di tangan Anda.</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="flex flex-col gap-3 flex-1 min-w-0 min-h-0">
+
+      <!-- 2. BOOKMAP FLOW -->
+      <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
+          <span class="num-ring">2</span><span class="section-title">Bookmap Flow</span>
+        </div>
+        <div class="grid grid-cols-2 gap-6">
+          <div>
+            <div class="stat-row"><span class="stat-label">CVD</span><span class="stat-value text-slate-100" id="flow-cvd">-</span></div>
+            <div class="stat-row"><span class="stat-label">Delta (1m)</span><span class="stat-value text-slate-100" id="flow-delta1m">-</span></div>
+            <div class="stat-row"><span class="stat-label">Vol Ratio</span><span class="stat-value text-slate-100" id="flow-volratio">-</span></div>
+            <div class="stat-row"><span class="stat-label">Pulse</span><span class="stat-value text-slate-100" id="flow-pulse">-</span></div>
+            <div class="stat-row"><span class="stat-label">Absorption</span><span class="stat-value text-slate-100" id="flow-absorb">-</span></div>
+          </div>
+          <div class="flex flex-col">
+            <div class="flex-1 relative" style="min-height:96px">
+              <canvas id="delta-canvas" class="absolute inset-0 w-full h-full"></canvas>
+            </div>
+            <div class="text-center text-[11.5px] font-semibold tracking-widest pt-2" id="flow-dominant">FLOW &mdash;</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. LOCATION -->
+      <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
+          <span class="num-ring">4</span><span class="section-title">Location</span>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <div class="stat-row"><span class="stat-label">POC</span><span class="stat-value text-amber-300" id="loc-poc">-</span></div>
+            <div class="stat-row"><span class="stat-label">Value Area</span><span class="stat-value text-slate-100" id="loc-va">-</span></div>
+            <div class="stat-row"><span class="stat-label">Price</span><span class="stat-value text-white" id="loc-price">-</span></div>
+            <div class="stat-row"><span class="stat-label">Position</span><span class="stat-value text-slate-100" id="loc-position">-</span></div>
+            <div class="stat-row"><span class="stat-label">VA Bias</span><span class="stat-value text-slate-100" id="loc-vabias">-</span></div>
+            <div class="stat-row"><span class="stat-label">Distance / POC</span><span class="stat-value text-slate-100" id="loc-distpoc">-</span></div>
+          </div>
+          <div class="flex flex-col justify-center space-y-3">
+            <div>
+              <div class="flex justify-between text-[10.5px] font-mono text-slate-500 mb-1.5">
+                <span id="loc-val-label">Low</span><span id="loc-vah-label">High</span>
+              </div>
+              <div class="relative h-[3px] bg-slate-800/80 rounded-full">
+                <div class="absolute inset-y-0 rounded-full" id="loc-va-bar" style="left:25%;right:25%;background:linear-gradient(90deg,rgba(217,180,101,0.15),rgba(217,180,101,0.45),rgba(217,180,101,0.15))"></div>
+                <div class="absolute -top-[3.5px] w-[9px] h-[9px] rounded-full bg-amber-300 ring-2 ring-slate-950" id="loc-price-marker" style="left:50%"></div>
+              </div>
+            </div>
+            <div class="stat-row"><span class="stat-label">Range (24H)</span><span class="stat-value text-slate-100" id="loc-range">-</span></div>
+            <div class="stat-row"><span class="stat-label">ATR (14)</span><span class="stat-value text-slate-100" id="loc-atr">-</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. DATA STATUS -->
+      <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
+        <div class="flex items-center space-x-2 mb-1 shrink-0">
+          <span class="num-ring">6</span><span class="section-title">Data Status</span>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <div class="stat-row"><span class="stat-label">Bookmap</span><span class="stat-value text-slate-100" id="ds-bookmap">-</span></div>
+            <div class="stat-row"><span class="stat-label">Bridge Latency</span><span class="stat-value text-slate-100" id="ds-latency">-</span></div>
+            <div class="stat-row"><span class="stat-label">MT5 Source</span><span class="stat-value text-emerald-400 text-[11.5px]">DD_CMP_Indicator</span></div>
+            <!-- v42: macro correlation (6E = dollar proxy). Informational
+                 only - never gates an entry, just flags when the dollar is
+                 pushing against the direction the engine is working. -->
+            <div class="stat-row"><span class="stat-label">USD</span><span class="stat-value text-slate-400" id="ds-macro">-</span></div>
+            <div class="stat-row"><span class="stat-label">Efek ke Gold</span><span class="stat-value text-slate-400" id="ds-macro-verdict">-</span></div>
+            <div class="stat-row"><span class="stat-label">USD News</span><span class="stat-value text-slate-400" id="ds-news">-</span></div>
+          </div>
+          <div>
+            <div class="stat-row"><span class="stat-label">Balance / Equity</span></div>
+            <div class="stat-value text-slate-100" id="ds-balance">-</div>
+            <div class="stat-row mt-2"><span class="stat-label">Last Update</span></div>
+            <div class="stat-value text-[11.5px]" id="ds-updated">-</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- v52.72c/e: 4th right-column panel, same flex-1 min-h-0 ratio share
+           as the other 3. Was a purely decorative heartbeat/ECG animation
+           ("System Pulse") until Dadang, 2026-08-24, looking at it next to
+           the new Analisa AI card on the News & Catalyst tab: "card system
+           pulse... itu gak guna hahahaha" - narasi yang dihasilkan ai akan
+           tampil di card system pulse keren sepertinya". Repurposed to show
+           that same AI narrative (news_engine.py's generate_ai_analysis(),
+           same news_feed.json the News tab reads) right on the main
+           dashboard - kept the tiny pulse-dot as the "alive" touch instead
+           of the full SVG animation, which was taking the space this text
+           needs. -->
+      <section class="panel p-3 flex flex-col flex-1 min-h-0 overflow-y-auto">
+        <div class="flex items-center gap-2 mb-2 shrink-0">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>
+          <span class="text-[10.5px] tracking-[0.2em] uppercase text-slate-500 font-medium">System Pulse &middot; Analisa AI</span>
+        </div>
+        <p class="text-[12.5px] text-slate-300 leading-relaxed" id="pulse-analysis-text">Memuat...</p>
+        <!-- 2026-08-25: this narrative can now name actual watch-zones (see
+             news_engine.py's generate_ai_analysis() prompt) - Dadang OK'd it
+             staying public on the condition the warning stays visible
+             wherever the narrative shows up, not just on the News tab. -->
+        <p class="text-[10px] text-amber-400/70 mt-1.5 shrink-0">&#9888;&#65039; Bukan saran finansial - keputusan &amp; risiko di tangan Anda.</p>
+      </section>
+
+    </div>
+
+    </div>
+
+    <footer class="text-center pt-2 shrink-0">
+      <p class="text-[9.5px] tracking-[0.15em] uppercase text-slate-700">Sourced directly from MetaTrader 5 &middot; No TradingView dependency</p>
+    </footer>
+
+  </div>
+  <script src="logic.js"></script>
+</body>
+</html>

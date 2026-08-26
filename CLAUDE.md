@@ -247,3 +247,4 @@ gh pr create --base master --head feat/nama-fitur
 | `chain_settings.json` | Config runtime (auto_trade, lot, barrier, dll) |
 | `DD_CMP_Marker.pine` | Indikator TradingView referensi |
 | `tradingview-mcp-jackson/CLAUDE.md` | Panduan tools TradingView CDP |
+| `SND_ZONE_ENGINE_AND_WEB_DASHBOARD.md` | ⚠️ BACA DULU kalau lanjut kerjaan SND Zone Engine / web dashboard / Analisa AI — cara cek versi EA yang bener-bener jalan, folder mana yang LIVE (bookmap-bridge-v1), dan histori versi v53.0-v53.15 |
