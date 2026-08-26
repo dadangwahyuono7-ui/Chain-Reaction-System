@@ -27,10 +27,31 @@ let _prevSweepKey = null;              // "side|price" of the last-alerted
                                         // doesn't re-fire every poll
 let _prevTFDir = { d1: null, h4: null, h1: null, m30: null, m15: null, m5: null };
 
+let _silencedSweepKey = null;
+
 function toggleSound() {
   soundMuted = !soundMuted;
   localStorage.setItem("cr_sound_muted", soundMuted ? "1" : "0");
+  if (soundMuted && _actx) {
+    try {
+      _actx.suspend(); // Instantly cut off all currently sounding sirens/alarms
+    } catch(e) {}
+  } else if (!soundMuted && _actx) {
+    try {
+      _actx.resume();
+    } catch(e) {}
+  }
   updateSoundButton();
+}
+
+// v53.30: Dadang - "kalo udah gw stop tandanya gw udah di lokasi... normal lagi setelah ada sweep baru"
+function stopCurrentSweepAlarm() {
+  _silencedSweepKey = _prevSweepKey;
+  if (_actx) {
+    try {
+      _actx.suspend();
+    } catch(e) {}
+  }
 }
 function updateSoundButton() {
   const btn = document.getElementById("sound-toggle");
@@ -309,6 +330,10 @@ function render(data) {
     // (matches the same "isNewEvent" idea the EA uses for g_sweepRecActive).
     const sweepKey = sweep.side + "|" + fmt(sweep.price);
     if (sweepKey !== _prevSweepKey) {
+      // Auto re-arm sound for NEW sweep event even if previous sweep was stopped
+      if (_actx && _actx.state === "suspended" && !soundMuted) {
+        try { _actx.resume(); } catch(e) {}
+      }
       beepSweep();
       // v52.74: log this genuinely-new sweep, check for a "staircase" -
       // 3+ on the same side within 5 minutes (see 2026-08-20 history
