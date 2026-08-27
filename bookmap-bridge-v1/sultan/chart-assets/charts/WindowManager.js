@@ -11,7 +11,7 @@
  */
 
 import { globalDrawingStore } from '../drawings/DrawingStore.js';
-import { DrawingEngine } from '../drawings/DrawingEngine.js?v=8';
+import { DrawingEngine } from '../drawings/DrawingEngine.js?v=20260828_01';
 
 // Audit fix: App.js's Lock All / Hide All / Trash Drawings buttons call
 // window.globalDrawingStore.* directly (see App.js lines ~90/100/111), tapi
