@@ -980,14 +980,14 @@ export class DrawingEngine {
           const rh = Math.abs(ry1 - ry0);
 
           // Web Auto-Extend box to future
-          let effectiveRx1 = rx1;
-          if (effectiveRx1 < screenW - 80) effectiveRx1 = screenW - 50;
-          const rwEffective = Math.abs(effectiveRx1 - rx0);
-          if (rwEffective < 1 || rh < 1) break;
+          let rx1 = rx1;
+          if (rx1 < screenW - 80) rx1 = screenW - 50;
+          const rw = Math.abs(rx1 - rx0);
+          if (rw < 1 || rh < 1) break;
 
           ctx.fillStyle = fillColor;
-          ctx.fillRect(rxx, ryy, rwEffective, rh);
-          ctx.strokeRect(rxx, ryy, rwEffective, rh);
+          ctx.fillRect(rxx, ryy, rw, rh);
+          ctx.strokeRect(rxx, ryy, rw, rh);
 
           // ─── DADANG DISCRETIONARY BOX SCANNER (BOOKMAP LIVE WALL & HIST LOT BADGE) ───
           try {

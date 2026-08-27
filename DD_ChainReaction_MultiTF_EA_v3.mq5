@@ -349,7 +349,6 @@ input group "=== DADANG INSTITUTIONAL POWER ENGINES (WHALE, SPOOFING, DISTANCE) 
 input bool                 InpShowWallDistanceSpeedo   = true;   // Speedometer Jarak Real-Time ke Tembok Terdekat (Atas & Bawah)
 input bool                 InpShowWhaleFootprintWick   = true;   // Tampilkan Ikon Paus 🐋 di Ekor Lilin saat Transaksi Besar >= 50L
 input bool                 InpEnableSpoofingRadar      = true;   // Deteksi Tembok Palsu / Order Dicabut Bandar (Spoofing Alert)
-input bool                 InpAutoExtendBoxesToFuture  = true;   // Kotak Manual Otomatis Memanjang ke Kanan Menembus Candle Berjalan
 
 input group "=== S&D MOMENTUM BREAK ENGINE (deteksi break status, BUKAN entry) ==="
 input bool                 InpEnableSDBreakEngine      = true;   // Master switch - kalau off, break status selalu "NONE" dan gak ada marker/debug
@@ -5827,18 +5826,6 @@ void ScanUserDrawnBoxesAndAttachLots()
          // Hitung Volume Historis Candlestick (murni dalam LOT)
          datetime tStart = MathMin(t1, t2);
          datetime tEnd   = MathMax(t1, t2);
-         
-         // 4. AUTO-EXTEND KOTAK KE MASA DEPAN (Menembus Candle Berjalan)
-         if(InpAutoExtendBoxesToFuture)
-         {
-            datetime curBarTime = iTime(_Symbol, _Period, 0);
-            if(tEnd < curBarTime)
-            {
-               datetime newEnd = curBarTime + PeriodSeconds(_Period) * 20;
-               ObjectSetInteger(0, name, OBJPROP_TIME, 1, newEnd);
-               tEnd = newEnd;
-            }
-         }
          int barStart = iBarShift(_Symbol, _Period, tStart);
          int barEnd   = iBarShift(_Symbol, _Period, tEnd);
          if(barStart < barEnd) { int tmp = barStart; barStart = barEnd; barEnd = tmp; }
