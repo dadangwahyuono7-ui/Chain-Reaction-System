@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_dark">#080C14</color>
+    <color name="bg_surface">#0E1626</color>
+    <color name="neon_cyan">#00E5FF</color>
+    <color name="neon_green">#00E676</color>
+    <color name="neon_red">#FF1744</color>
+    <color name="neon_amber">#FFB300</color>
+</resources>

@@ -751,89 +751,7 @@ export class DrawingEngine {
   }
 
   
-  // ─────────────────────────────────────────────────────────────────────────
-  // MASTER MT5 REPLICA: LIVE SHADED S&D RECTANGLE BOXES WITH TEXT INSIDE
-  // ─────────────────────────────────────────────────────────────────────────
-  renderLiveSDBoxes(ctx, screenW, screenH) {
-    if (!this.win.latestSDGroup || this.win.symbol !== "XAUUSD") return;
-    const { supply = [], demand = [] } = this.win.latestSDGroup;
-    if (!this.win.lastCandle || !this.series) return;
-
-    const timeScale = this.chart.timeScale();
-    const lastX = timeScale.timeToCoordinate(this.win.lastCandle.time) || (screenW - 140);
-    const boxX1 = Math.max(10, lastX - 260);
-    const boxX2 = screenW - 65; // Align cleanly before right price scale
-
-    // 1. Render Supply Boxes (Red / Crimson)
-    supply.forEach((z, idx) => {
-      const yHi = this.series.priceToCoordinate(z.hi);
-      const yLo = this.series.priceToCoordinate(z.lo);
-      if (yHi === null || yLo === null) return;
-      const topY = Math.min(yHi, yLo);
-      const h = Math.max(22, Math.abs(yLo - yHi));
-      const w = Math.max(140, boxX2 - boxX1);
-
-      ctx.save();
-      // Shaded Background
-      ctx.fillStyle = idx === 0 ? "rgba(245, 60, 60, 0.18)" : "rgba(245, 60, 60, 0.08)";
-      ctx.fillRect(boxX1, topY, w, h);
-
-      // Border Box
-      ctx.strokeStyle = idx === 0 ? "#f53c3c" : "rgba(245, 60, 60, 0.65)";
-      ctx.lineWidth = idx === 0 ? 1.5 : 1;
-      if (idx > 0) ctx.setLineDash([5, 4]);
-      ctx.strokeRect(boxX1, topY, w, h);
-      ctx.setLineDash([]);
-
-      // Label Text Inside Box (MT5 1:1 format)
-      const liveAskStr = z.live_lot ? ` | Ask Live: ${Math.round(z.live_lot)}L` : "";
-      const tag = `S${idx + 1} ${Math.round(z.total_lot || 0)}L | ${z.strength || 'SEDANG'} ${Math.round(z.score || 50)} | Uji ${z.retest_count || 0}x, Serap ${z.absorption_hits || 0}x${liveAskStr}`;
-      
-      // Text Background Tag Pill
-      ctx.fillStyle = "rgba(10, 15, 26, 0.85)";
-      ctx.fillRect(boxX1 + 6, topY + 3, Math.min(w - 12, ctx.measureText(tag).width + 12), 16);
-
-      ctx.fillStyle = "#ffb4b4";
-      ctx.font = "bold 10px 'JetBrains Mono', 'Segoe UI', monospace";
-      ctx.fillText(tag, boxX1 + 10, topY + 15);
-      ctx.restore();
-    });
-
-    // 2. Render Demand Boxes (Green / Emerald)
-    demand.forEach((z, idx) => {
-      const yHi = this.series.priceToCoordinate(z.hi);
-      const yLo = this.series.priceToCoordinate(z.lo);
-      if (yHi === null || yLo === null) return;
-      const topY = Math.min(yHi, yLo);
-      const h = Math.max(22, Math.abs(yLo - yHi));
-      const w = Math.max(140, boxX2 - boxX1);
-
-      ctx.save();
-      // Shaded Background
-      ctx.fillStyle = idx === 0 ? "rgba(0, 225, 120, 0.18)" : "rgba(0, 225, 120, 0.08)";
-      ctx.fillRect(boxX1, topY, w, h);
-
-      // Border Box
-      ctx.strokeStyle = idx === 0 ? "#00e178" : "rgba(0, 225, 120, 0.65)";
-      ctx.lineWidth = idx === 0 ? 1.5 : 1;
-      if (idx > 0) ctx.setLineDash([5, 4]);
-      ctx.strokeRect(boxX1, topY, w, h);
-      ctx.setLineDash([]);
-
-      // Label Text Inside Box (MT5 1:1 format)
-      const liveBidStr = z.live_lot ? ` | Bid Live: ${Math.round(z.live_lot)}L` : "";
-      const tag = `D${idx + 1} ${Math.round(z.total_lot || 0)}L | ${z.strength || 'SEDANG'} ${Math.round(z.score || 50)} | Uji ${z.retest_count || 0}x, Serap ${z.absorption_hits || 0}x${liveBidStr}`;
-
-      // Text Background Tag Pill
-      ctx.fillStyle = "rgba(10, 15, 26, 0.85)";
-      ctx.fillRect(boxX1 + 6, topY + 3, Math.min(w - 12, ctx.measureText(tag).width + 12), 16);
-
-      ctx.fillStyle = "#b4ffd7";
-      ctx.font = "bold 10px 'JetBrains Mono', 'Segoe UI', monospace";
-      ctx.fillText(tag, boxX1 + 10, topY + 15);
-      ctx.restore();
-    });
-  }
+// Automated S&D boxes disabled - Ultra Clean Chart Active with Dadang Discretionary Box Scanner
 
   drawShape(d, isSelected) {
     const ctx = this.ctx;
@@ -1035,30 +953,25 @@ export class DrawingEngine {
 
       case "rectangle":
         if (pts.length >= 2) {
-          // Resolve screen coords — clamp to chart edges when time is off-screen (other TF / scrolled)
           let rx0 = pts[0].x, ry0 = pts[0].y;
           let rx1 = pts[1].x, ry1 = pts[1].y;
 
-          // If price coords are null, skip (price level truly off-screen)
           if (ry0 === null || ry1 === null) break;
 
-          // Clamp time coords to chart edges if null
           if (rx0 === null && rx1 === null) {
-            // Both off-screen: try to determine if box is in the past (left) or future (right)
-            const tfSec = TF_SECONDS_MAP?.[this.timeframe] || 300;
             const candles = this.win.candles || [];
             if (candles.length > 0) {
               const firstCandle = candles[0];
               const lastCandle = candles[candles.length - 1];
-              if (d.points[0].time < firstCandle.time && d.points[1].time < firstCandle.time) break; // fully before history
-              if (d.points[0].time > lastCandle.time && d.points[1].time > lastCandle.time) break; // fully future
+              if (d.points[0].time < firstCandle.time && d.points[1].time < firstCandle.time) break;
+              if (d.points[0].time > lastCandle.time && d.points[1].time > lastCandle.time) break;
             }
             rx0 = 0;
             rx1 = screenW;
           } else if (rx0 === null) {
-            rx0 = 0; // clamp left edge
+            rx0 = 0;
           } else if (rx1 === null) {
-            rx1 = screenW; // clamp right edge
+            rx1 = screenW;
           }
 
           const rxx = Math.min(rx0, rx1);
@@ -1066,20 +979,100 @@ export class DrawingEngine {
           const rw = Math.abs(rx1 - rx0);
           const rh = Math.abs(ry1 - ry0);
 
-          if (rw < 1 || rh < 1) break;
+          // Web Auto-Extend box to future
+          let effectiveRx1 = rx1;
+          if (effectiveRx1 < screenW - 80) effectiveRx1 = screenW - 50;
+          const rwEffective = Math.abs(effectiveRx1 - rx0);
+          if (rwEffective < 1 || rh < 1) break;
 
           ctx.fillStyle = fillColor;
-          ctx.fillRect(rxx, ryy, rw, rh);
-          ctx.strokeRect(rxx, ryy, rw, rh);
+          ctx.fillRect(rxx, ryy, rwEffective, rh);
+          ctx.strokeRect(rxx, ryy, rwEffective, rh);
 
-          // Source TF label badge
-          if (d.sourceTimeframe) {
+          // ─── DADANG DISCRETIONARY BOX SCANNER (BOOKMAP LIVE WALL & HIST LOT BADGE) ───
+          try {
+            const pTop = Math.max(d.points[0].price, d.points[1].price);
+            const pBottom = Math.min(d.points[0].price, d.points[1].price);
+            const sultan = window.lastSultanStatus || this.win.sultanData;
+            const curPrice = this.win.lastPrice || (this.win.candles?.[this.win.candles.length - 1]?.close) || 0;
+            
+            const isSupply = (pBottom >= curPrice - 1.0);
+            const sideName = isSupply ? "SUPPLY" : "DEMAND";
+            const icon = isSupply ? "🔴" : "🟢";
+            const badgeColor = isSupply ? "#ff5252" : "#00e676";
+            if (!d.createdTimeframe) d.createdTimeframe = (this.timeframe || "M30").toUpperCase();
+            const tfTag = (d.createdTimeframe || d.sourceTimeframe || this.timeframe || "M30").toUpperCase();
+
+            // 1. Scan Bookmap Live Walls in this box price range
+            let liveWallLot = 0;
+            let wallCount = 0;
+            if (sultan?.liquidity) {
+              const ladder = isSupply ? sultan.liquidity.ask_ladder : sultan.liquidity.bid_ladder;
+              if (Array.isArray(ladder)) {
+                for (const item of ladder) {
+                  const px = item[0] || item.price;
+                  const sz = item[1] || item.size;
+                  if (px >= (pBottom - 0.5) && px <= (pTop + 0.5) && sz > 0) {
+                    liveWallLot += sz;
+                    wallCount++;
+                  }
+                }
+              }
+            }
+
+            // 2. Scan Historical Traded Lot in this box
+            let histCandleVol = 0;
+            const candles = this.win.candles || [];
+            for (let k = 0; k < candles.length; k++) {
+              const c = candles[k];
+              if (c.low <= pTop && c.high >= pBottom) {
+                histCandleVol += (c.volume || 10);
+              }
+            }
+            let histLot = Math.round(histCandleVol / 10);
+            if (sultan?.sierra_chart?.profile_poc_vol && sultan.sierra_chart.profile_poc_px >= pBottom && sultan.sierra_chart.profile_poc_px <= pTop) {
+              histLot += sultan.sierra_chart.profile_poc_vol;
+            }
+
+            // 3. Format Strings
+            const liveWallStr = liveWallLot > 0 ? `LIVE WALL: ${liveWallLot.toFixed(0)} LOT (${wallCount} Wall)` : "LIVE WALL: 0 LOT";
+            const histLotStr = histLot > 0 ? `HIST: ${histLot} LOT` : "HIST: 0 LOT";
+            const patternStr = isSupply ? "SBR [Uji 1x]" : "DBR [FRESH]";
+            const rangeStr = `$${(pTop - pBottom).toFixed(2)} (${pBottom.toFixed(2)} - ${pTop.toFixed(2)})`;
+
+            // 4. Auto RR Sizing & Touch status on Web Canvas
+            const boxThick = pTop - pBottom;
+            const slDist = boxThick + 1.0;
+            const recLot = Math.max(0.01, Math.min(5.0, Math.round((50.0 / (slDist * 100.0)) * 100.0) / 100.0));
+            const isTouching = (curPrice >= pBottom - 0.20 && curPrice <= pTop + 0.20);
+            const touchStr = isTouching ? " • 🔥 TOUCH ACTIVE" : "";
+
+            const badgeText = `${icon} ${sideName} [${tfTag}] : ${liveWallStr} • ${histLotStr} • ${patternStr} • ⚖️ RR 1:3.5 (Lot: ${recLot}L)${touchStr}`;
+
+            // 4. Render Obsidian Glass Badge inside box
+            ctx.save();
             ctx.setLineDash([]);
-            ctx.fillStyle = "rgba(15, 23, 42, 0.82)";
-            ctx.fillRect(rxx + 4, ryy + 4, 32, 16);
-            ctx.fillStyle = color;
-            ctx.font = "bold 9.5px 'JetBrains Mono', monospace";
-            ctx.fillText(d.sourceTimeframe, rxx + 8, ryy + 15);
+            ctx.font = "bold 10px 'Segoe UI', Inter, -apple-system, sans-serif";
+            const textMetrics = ctx.measureText(badgeText);
+            const badgeW = Math.min(rw - 8, textMetrics.width + 16);
+            const badgeH = 22;
+
+            if (rw > 60 && rh > 18) {
+              ctx.fillStyle = "rgba(12, 18, 26, 0.88)";
+              ctx.beginPath();
+              if (ctx.roundRect) ctx.roundRect(rxx + 4, ryy + 4, badgeW, badgeH, 4);
+              else ctx.rect(rxx + 4, ryy + 4, badgeW, badgeH);
+              ctx.fill();
+              ctx.strokeStyle = badgeColor;
+              ctx.lineWidth = 1;
+              ctx.stroke();
+
+              ctx.fillStyle = badgeColor;
+              ctx.fillText(badgeText, rxx + 10, ryy + 18);
+            }
+            ctx.restore();
+          } catch(e) {
+            // fallback gracefully
           }
         }
         break;

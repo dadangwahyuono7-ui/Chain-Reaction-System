@@ -723,79 +723,18 @@ export class ChartWindow {
   }
 
   updateSDZones(sdGroup, liq) {
-    if (!this.candleSeries || this.symbol !== "XAUUSD" || !sdGroup) return;
-
-    const supplies = sdGroup.supply || [];
-    const demands = sdGroup.demand || [];
-    const sdKey = `${supplies.map(s => `${s.lo}_${s.total_lot}`).join(",")}|${demands.map(d => `${d.hi}_${d.total_lot}`).join(",")}`;
-
-    if (!this.sdBadgesContainer) {
-      this.sdBadgesContainer = document.createElement("div");
-      this.sdBadgesContainer.className = "sd-badges-container";
-      this.chartContainer.appendChild(this.sdBadgesContainer);
-    }
-
-    if (this._lastSDKey !== sdKey) {
-      this._lastSDKey = sdKey;
-
+    // Automated S&D badge pills and price lines disabled for ultra clean chart!
+    if (this.sdZonePriceLines && this.sdZonePriceLines.length > 0) {
       this.sdZonePriceLines.forEach(pl => {
         try { this.candleSeries.removePriceLine(pl); } catch (e) {}
       });
       this.sdZonePriceLines = [];
-      this.sdBadgesContainer.innerHTML = "";
-      this.activeSDItems = [];
-
-      const bestAskLot = (liq && liq.ask_wall_size) ? `${Math.round(liq.ask_wall_size)}L` : "";
-      const bestBidLot = (liq && liq.bid_wall_size) ? `${Math.round(liq.bid_wall_size)}L` : "";
-
-      // 1. Supply Lines
-      supplies.forEach((z, idx) => {
-        const liveWallStr = (idx === 0 && bestAskLot) ? ` • Ask Live: ${bestAskLot}` : "";
-        const ujiStr = z.retest_count ? ` • Uji ${z.retest_count}x` : "";
-        const fullText = `🔴 S${idx + 1} ${Math.round(z.total_lot || 0)}L • ${z.strength || 'SEDANG'} ${Math.round(z.score || 50)}${ujiStr}${liveWallStr}`;
-
-        const pl = this.candleSeries.createPriceLine({
-          price: z.lo,
-          color: idx === 0 ? "#ff334b" : "#ff334b99",
-          lineWidth: idx === 0 ? 2 : 1,
-          lineStyle: idx === 0 ? LightweightCharts.LineStyle.Solid : LightweightCharts.LineStyle.Dashed,
-          axisLabelVisible: true,
-          title: ``,
-        });
-        this.sdZonePriceLines.push(pl);
-
-        const badge = document.createElement("div");
-        badge.className = `on-chart-sd-pill supply ${idx === 0 ? "s1" : "s2"}`;
-        badge.textContent = fullText;
-        this.sdBadgesContainer.appendChild(badge);
-        this.activeSDItems.push({ el: badge, price: z.lo });
-      });
-
-      // 2. Demand Lines
-      demands.forEach((z, idx) => {
-        const liveWallStr = (idx === 0 && bestBidLot) ? ` • Bid Live: ${bestBidLot}` : "";
-        const ujiStr = z.retest_count ? ` • Uji ${z.retest_count}x` : "";
-        const fullText = `🟢 D${idx + 1} ${Math.round(z.total_lot || 0)}L • ${z.strength || 'SEDANG'} ${Math.round(z.score || 50)}${ujiStr}${liveWallStr}`;
-
-        const pl = this.candleSeries.createPriceLine({
-          price: z.hi,
-          color: idx === 0 ? "#00e676" : "#00e67699",
-          lineWidth: idx === 0 ? 2 : 1,
-          lineStyle: idx === 0 ? LightweightCharts.LineStyle.Solid : LightweightCharts.LineStyle.Dashed,
-          axisLabelVisible: true,
-          title: ``,
-        });
-        this.sdZonePriceLines.push(pl);
-
-        const badge = document.createElement("div");
-        badge.className = `on-chart-sd-pill demand ${idx === 0 ? "d1" : "d2"}`;
-        badge.textContent = fullText;
-        this.sdBadgesContainer.appendChild(badge);
-        this.activeSDItems.push({ el: badge, price: z.hi });
-      });
     }
-
-    this.updateSDBadgePositions();
+    if (this.sdBadgesContainer) {
+      this.sdBadgesContainer.innerHTML = "";
+      this.sdBadgesContainer.style.display = "none";
+    }
+    this.activeSDItems = [];
   }
 
   updateSierraChart(sc) {
@@ -815,7 +754,8 @@ export class ChartWindow {
     if (sc.naked_poc_active && sc.naked_poc_price > 0) {
       this.scPocPriceLine = this.candleSeries.createPriceLine({
         price: sc.naked_poc_price,
-        color: "#ffb703",
+        color: "#ffc93c",
+        lineStyle: LightweightCharts.LineStyle.Dashed,
         lineWidth: 1,
         lineStyle: LightweightCharts.LineStyle.Dotted,
         axisLabelVisible: true,
@@ -882,7 +822,7 @@ export class ChartWindow {
       const plPoc = this.candleSeries.createPriceLine({
         price: loc.poc,
         color: "#ffd700",
-        lineWidth: 2,
+        lineWidth: 1,
         lineStyle: LightweightCharts.LineStyle.Solid,
         axisLabelVisible: true,
         title: `📍 POC ${Number(loc.poc).toFixed(2)}`,
@@ -1030,7 +970,7 @@ export class ChartWindow {
     const isCurrency = (this.symbol.includes("USD") && !this.symbol.includes("XAU") && !this.symbol.includes("BTC"));
     const lineSeries = this.chart.addLineSeries({
       color: color,
-      lineWidth: 2,
+      lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: true,
       visible: visible,
@@ -1410,7 +1350,7 @@ export class ChartWindow {
         const isCur = (this.symbol.includes("USD") && !this.symbol.includes("XAU") && !this.symbol.includes("BTC"));
         this.lineSeries = this.chart.addLineSeries({
           color: "#00f0ff",
-          lineWidth: 2,
+          lineWidth: 1,
           crosshairMarkerVisible: true,
           priceFormat: { type: "price", precision: isCur ? 4 : 2, minMove: isCur ? 0.0001 : 0.01 }
         });
@@ -1935,8 +1875,83 @@ export class WindowManager {
     return { supply: cleanSupply, demand: cleanDemand };
   }
 
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // 1. LIVE SPEEDOMETER JARAK KE TEMBOK REAL-TIME (WEB CHART)
+    // ─────────────────────────────────────────────────────────────────────────
+  // 1. LIVE SPEEDOMETER & MEGA WALL LINES ON THE CHART (1:1 DENGAN EA)
+  // ─────────────────────────────────────────────────────────────────────────
+  updateWallSpeedometerHUD(raw) {
+    if (!raw || !raw.liquidity) return;
+    const curPrice = raw.price || (this.windows[0]?.currentPrice || 0);
+    if (!curPrice) return;
+
+    // Bersihkan elemen HTML di pojok bawah jika ada
+    const oldSpeedo = document.getElementById("web-wall-speedometer");
+    if (oldSpeedo) oldSpeedo.remove();
+
+    if (!this.megaWallPriceLines) this.megaWallPriceLines = [];
+    this.megaWallPriceLines.forEach(pl => {
+      try { this.candleSeries.removePriceLine(pl); } catch (e) {}
+    });
+    this.megaWallPriceLines = [];
+
+    if (!this.candleSeries || this.symbol !== "XAUUSD") return;
+
+    let askPx = 0, askSz = 0;
+    const askLadder = raw.liquidity.ask_ladder || [];
+    for (const item of askLadder) {
+      const px = item[0] || item.price;
+      const sz = item[1] || item.size;
+      if (sz >= 25 && px > curPrice + 0.3) {
+        if (askPx === 0 || px < askPx) { askPx = px; askSz = sz; }
+      }
+    }
+
+    let bidPx = 0, bidSz = 0;
+    const bidLadder = raw.liquidity.bid_ladder || [];
+    for (const item of bidLadder) {
+      const px = item[0] || item.price;
+      const sz = item[1] || item.size;
+      if (sz >= 25 && px < curPrice - 0.3) {
+        if (bidPx === 0 || px > bidPx) { bidPx = px; bidSz = sz; }
+      }
+    }
+
+    // 1. Gambar Garis Ask Wall di Chart
+    if (askPx > 0) {
+      const distAsk = askPx - curPrice;
+      const isImpact = distAsk <= 1.0;
+      const plAsk = this.candleSeries.createPriceLine({
+        price: askPx,
+        color: isImpact ? "#ff334b" : "rgba(255, 80, 80, 0.75)",
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `🔺 WALL ${askSz.toFixed(0)}L (+${distAsk.toFixed(1)}$)`,
+      });
+      this.megaWallPriceLines.push(plAsk);
+    }
+
+    // 2. Gambar Garis Bid Wall di Chart
+    if (bidPx > 0) {
+      const distBid = curPrice - bidPx;
+      const isImpact = distBid <= 1.0;
+      const plBid = this.candleSeries.createPriceLine({
+        price: bidPx,
+        color: isImpact ? "#00e676" : "rgba(0, 230, 118, 0.75)",
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `🔻 WALL ${bidSz.toFixed(0)}L (-${distBid.toFixed(1)}$)`,
+      });
+      this.megaWallPriceLines.push(plBid);
+    }
+  }
+
   renderCockpitData(raw) {
     if (!raw) return;
+    this.updateWallSpeedometerHUD(raw);
 
     const regime = raw.regime || {};
     const conv = raw.conviction || {};

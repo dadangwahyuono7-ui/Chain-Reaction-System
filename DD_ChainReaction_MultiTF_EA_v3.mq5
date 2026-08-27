@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v53.57-V3-RADAREXPORT"
+#define EA_VERSION "v53.71-V3-MULTITF-BM-WALL"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -332,7 +332,7 @@ input int                 InpCandleDeltaBars     = 1;      // Jumlah Candle yang
 double g_candleDeltaHistory[MAX_CDELTA_BARS];
 datetime g_lastCDeltaBarTime = 0;
 
-input bool                InpShowZonesOnChart    = true;   // v53.32: Tampilkan S&D Zone (Create Once, Update When Changed)
+input bool                InpShowZonesOnChart    = false;  // Default FALSE: Chart Super Bersih & Lega, Analisis S&D tetap jalan 100% di Background   // v53.32: Tampilkan S&D Zone (Create Once, Update When Changed)
 input int                 InpMaxZonesPerSideChart= 20;     // Maks berapa zona per sisi yang digambar - v53.21: naik dari 3 ke 20 (efektif "semua") - Dadang: "sekarang tampilin semua zona SND yang ada bro", aman sekarang karena semua kotak cuma outline (gak nutupin candle lagi, lihat v53.20). Makin jauh dari S1/D1, makin redup/tipis otomatis (lihat DrawZoneBox()) - turunin lagi kalau kerasa ramai
 
 // v53.18: S&D MOMENTUM BREAK ENGINE - Dadang's 35-section spec, 2026-08-26.
@@ -340,6 +340,17 @@ input int                 InpMaxZonesPerSideChart= 20;     // Maks berapa zona p
 // mengganti Chain Reaction/Fusion, TIDAK membuat zone engine baru. State
 // machine per S1(SUPPLY)/D1(DEMAND) - dua zona yang sudah dianggap "yang
 // penting" di seluruh sistem ini (chart box solid, panel FOKUS/Posisi).
+input group "=== DADANG DISCRETIONARY BOX SNIPER & VACUUM ENGINE ==="
+input bool                 InpEnableBoxSniperTrap      = false;  // Auto-Execute Market Order saat harga sentuh Kotak Dadang + Konfirmasi Delta Serapan
+input double               InpBoxSniperRiskUsd         = 50.0;   // Risiko per Trade Sniper Kotak ($ USD)
+input bool                 InpShowLiquidityVacuum      = true;   // Tampilkan Radar Sedotan Lubang Hitam (Vacuum Highway)
+
+input group "=== DADANG INSTITUTIONAL POWER ENGINES (WHALE, SPOOFING, DISTANCE) ==="
+input bool                 InpShowWallDistanceSpeedo   = true;   // Speedometer Jarak Real-Time ke Tembok Terdekat (Atas & Bawah)
+input bool                 InpShowWhaleFootprintWick   = true;   // Tampilkan Ikon Paus 🐋 di Ekor Lilin saat Transaksi Besar >= 50L
+input bool                 InpEnableSpoofingRadar      = true;   // Deteksi Tembok Palsu / Order Dicabut Bandar (Spoofing Alert)
+input bool                 InpAutoExtendBoxesToFuture  = true;   // Kotak Manual Otomatis Memanjang ke Kanan Menembus Candle Berjalan
+
 input group "=== S&D MOMENTUM BREAK ENGINE (deteksi break status, BUKAN entry) ==="
 input bool                 InpEnableSDBreakEngine      = true;   // Master switch - kalau off, break status selalu "NONE" dan gak ada marker/debug
 input bool                 InpEnableSDBreakDebug       = false;  // Print() detail tiap bar baru (geometry, score, state) - Dadang: "jangan spam log" kalau off
@@ -492,11 +503,11 @@ datetime g_fusionLastCf     = 0;         // gate - a new VR must be fresher than
 datetime g_fusionLastM5Event= 0;         // last-seen M5 BreakoutEventTime (buffer 7) - detects a NEW M5 breakout event ("pembentukan candle" confirmation)
 datetime g_fusionLastFireTime=0;         // cooldown clock
 
-// v53: SND ZONE state - see ReadZonesCsv()/ZoneCheck(). Refreshed once per
-// tick from zones_v2.csv, written by bookmap-bridge-v2/bookmap_addon_v2.py
-// every cycle. Already MT5/XAUUSD price scale (converted Python-side) -
-// no offset math needed here, unlike the old bookmap_live_signal.csv wall
-// fields which are Bookmap-GCZ6-native and need g_bmOffset applied.
+// v53: SND ZONE state - see BuildZonesFromBarrierCMP()/ZoneCheck(). v53.58:
+// ganti total sumber dari zones_v2.csv (wall-accumulation Python) ke Barrier
+// Queue CMP MQL5 (g_m30Queue/g_h1Queue/g_h4Queue/g_d1Queue) - udah native
+// MT5/XAUUSD price scale sejak awal, gak pernah lewat Python/CSV sama
+// sekali sekarang.
 string   g_zoneSide[];
 double   g_zoneLo[], g_zoneHi[], g_zoneScore[], g_zoneTotalLot[];
 string   g_zoneStatus[];
@@ -564,8 +575,19 @@ datetime g_momEntryLastEvent = 0;        // last M5 BreakoutEventTime (buffer 7)
 // queue (instead of overwriting), and QueuePrune() removes an entry the
 // moment price genuinely closes past it (permanently - once jebol, always
 // jebol, never re-added). LastDir/LastLevel (flip DETECTION) unchanged.
-struct BarrierEntry { string dir; double level; };
-#define MAX_BARRIER_QUEUE 8
+struct BarrierEntry { string dir; double level; int retestCount; bool wasInside; };
+// v53.63: 8 -> 40 - Dadang: "setiap breakout lama ada panahnya dan ini
+// setiap panah itu adalah area SND" (every CMP flip arrow on the indicator
+// IS its own S&D zone). At 8, BootstrapBarrierFromHistory()'s backward walk
+// stopped as soon as it collected 8 RAW flips (before pruning), so on a TF
+// that churns direction often it could exhaust the cap on flips that get
+// pruned moments later, forcing the scan to dig years deeper for survivors -
+// exactly why D1/H4 queues were full of ancient (2020/2024-era) BUY-only
+// barriers instead of the recent, still-unbroken SUPPLY/DEMAND pairs
+// visible as arrows on his own chart. QueuePrune() ("sekali jebol tetap
+// jebol", per TF close) is still the ONLY relevance filter - no distance/
+// radius hack (Dadang explicitly rejected that, "kenapa lo pakai radius").
+#define MAX_BARRIER_QUEUE 40
 
 string       g_h4LastDir = "WAIT";   double g_h4LastLevel = 0.0;
 BarrierEntry g_h4Queue[];
@@ -1064,6 +1086,11 @@ int OnInit()
 
 void OnTimer()
 {
+   ScanUserDrawnBoxesAndAttachLots();
+   UpdateLiquidityVacuumRadar();
+   UpdateWallDistanceSpeedometer();
+   UpdateSpoofingRadarEngine();
+   UpdateWhaleFootprintBadges();
    // v53.32: Anti-Flicker Master Timer Dispatcher
    // Setiap layer visual memiliki interval independen & state comparison
    datetime now = TimeCurrent();
@@ -1071,7 +1098,7 @@ void OnTimer()
    // 1. S&D Zones (S1..S3 & D1..D3) - periksa setiap 5 detik
    if(InpShowZonesOnChart && now - g_lastZoneDraw >= 5)
    {
-      ReadZonesCsv();
+      BuildZonesFromBarrierCMP();
       DrawAllZones();
       g_lastZoneDraw = now;
    }
@@ -2133,32 +2160,62 @@ void QueuePush(BarrierEntry &q[], string dir, double level, string tag = "")
    if(n >= MAX_BARRIER_QUEUE)
    {
       for(int i = 0; i < n - 1; i++) q[i] = q[i+1];   // drop oldest, shift left
-      q[n-1].dir = dir; q[n-1].level = level;
+      q[n-1].dir = dir; q[n-1].level = level; q[n-1].retestCount = 0; q[n-1].wasInside = false;
    }
    else
    {
       ArrayResize(q, n + 1);
-      q[n].dir = dir; q[n].level = level;
+      q[n].dir = dir; q[n].level = level; q[n].retestCount = 0; q[n].wasInside = false;
    }
    if(tag != "")   // v52.64: diagnostic - Dadang: "M30 BO BUY... mana M30 nya" - trace push/prune to Experts log to see what actually happens instead of guessing
       Print("BARRIER PUSH [", tag, "]: ", dir, " @ ", DoubleToString(level, 2), " (queue now ", ArraySize(q), ")");
 }
+// v53.60: retest tracking beneran - Dadang: "kenapa gak bisa ya harus bisa
+// ketika itu disentuh price kan bro". Retest = harga MASUK ke zona (level +-
+// toleransi) dari LUAR (transisi outside->inside via wasInside), bukan
+// ngitung tiap tick nyangkut di dalam. Dipanggil abis UpdateBarrierTracking()
+// tiap tick, toleransi SAMA PERSIS angka yang dipakai BuildZonesFromBarrierCMP()
+// biar "retest" beneran berarti "nyentuh kotak yang digambar", bukan angka lain.
+void TrackBarrierRetests(BarrierEntry &q[], double tol)
+{
+   double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   for(int i = 0; i < ArraySize(q); i++)
+   {
+      bool insideNow = (price >= q[i].level - tol && price <= q[i].level + tol);
+      if(insideNow && !q[i].wasInside) q[i].retestCount++;
+      q[i].wasInside = insideNow;
+   }
+}
+
+// v53.69 SBR/RBS (Dadang, doktrin BS Trading - "kalo pun jebol kan dari
+// suplay jadi demand... kan ada SBR RBS"): barrier yang jebol BUKAN hilang
+// dari queue - dia FLIP jadi sisi sebaliknya di level yang SAMA (Support
+// Become Resistance / Resistance Become Support), tetap "unbroken" tapi
+// sebagai tipe baru. retestCount/wasInside di-reset karena ini identitas
+// zona yang baru (retest history sisi lama gak relevan lagi buat sisi
+// baru). Satu evaluasi cukup - close cuma bisa nembus SATU sisi sekaligus
+// (>level+tol XOR <level-tol), jadi gak mungkin double-flip di pass yang
+// sama.
 void QueuePrune(BarrierEntry &q[], ENUM_TIMEFRAMES tf, string tag = "")
 {
    int n = ArraySize(q);
    if(n == 0) return;
    double c = iClose(_Symbol, tf, 1);
    double tol = InpBarrierVetoZoneUsd;
-   int w = 0;
    for(int i = 0; i < n; i++)
    {
       bool broken = (q[i].dir == "BUY") ? (c < q[i].level - tol) : (c > q[i].level + tol);
-      if(!broken) { if(w != i) q[w] = q[i]; w++; }
-      else if(tag != "")   // v52.64: diagnostic
-         Print("BARRIER PRUNE [", tag, "]: ", q[i].dir, " @ ", DoubleToString(q[i].level, 2),
-               " jebol (close=", DoubleToString(c, 2), ", tol=", DoubleToString(tol, 2), ")");
+      if(broken)
+      {
+         string oldDir = q[i].dir;
+         q[i].dir = (oldDir == "BUY") ? "SELL" : "BUY";
+         q[i].retestCount = 0;
+         q[i].wasInside = false;
+         if(tag != "")   // v52.64: diagnostic
+            Print("BARRIER FLIP-SBR [", tag, "]: ", oldDir, " @ ", DoubleToString(q[i].level, 2),
+                  " jebol -> flip jadi ", q[i].dir, " (close=", DoubleToString(c, 2), ", tol=", DoubleToString(tol, 2), ")");
+      }
    }
-   if(w != n) ArrayResize(q, w);
 }
 //--- true if `q` still has an unbroken entry of `dir` - queue is kept
 //--- pre-pruned (see QueuePrune, called every tick), so "present in queue"
@@ -2237,40 +2294,90 @@ string JsonBarrierQueue(BarrierEntry &q[])
 //--- happens WHILE attached, and H4/D1 can go a long time between flips).
 //--- The return value lets TryBootstrapAllBarriers() retry every tick until
 //--- every TF actually succeeds, instead of gambling on one shot at OnInit.
-bool BootstrapBarrierFromHistory(int handle, ENUM_TIMEFRAMES tf, string &lastDir, double &lastLevel, BarrierEntry &queue[])
+bool BootstrapBarrierFromHistory(int handle, ENUM_TIMEFRAMES tf, string &lastDir, double &lastLevel, BarrierEntry &queue[], string diagTag = "")
 {
    if(handle == INVALID_HANDLE) return false;
    if(BarsCalculated(handle) < 5) return false;   // indicator not warmed up yet - caller retries
+   if(diagTag != "")
+      Print("BOOT WARMUP [", diagTag, "]: BarsCalculated=", BarsCalculated(handle), " iBars=", iBars(_Symbol, tf));
 
    int    n = 2000;   // deep scan - want the whole recent staircase, not just 1 step back
-   double ctBuf[], dirBuf[], lvlBuf[];
+   double ctBuf[], dirBuf[], lvlBuf[], supBuf[], resBuf[];
    if(CopyBuffer(handle, 3, 0, n, ctBuf) <= 0) return false;
    if(CopyBuffer(handle, 2, 0, n, dirBuf) <= 0) return false;
    if(CopyBuffer(handle, 4, 0, n, lvlBuf) <= 0) return false;
+   CopyBuffer(handle, 5, 0, n, supBuf);
+   CopyBuffer(handle, 6, 0, n, resBuf);
+
    int have = MathMin(MathMin(ArraySize(ctBuf), ArraySize(dirBuf)), ArraySize(lvlBuf));
    if(have < 2) return false;
+   if(diagTag != "")
+      Print("BOOT ARRAY [", diagTag, "]: have=", have, " ctBuf[0]=", TimeToString((datetime)ctBuf[0]),
+            " ctBuf[have-1]=", TimeToString((datetime)ctBuf[have-1]), " realBarTime[0]=", TimeToString(iTime(_Symbol, tf, 0)));
 
-   BarrierEntry found[];   // discovered newest-first while walking backward
-   double prevChangeTime = ctBuf[0];
-   for(int i = 1; i < have && ArraySize(found) < MAX_BARRIER_QUEUE; i++)
+   // v53.70: Full A-shape (Resistance/Supply) & V-shape (Support/Demand) + Regime Flip extraction
+   BarrierEntry found[];
+   double prevChangeTime = ctBuf[have - 1];
+   double prevRes = 0.0, prevSup = 0.0;
+
+   for(int i = have - 2; i >= 0 && ArraySize(found) < MAX_BARRIER_QUEUE; i--)
    {
+      // 1. A-shape Minor Resistance (Supply Barrier)
+      if(ArraySize(resBuf) > i && resBuf[i] > 0 && resBuf[i] != prevRes)
+      {
+         int fn = ArraySize(found);
+         if(fn < MAX_BARRIER_QUEUE)
+         {
+            ArrayResize(found, fn + 1);
+            found[fn].dir = "SELL";
+            found[fn].level = resBuf[i];
+            found[fn].retestCount = 0;
+            found[fn].wasInside = false;
+         }
+         prevRes = resBuf[i];
+      }
+
+      // 2. V-shape Minor Support (Demand Barrier)
+      if(ArraySize(supBuf) > i && supBuf[i] > 0 && supBuf[i] != prevSup)
+      {
+         int fn = ArraySize(found);
+         if(fn < MAX_BARRIER_QUEUE)
+         {
+            ArrayResize(found, fn + 1);
+            found[fn].dir = "BUY";
+            found[fn].level = supBuf[i];
+            found[fn].retestCount = 0;
+            found[fn].wasInside = false;
+         }
+         prevSup = supBuf[i];
+      }
+
+      // 3. Regime Flips
       if(ctBuf[i] > 0 && ctBuf[i] != prevChangeTime)
       {
          string dir = (dirBuf[i] > 0.5) ? "BUY" : (dirBuf[i] < -0.5) ? "SELL" : "";
          if(dir != "")
          {
             int fn = ArraySize(found);
-            ArrayResize(found, fn + 1);
-            found[fn].dir = dir;
-            found[fn].level = lvlBuf[i];
+            if(fn < MAX_BARRIER_QUEUE)
+            {
+               ArrayResize(found, fn + 1);
+               found[fn].dir = dir;
+               found[fn].level = lvlBuf[i];
+               found[fn].retestCount = 0;
+               found[fn].wasInside = false;
+            }
          }
          prevChangeTime = ctBuf[i];
       }
    }
+
    int cnt = ArraySize(found);
    ArrayResize(queue, cnt);
    for(int k = 0; k < cnt; k++) queue[k] = found[cnt - 1 - k];   // reverse -> oldest first, matches live-push order
-   QueuePrune(queue, tf);   // some of these may have already been broken by price action since
+   QueuePrune(queue, tf, diagTag);   // SBR / RBS automatic flip
+   if(diagTag != "")
+      Print("BOOT SUMMARY [", diagTag, "]: raw=", cnt, " survived_after_prune=", ArraySize(queue), " price=", DoubleToString(SymbolInfoDouble(_Symbol, SYMBOL_BID), 2));
 
    datetime ct;
    lastDir = ReadCMP(handle, ct);
@@ -2279,13 +2386,6 @@ bool BootstrapBarrierFromHistory(int handle, ENUM_TIMEFRAMES tf, string &lastDir
    return true;
 }
 
-//--- v52.63: retry wrapper - called from OnInit (first try) AND from every
-//--- OnTick until it fully succeeds (indicators can still be warming up
-//--- right after attach, especially H4/D1 with years of history to chew
-//--- through). g_barrierBootstrapDone latches true only once ALL 6 tracked
-//--- TFs report ready, so this stops costing anything once it's done; a
-//--- 300-tick safety cap stops it from retrying forever if something is
-//--- genuinely, permanently broken (handle invalid etc).
 bool g_barrierBootstrapDone = false;
 int  g_barrierBootstrapTries = 0;
 void TryBootstrapAllBarriers()
@@ -4380,6 +4480,11 @@ void ReadBookmapBridge()
    UpdateReloadLevels(price);   // v52.84 - must run BEFORE UpdateWallLines()/WallEatRate() below, uses its own dedicated prev-snapshot so order vs those doesn't actually matter, but keeping it here alongside the other bookmap-derived updates
    SamplePocIfNewMinute();
    UpdateLiveWallLabelsOnTick();
+   ScanUserDrawnBoxesAndAttachLots();
+   UpdateLiquidityVacuumRadar();
+   UpdateWallDistanceSpeedometer();
+   UpdateSpoofingRadarEngine();
+   UpdateWhaleFootprintBadges();
    DrawCandleDeltaOverlay();   // v53.46: Live Footprint Delta on every candle   // v53.44: update live wall lot text on tick   // v52.41 - feeds IsPocMigrating()/IsRegimeTrending()
    // v53.32: NO VISUAL DRAWING ON TICK!
    // All chart visual updates are handled strictly via OnTimer() with state comparison
@@ -4397,16 +4502,34 @@ void ReadBookmapBridge()
 //| fall back to their own tolerance-band logic, same "degrade, don't   |
 //| block" pattern as every other optional Bookmap-derived feature.     |
 //+------------------------------------------------------------------+
-void ReadZonesCsv()
+// v53.58: GANTI TOTAL sumber zona S&D - Dadang: "gimana kalo lo pasang di
+// area-area cmp lama aja bro dan cmp baru kan kita trading breakout bro...
+// ganti total bro dan sesuaikan dengan confluence-nya". Dulu zona dari
+// akumulasi wall/lot (zones_v2.csv, Python zone_engine). SEKARANG dari
+// Barrier Queue CMP (g_m30Queue/g_h1Queue/g_h4Queue/g_d1Queue) - level CMP
+// LAMA yang belum jebol per TF, TF M30 ke atas (M5/M15 sengaja gak dipakai
+// zona - "lainnya ngandalin cvd delta dll" sesuai instruksi).
+//
+// Arah SUPPLY/DEMAND: sama persis logic BarrierVetoes() yang udah ada -
+// dir=="SELL" (barrier bekas CMP SELL, belum di-reclaim) = SUPPLY/resistance.
+// dir=="BUY"  (barrier bekas CMP BUY, belum jebol ke bawah)  = DEMAND/support.
+//
+// Toleransi lebar +- per TF SAMA PERSIS angka yang udah dipakai
+// GetCmpConfluenceTag() (D1/H4 ±2.0, H1 ±1.5, M30 ±1.0) - bukan angka baru,
+// biar konsisten sama confluence yang udah ada. Skor dasar makin besar TF
+// makin kuat (doktrin: "semakin besar TF semakin kuat SNR-nya").
+//
+// Otomatis nyambung ke CalculateConfluenceScore() Bagian 3 (S&D & Liquidity)
+// TANPA perlu ubah fungsi itu - dia baca g_demandRoadLo/Hi[0] dkk yang
+// hilirnya dari array ini juga.
+//
+// PENTING: retest_count/absorption_hits di-set 0 (bukan dikarang) - konsep
+// itu punya wall-accumulation, gak ada padanan langsung buat barrier CMP.
+// Status selalu "ACTIVE" - QueuePrune() di UpdateBarrierTracking() udah
+// otomatis buang level yang kejebol SEBELUM sampai sini, jadi semua yang
+// masih ada di queue emang masih valid.
+void BuildZonesFromBarrierCMP()
 {
-   int handle = FileOpen("zones_v2.csv", FILE_READ | FILE_CSV | FILE_COMMON | FILE_ANSI, ',');
-   if(handle == INVALID_HANDLE)
-   {
-      g_zoneCount = 0;
-      g_zoneDataAvailable = false;
-      return;
-   }
-
    ArrayResize(g_zoneSide, 0);
    ArrayResize(g_zoneLo, 0);
    ArrayResize(g_zoneHi, 0);
@@ -4418,34 +4541,39 @@ void ReadZonesCsv()
    ArrayResize(g_zoneAbsorb, 0);
    int n = 0;
 
-   while(!FileIsEnding(handle))
+   // Urutan tetap: [0]=D1 [1]=H4 [2]=H1 [3]=M30 - toleransi & skor dasar per TF
+   double tol[4]    = {2.0, 2.0, 1.5, 1.0};
+   double baseSc[4] = {95.0, 85.0, 70.0, 55.0};
+
+   for(int qi = 0; qi < 4; qi++)
    {
-      string side = FileReadString(handle);
-      if(StringLen(side) == 0) break;   // trailing blank line at EOF
+      int cnt = (qi == 0) ? ArraySize(g_d1Queue) : (qi == 1) ? ArraySize(g_h4Queue) : (qi == 2) ? ArraySize(g_h1Queue) : ArraySize(g_m30Queue);
+      for(int i = 0; i < cnt; i++)
+      {
+         string dir; double level; int retest;
+         if(qi == 0)      { dir = g_d1Queue[i].dir;  level = g_d1Queue[i].level;  retest = g_d1Queue[i].retestCount;  }
+         else if(qi == 1) { dir = g_h4Queue[i].dir;  level = g_h4Queue[i].level;  retest = g_h4Queue[i].retestCount;  }
+         else if(qi == 2) { dir = g_h1Queue[i].dir;  level = g_h1Queue[i].level;  retest = g_h1Queue[i].retestCount;  }
+         else             { dir = g_m30Queue[i].dir; level = g_m30Queue[i].level; retest = g_m30Queue[i].retestCount; }
+         if(level <= 0 || dir == "") continue;
 
-      double lo             = StringToDouble(FileReadString(handle));
-      double hi             = StringToDouble(FileReadString(handle));
-      int    wallCount      = (int)StringToInteger(FileReadString(handle));
-      double totalLot       = StringToDouble(FileReadString(handle));
-      string status         = FileReadString(handle);
-      int    retestCount    = (int)StringToInteger(FileReadString(handle));
-      int    absorptionHits = (int)StringToInteger(FileReadString(handle));
-      double score          = StringToDouble(FileReadString(handle));
+         string side = (dir == "SELL") ? "SUPPLY" : "DEMAND";
 
-      ArrayResize(g_zoneSide, n + 1);      g_zoneSide[n]      = side;
-      ArrayResize(g_zoneLo, n + 1);        g_zoneLo[n]        = lo;
-      ArrayResize(g_zoneHi, n + 1);        g_zoneHi[n]        = hi;
-      ArrayResize(g_zoneStatus, n + 1);    g_zoneStatus[n]    = status;
-      ArrayResize(g_zoneScore, n + 1);     g_zoneScore[n]     = score;
-      ArrayResize(g_zoneWallCount, n + 1); g_zoneWallCount[n] = wallCount;
-      ArrayResize(g_zoneTotalLot, n + 1);  g_zoneTotalLot[n]  = totalLot;
-      ArrayResize(g_zoneRetest, n + 1);    g_zoneRetest[n]    = retestCount;
-      ArrayResize(g_zoneAbsorb, n + 1);    g_zoneAbsorb[n]    = absorptionHits;
-      n++;
+         ArrayResize(g_zoneSide, n + 1);      g_zoneSide[n]      = side;
+         ArrayResize(g_zoneLo, n + 1);        g_zoneLo[n]        = level - tol[qi];
+         ArrayResize(g_zoneHi, n + 1);        g_zoneHi[n]        = level + tol[qi];
+         ArrayResize(g_zoneStatus, n + 1);    g_zoneStatus[n]    = "ACTIVE";
+         ArrayResize(g_zoneScore, n + 1);     g_zoneScore[n]     = baseSc[qi];
+         ArrayResize(g_zoneWallCount, n + 1); g_zoneWallCount[n] = 0;
+         ArrayResize(g_zoneTotalLot, n + 1);  g_zoneTotalLot[n]  = 0.0;
+         ArrayResize(g_zoneRetest, n + 1);    g_zoneRetest[n]    = retest;   // v53.60: real touch count, not fabricated
+         ArrayResize(g_zoneAbsorb, n + 1);    g_zoneAbsorb[n]    = 0;
+         n++;
+      }
    }
-   FileClose(handle);
+
    g_zoneCount = n;
-   g_zoneDataAvailable = true;
+   g_zoneDataAvailable = (n > 0);
 }
 
 //+------------------------------------------------------------------+
@@ -4469,6 +4597,24 @@ string ZoneStatusID(string status)
    return status;
 }
 string ZoneStrengthID(double score) { return (score >= 60) ? "KUAT" : (score >= 30 ? "SEDANG" : "LEMAH"); }
+
+// v53.58: zona sekarang dari Barrier CMP (BuildZonesFromBarrierCMP()), skor
+// dasarnya deterministik per TF sumber (D1=95/H4=85/H1=70/M30=55) - jadi TF
+// asalnya bisa ditarik balik dari skor tanpa perlu array baru buat nge-thread
+// "source TF" lewat seluruh pipeline sort/filter di DrawAllZones(). Dipakai
+// buat ganti "Serap Nx" (absorption - konsep wall-accumulation, gak ada
+// padanan buat barrier CMP) jadi TF sumber barrier-nya.
+// v53.60: "Uji Nx" (retest) BUKAN dibuang - Dadang: "kenapa gak bisa ya
+// harus bisa ketika itu disentuh price kan bro", bener, itu genuinely bisa
+// dihitung - lihat TrackBarrierRetests()/BarrierEntry.retestCount, sekarang
+// real, bukan 0 lagi.
+string ZoneSourceTF(double score)
+{
+   if(score >= 90.0) return "D1";
+   if(score >= 80.0) return "H4";
+   if(score >= 65.0) return "H1";
+   return "M30";
+}
 
 // v53.14: full rewrite per Dadang's 21-section visual spec - "CHART HARUS
 // BISA DIBACA DALAM 2-3 DETIK... DATA ZONE != VISUAL ZONE". Only the
@@ -4672,10 +4818,9 @@ void UpdateLiveWallLabelsOnTick()
             g_supplyState[a].liveLot = liveLot;
             g_supplyState[a].delta   = liveDelta;
             string deltaStr = FormatDeltaString(liveDelta);
-            string labelText = StringFormat("%s %.0fL | %s %.0f | Uji %dx, Serap %dx | Ask Live: %.0fL | %s",
-                                            tag, g_supplyState[a].lot, ZoneStrengthID(g_supplyState[a].score),
-                                            g_supplyState[a].score, g_supplyState[a].retest,
-                                            g_supplyState[a].absorb, liveLot, deltaStr);
+            string labelText = StringFormat("%s [%s] %s %.0f | Uji %dx | Ask Live: %.0fL | %s",
+                                            tag, ZoneSourceTF(g_supplyState[a].score), ZoneStrengthID(g_supplyState[a].score),
+                                            g_supplyState[a].score, g_supplyState[a].retest, liveLot, deltaStr);
             ObjectSetString(0, nameTxt, OBJPROP_TEXT, labelText);
          }
       }
@@ -4693,14 +4838,37 @@ void UpdateLiveWallLabelsOnTick()
             g_demandState[a].liveLot = liveLot;
             g_demandState[a].delta   = liveDelta;
             string deltaStr = FormatDeltaString(liveDelta);
-            string labelText = StringFormat("%s %.0fL | %s %.0f | Uji %dx, Serap %dx | Bid Live: %.0fL | %s",
-                                            tag, g_demandState[a].lot, ZoneStrengthID(g_demandState[a].score),
-                                            g_demandState[a].score, g_demandState[a].retest,
-                                            g_demandState[a].absorb, liveLot, deltaStr);
+            string labelText = StringFormat("%s [%s] %s %.0f | Uji %dx | Bid Live: %.0fL | %s",
+                                            tag, ZoneSourceTF(g_demandState[a].score), ZoneStrengthID(g_demandState[a].score),
+                                            g_demandState[a].score, g_demandState[a].retest, liveLot, deltaStr);
             ObjectSetString(0, nameTxt, OBJPROP_TEXT, labelText);
          }
       }
    }
+}
+
+
+//+------------------------------------------------------------------+
+//| v53.72: TF-Specific Color Mapping for S&D Multi-Timeframe Zones   |
+//+------------------------------------------------------------------+
+color GetZoneColorByTF(bool isDemand, double score)
+{
+   if(score >= 90.0) // D1 (Daily Macro)
+      return isDemand ? C'0,229,255' : C'255,180,0';      // Cyan / Gold
+   if(score >= 80.0) // H4 (Master Trend)
+      return isDemand ? C'0,230,118' : C'235,50,150';     // Mint Green / Magenta
+   if(score >= 65.0) // H1 (Tactical)
+      return isDemand ? C'120,255,0' : C'255,60,60';      // Lime / Coral Red
+   // M30 (Scalp Master)
+   return isDemand ? C'38,198,218' : C'255,140,0';        // Teal / Cyber Orange
+}
+
+color GetZoneTextColorByTF(bool isDemand, double score)
+{
+   if(score >= 90.0) return isDemand ? C'200,245,255' : C'255,235,180';
+   if(score >= 80.0) return isDemand ? C'200,255,225' : C'255,210,235';
+   if(score >= 65.0) return isDemand ? C'230,255,200' : C'255,215,215';
+   return isDemand ? C'210,255,255' : C'255,230,195';
 }
 
 void DrawZoneBox(int rank, string side, double lo, double hi, double totalLot,
@@ -4717,9 +4885,9 @@ void DrawZoneBox(int rank, string side, double lo, double hi, double totalLot,
    string pfx    = isDemand ? "D" : "S";
    string tag    = StringFormat("%s%d", pfx, rank + 1);
 
-   // Warna Garis V2: Merah Terang (Supply) & Hijau Terang (Demand)
-   color clrBox  = isDemand ? C'0,225,120' : C'245,60,60';
-   color clrTxt  = isDemand ? C'210,255,230' : C'255,220,220'; // Teks terang bersih
+   // Warna Khas per Timeframe (D1=Gold/Cyan, H4=Magenta/Mint, H1=Red/Lime, M30=Orange/Teal)
+   color clrBox  = GetZoneColorByTF(isDemand, score);
+   color clrTxt  = GetZoneTextColorByTF(isDemand, score);
 
    string nameBox = "SD_" + tag + "_BOX";
    string nameTxt = "SD_" + tag + "_TXT";
@@ -4759,56 +4927,33 @@ void DrawZoneBox(int rank, string side, double lo, double hi, double totalLot,
       g_supplyState[rank].score=score; g_supplyState[rank].retest=retestCount; g_supplyState[rank].absorb=absorptionHits;
    }
 
-   // 1. Format Teks Label Lengkap + Live Wall + Real Delta Footprint (duluan,
-   // karena lebar kotak sekarang diukur dari lebar teks ini - lihat bawah)
+   // Format Label
    string liveTag = isDemand ? "Bid Live" : "Ask Live";
    string deltaStr = FormatDeltaString(liveDelta);
+   string tfTag = ZoneSourceTF(score);
 
-   string labelText = StringFormat("%s %.0fL | %s %.0f | Uji %dx, Serap %dx | %s: %.0fL | %s",
-                                   tag, totalLot, ZoneStrengthID(score), score, retestCount, absorptionHits,
+   string labelText = StringFormat("%s [%s] %s %.0f | Uji %dx | %s: %.0fL | %s",
+                                   tag, tfTag, ZoneStrengthID(score), score, retestCount,
                                    liveTag, liveWallLot, deltaStr);
 
    int fontPt = (rank == 0 ? 9 : 8);
 
-   // 2. Gambar KOTAK S&D V2
-   // v53.52: Dadang - kotak melebar 45 candle ke kiri sampai nabrak/masuk
-   // ke belakang panel HUD "Chain Reaction System". t1 ditarik dekat ke
-   // harga berjalan aja.
-   // v53.54: t2 fixed +12/+30 candle SELALU salah di zoom tertentu - lebar
-   // candle dalam PIXEL berubah tergantung zoom/scroll, sementara lebar
-   // teks di layar konstan (tergantung panjang string & font, bukan
-   // candle). v53.55: t2 sekarang diukur dari lebar PIXEL teks label ASLI
-   // (TextGetSize) lalu dikonversi balik ke waktu chart (ChartXYToTimePrice)
-   // - pola yang sama kayak ChartRightEdgeTime() di bawah, yang udah
-   // kepake buat POC/VAH/VAL. Jadi kotak SELALU pas nutupin teks, berapa
-   // pun panjangnya dan di zoom berapa pun. Diklem 6-40 candle sebagai
-   // safety net kalau pengukuran pixel gagal/chart belum siap.
-   datetime t1 = TimeCurrent() - PeriodSeconds(_Period) * 2;
-   datetime labelTime = t1 + PeriodSeconds(_Period) * 2;
+   // v53.72: MEMANJANG KE KIRI & KANAN (Full Horizon Corridor)
+   // t1 ditarik 70 lilin ke kiri dari harga running
+   // t2 ditarik 25 lilin ke kanan ke masa depan
+   int nBars = iBars(_Symbol, _Period);
+   int lookbackBars = (nBars > 75) ? 70 : (nBars - 5);
+   if(lookbackBars < 10) lookbackBars = 10;
+   datetime t1 = iTime(_Symbol, _Period, lookbackBars);
+   if(t1 <= 0) t1 = TimeCurrent() - PeriodSeconds(_Period) * 70;
 
-   TextSetFont("Segoe UI Semibold", fontPt * 10);
-   uint textW = 0, textH = 0;
-   TextGetSize(labelText, textW, textH);
-
-   datetime t2 = TimeCurrent() + PeriodSeconds(_Period) * 14;   // fallback
-   int x1 = 0, y1 = 0;
-   if(textW > 0 && ChartTimePriceToXY(0, 0, labelTime, hi, x1, y1))
-   {
-      int x2 = x1 + (int)textW + 24;   // +padding kiri-kanan
-      int subWin = 0; datetime tOut; double pOut;
-      if(ChartXYToTimePrice(0, x2, y1, subWin, tOut, pOut))
-         t2 = tOut;
-   }
-   datetime t2Min = t1 + PeriodSeconds(_Period) * 6;
-   datetime t2Max = t1 + PeriodSeconds(_Period) * 40;
-   if(t2 < t2Min) t2 = t2Min;
-   if(t2 > t2Max) t2 = t2Max;
+   datetime t2 = TimeCurrent() + PeriodSeconds(_Period) * 25;
+   datetime labelTime = TimeCurrent() - PeriodSeconds(_Period) * 2; // Posisi teks dekat candle berjalan
 
    SetRectangle(nameBox, t1, hi, t2, lo, clrBox, borderW, borderS, false);
+   ObjectSetInteger(0, nameBox, OBJPROP_BACK, true); // Di belakang candle agar candle tetap bersih
 
-   // 3. Posisi Teks: Di dalam kotak sebelah kiri (t1 + 2 lilin)
    double midPx = (lo + hi) * 0.5;
-
    SetText(nameTxt, labelTime, midPx, labelText, clrTxt, fontPt, "Segoe UI Semibold", ANCHOR_LEFT);
 }
 
@@ -5222,6 +5367,712 @@ void DrawCandleDeltaOverlay()
    }
 }
 
+
+//+------------------------------------------------------------------+
+//| v53.73: DADANG DISCRETIONARY BOX SCANNER (BOOKMAP WALL DETECTOR)  |
+//| Mendeteksi SEMUA kotak rectangle manual yang digambar Dadang di  |
+//| chart dan langsung menghitung TOTAL LOT WALL BOOKMAP di dalamnya |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| v53.74: DETEKSI HISTORI S&D & RETEST DI DALAM KOTAK MANUAL DADANG |
+//+------------------------------------------------------------------+
+void GetBoxHistoricalSND(double lo, double hi, bool isSupply, string &patternOut, int &retestOut, string &sourceTfOut)
+{
+   patternOut = "";
+   retestOut = 0;
+   sourceTfOut = "";
+   
+   bool hasD1 = false, hasH4 = false, hasH1 = false, hasM30 = false;
+   bool isFlipSBR = false, isFlipRBS = false;
+   
+   // 1. Cek D1 Queue
+   for(int i = 0; i < ArraySize(g_d1Queue); i++)
+   {
+      if(g_d1Queue[i].level >= (lo - 1.5) && g_d1Queue[i].level <= (hi + 1.5))
+      {
+         hasD1 = true;
+         retestOut = MathMax(retestOut, g_d1Queue[i].retestCount);
+         if(isSupply && g_d1Queue[i].dir == "BUY")  isFlipSBR = true;
+         if(!isSupply && g_d1Queue[i].dir == "SELL") isFlipRBS = true;
+      }
+   }
+   
+   // 2. Cek H4 Queue
+   for(int i = 0; i < ArraySize(g_h4Queue); i++)
+   {
+      if(g_h4Queue[i].level >= (lo - 1.5) && g_h4Queue[i].level <= (hi + 1.5))
+      {
+         hasH4 = true;
+         retestOut = MathMax(retestOut, g_h4Queue[i].retestCount);
+         if(isSupply && g_h4Queue[i].dir == "BUY")  isFlipSBR = true;
+         if(!isSupply && g_h4Queue[i].dir == "SELL") isFlipRBS = true;
+      }
+   }
+   
+   // 3. Cek H1 Queue
+   for(int i = 0; i < ArraySize(g_h1Queue); i++)
+   {
+      if(g_h1Queue[i].level >= (lo - 1.0) && g_h1Queue[i].level <= (hi + 1.0))
+      {
+         hasH1 = true;
+         retestOut = MathMax(retestOut, g_h1Queue[i].retestCount);
+         if(isSupply && g_h1Queue[i].dir == "BUY")  isFlipSBR = true;
+         if(!isSupply && g_h1Queue[i].dir == "SELL") isFlipRBS = true;
+      }
+   }
+   
+   // 4. Cek M30 Queue
+   for(int i = 0; i < ArraySize(g_m30Queue); i++)
+   {
+      if(g_m30Queue[i].level >= (lo - 1.0) && g_m30Queue[i].level <= (hi + 1.0))
+      {
+         hasM30 = true;
+         retestOut = MathMax(retestOut, g_m30Queue[i].retestCount);
+         if(isSupply && g_m30Queue[i].dir == "BUY")  isFlipSBR = true;
+         if(!isSupply && g_m30Queue[i].dir == "SELL") isFlipRBS = true;
+      }
+   }
+   
+   // Tentukan sumber TF utama yang tercakup di kotak
+   if(hasD1)       sourceTfOut = "D1";
+   else if(hasH4)  sourceTfOut = "H4";
+   else if(hasH1)  sourceTfOut = "H1";
+   else if(hasM30) sourceTfOut = "M30";
+   else            sourceTfOut = StringSubstr(EnumToString(_Period), 7);
+   
+   // Tentukan Pola Struktur Murni (SBR/RBS vs DBR/RBD/RBR/DBD)
+   if(isSupply)
+   {
+      if(isFlipSBR) patternOut = "SBR (Flip)";
+      else          patternOut = (retestOut > 0) ? "RBD (Drop)" : "DBD (Drop Base)";
+   }
+   else
+   {
+      if(isFlipRBS) patternOut = "RBS (Flip)";
+      else          patternOut = (retestOut > 0) ? "DBR (Rally)" : "RBR (Rally Base)";
+   }
+}
+
+//+------------------------------------------------------------------+
+//| v53.76: DADANG DISCRETIONARY DRAWING SCANNER (BOX, HLINE, TREND)  |
+//| Mendeteksi KOTAK, GARIS HORISONTAL (BODY CANDLE), & TRENDLINE     |
+//| dan langsung menghitung TOTAL LOT WALL BOOKMAP di level tersebut  |
+//+------------------------------------------------------------------+
+// Global state for Liquidity Vacuum & Sniper Traps
+string g_vacuumHighwayText = "";
+color  g_vacuumHighwayColor = clrSilver;
+datetime g_lastSniperTradeTime = 0;
+
+
+//+------------------------------------------------------------------+
+//| v53.77: LIQUIDITY VACUUM RADAR (LUBANG HITAM PENYEDOT HARGA)      |
+//+------------------------------------------------------------------+
+void UpdateLiquidityVacuumRadar()
+{
+   if(!InpShowLiquidityVacuum || !g_bookmapOnline || g_bookmapPrice <= 0) return;
+   
+   double curPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double offset   = curPrice - g_bookmapPrice;
+   
+   // 1. Cari Mega Wall Ask Terdekat di Atas (Target Sedotan Naik)
+   double nearestMegaAskPx = 0.0, nearestMegaAskLot = 0.0;
+   for(int w = 0; w < WALL_SLOTS_PER_SIDE; w++)
+   {
+      if(g_bookmapAskPx[w] > 0 && g_bookmapAskSz[w] >= 45.0)
+      {
+         double px = g_bookmapAskPx[w] + offset;
+         if(px > curPrice + 1.5)
+         {
+            if(nearestMegaAskPx == 0.0 || px < nearestMegaAskPx)
+            {
+               nearestMegaAskPx = px;
+               nearestMegaAskLot = g_bookmapAskSz[w];
+            }
+         }
+      }
+   }
+   
+   // 2. Cari Mega Wall Bid Terdekat di Bawah (Target Sedotan Turun)
+   double nearestMegaBidPx = 0.0, nearestMegaBidLot = 0.0;
+   for(int w = 0; w < WALL_SLOTS_PER_SIDE; w++)
+   {
+      if(g_bookmapBidPx[w] > 0 && g_bookmapBidSz[w] >= 45.0)
+      {
+         double px = g_bookmapBidPx[w] + offset;
+         if(px < curPrice - 1.5)
+         {
+            if(nearestMegaBidPx == 0.0 || px > nearestMegaBidPx)
+            {
+               nearestMegaBidPx = px;
+               nearestMegaBidLot = g_bookmapBidSz[w];
+            }
+         }
+      }
+   }
+   
+   // Evaluasi Arah Sedotan
+   if(nearestMegaAskPx > 0 && (nearestMegaBidPx == 0 || (nearestMegaAskPx - curPrice) < (curPrice - nearestMegaBidPx)))
+   {
+      double dist = nearestMegaAskPx - curPrice;
+      g_vacuumHighwayText = StringFormat("🧲 VACUUM SEDOTAN: NAIK ke @%.2f (+%.1f USD / +%.0f pips) | Target Wall: %.0fL",
+                                         nearestMegaAskPx, dist, dist * 10.0, nearestMegaAskLot);
+      g_vacuumHighwayColor = C'0,230,118';
+   }
+   else if(nearestMegaBidPx > 0)
+   {
+      double dist = curPrice - nearestMegaBidPx;
+      g_vacuumHighwayText = StringFormat("🧲 VACUUM SEDOTAN: TURUN ke @%.2f (-%.1f USD / -%.0f pips) | Target Wall: %.0fL",
+                                         nearestMegaBidPx, dist, dist * 10.0, nearestMegaBidLot);
+      g_vacuumHighwayColor = C'255,80,80';
+   }
+   else
+   {
+      g_vacuumHighwayText = "🧲 VACUUM SEDOTAN: Netral (Distribusi Merata)";
+      g_vacuumHighwayColor = clrSilver;
+   }
+}
+
+
+
+//+------------------------------------------------------------------+
+//| v53.78: PERSISTENT ORIGIN TIMEFRAME LOCK                          |
+//| Mengunci Timeframe asli tempat Dadang menggambar objek (D1/H4/H1) |
+//| sehingga saat turun ke M5/M1, label TETAP D1/H4 (tidak berubah!) |
+//+------------------------------------------------------------------+
+string GetOrSaveOriginTF(string objName)
+{
+   string tooltip = ObjectGetString(0, objName, OBJPROP_TOOLTIP);
+   if(StringFind(tooltip, "TF_") == 0)
+   {
+      return StringSubstr(tooltip, 3);
+   }
+   // Pertama kali objek dideteksi: Kunci permanen ke timeframe aktif saat ini
+   string curTf = StringSubstr(EnumToString(_Period), 7);
+   ObjectSetString(0, objName, OBJPROP_TOOLTIP, "TF_" + curTf);
+   return curTf;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DADANG INSTITUTIONAL POWER ENGINES: SPEEDOMETER, WHALE WICK, SPOOFING RADAR
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Globals for Spoofing Radar
+double   g_prevTopAskPx = 0, g_prevTopAskSz = 0;
+double   g_prevTopBidPx = 0, g_prevTopBidSz = 0;
+string   g_spoofAlertSide = "";
+double   g_spoofAlertPx = 0, g_spoofAlertSz = 0;
+datetime g_spoofAlertTime = 0;
+
+//+------------------------------------------------------------------+
+//| 1. SPEEDOMETER JARAK KE TEMBOK MEGA WALL TERDEKAT (ATAS & BAWAH)  |
+//+------------------------------------------------------------------+
+void UpdateWallDistanceSpeedometer()
+{
+   if(!InpShowWallDistanceSpeedo || !g_bookmapOnline || g_bookmapPrice <= 0)
+   {
+      HideLineObject("DADANG_SPEEDO_ASK_LINE");
+      HideLineObject("DADANG_SPEEDO_ASK_TXT");
+      HideLineObject("DADANG_SPEEDO_BID_LINE");
+      HideLineObject("DADANG_SPEEDO_BID_TXT");
+      HideLineObject("DADANG_SPEEDO_BG");
+      HideLineObject("DADANG_SPEEDO_ASK");
+      HideLineObject("DADANG_SPEEDO_BID");
+      return;
+   }
+   
+   double curPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double offset   = curPrice - g_bookmapPrice;
+   
+   // Cari Ask Wall terdekat di atas
+   double askPx = 0, askSz = 0;
+   for(int w = 0; w < WALL_SLOTS_PER_SIDE; w++)
+   {
+      if(g_bookmapAskPx[w] > 0 && g_bookmapAskSz[w] >= 25.0)
+      {
+         double px = g_bookmapAskPx[w] + offset;
+         if(px > curPrice + 0.30)
+         {
+            if(askPx == 0 || px < askPx) { askPx = px; askSz = g_bookmapAskSz[w]; }
+         }
+      }
+   }
+   
+   // Cari Bid Wall terdekat di bawah
+   double bidPx = 0, bidSz = 0;
+   for(int w = 0; w < WALL_SLOTS_PER_SIDE; w++)
+   {
+      if(g_bookmapBidPx[w] > 0 && g_bookmapBidSz[w] >= 25.0)
+      {
+         double px = g_bookmapBidPx[w] + offset;
+         if(px < curPrice - 0.30)
+         {
+            if(bidPx == 0 || px > bidPx) { bidPx = px; bidSz = g_bookmapBidSz[w]; }
+         }
+      }
+   }
+   
+   datetime tRight = ChartRightEdgeTime(25);
+   
+   // 1. Gambar Garis Ask Wall di Chart
+   if(askPx > 0)
+   {
+      double distAsk = askPx - curPrice;
+      string txtAsk = StringFormat("🔺 WALL: %.0fL @%.2f (+%.1f USD / +%.0f pips)", askSz, askPx, distAsk, distAsk * 10.0);
+      color clrAsk = (distAsk <= 1.0) ? C'255,60,60' : C'255,140,140';
+      if(distAsk <= 1.0) txtAsk += " 🚨 IMPACT!";
+      
+      SetHLine("DADANG_SPEEDO_ASK_LINE", askPx, clrAsk, 1, STYLE_DASH);
+      SetText("DADANG_SPEEDO_ASK_TXT", tRight, askPx, txtAsk, clrAsk, 9, "Segoe UI Semibold", ANCHOR_RIGHT);
+   }
+   else
+   {
+      HideLineObject("DADANG_SPEEDO_ASK_LINE");
+      HideLineObject("DADANG_SPEEDO_ASK_TXT");
+   }
+   
+   // 2. Gambar Garis Bid Wall di Chart
+   if(bidPx > 0)
+   {
+      double distBid = curPrice - bidPx;
+      string txtBid = StringFormat("🔻 WALL: %.0fL @%.2f (-%.1f USD / -%.0f pips)", bidSz, bidPx, distBid, distBid * 10.0);
+      color clrBid = (distBid <= 1.0) ? C'0,255,120' : C'140,255,180';
+      if(distBid <= 1.0) txtBid += " 🚨 IMPACT!";
+      
+      SetHLine("DADANG_SPEEDO_BID_LINE", bidPx, clrBid, 1, STYLE_DASH);
+      SetText("DADANG_SPEEDO_BID_TXT", tRight, bidPx, txtBid, clrBid, 9, "Segoe UI Semibold", ANCHOR_RIGHT);
+   }
+   else
+   {
+      HideLineObject("DADANG_SPEEDO_BID_LINE");
+      HideLineObject("DADANG_SPEEDO_BID_TXT");
+   }
+}
+
+void UpdateSpoofingRadarEngine()
+{
+   if(!InpEnableSpoofingRadar || !g_bookmapOnline || g_bookmapPrice <= 0) return;
+   
+   double curPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double offset   = curPrice - g_bookmapPrice;
+   
+   // Cek apakah ada tembok Ask besar yang tiba-tiba hilang saat harga mendekat
+   if(g_prevTopAskPx > 0 && g_prevTopAskSz >= 40.0)
+   {
+      bool stillExists = false;
+      for(int w = 0; w < WALL_SLOTS_PER_SIDE; w++)
+      {
+         if(g_bookmapAskPx[w] > 0 && MathAbs((g_bookmapAskPx[w] + offset) - g_prevTopAskPx) <= 0.40)
+         {
+            stillExists = true;
+            break;
+         }
+      }
+      // Jika harga sudah dekat (< 1.5 USD) dan temboknya lenyap tanpa match volume
+      if(!stillExists && MathAbs(g_prevTopAskPx - curPrice) <= 1.50)
+      {
+         g_spoofAlertSide = "ASK";
+         g_spoofAlertPx = g_prevTopAskPx;
+         g_spoofAlertSz = g_prevTopAskSz;
+         g_spoofAlertTime = TimeCurrent();
+      }
+   }
+   
+   // Cek Bid Wall
+   if(g_prevTopBidPx > 0 && g_prevTopBidSz >= 40.0)
+   {
+      bool stillExists = false;
+      for(int w = 0; w < WALL_SLOTS_PER_SIDE; w++)
+      {
+         if(g_bookmapBidPx[w] > 0 && MathAbs((g_bookmapBidPx[w] + offset) - g_prevTopBidPx) <= 0.40)
+         {
+            stillExists = true;
+            break;
+         }
+      }
+      if(!stillExists && MathAbs(curPrice - g_prevTopBidPx) <= 1.50)
+      {
+         g_spoofAlertSide = "BID";
+         g_spoofAlertPx = g_prevTopBidPx;
+         g_spoofAlertSz = g_prevTopBidSz;
+         g_spoofAlertTime = TimeCurrent();
+      }
+   }
+   
+   // Simpan state saat ini untuk perbandingan berikutnya
+   if(g_bookmapAskPx[0] > 0) { g_prevTopAskPx = g_bookmapAskPx[0] + offset; g_prevTopAskSz = g_bookmapAskSz[0]; }
+   if(g_bookmapBidPx[0] > 0) { g_prevTopBidPx = g_bookmapBidPx[0] + offset; g_prevTopBidSz = g_bookmapBidSz[0]; }
+   
+   // Tampilkan Banner Spoofing jika baru terjadi (< 60 detik)
+   if(TimeCurrent() - g_spoofAlertTime <= 60 && g_spoofAlertPx > 0)
+   {
+      string spoofText = "";
+      if(g_spoofAlertSide == "ASK")
+         spoofText = StringFormat("⚠️ SPOOFING ALERT: Ask Wall %.0fL @%.2f DICABUT BANDAR! Jalan Tol Naik Terbuka!", g_spoofAlertSz, g_spoofAlertPx);
+      else
+         spoofText = StringFormat("⚠️ SPOOFING ALERT: Bid Wall %.0fL @%.2f DICABUT BANDAR! Jalan Tol Turun Terbuka!", g_spoofAlertSz, g_spoofAlertPx);
+         
+      datetime tBanner = ChartRightEdgeTime(80);
+      SetText("DADANG_SPOOF_BANNER", tBanner, g_spoofAlertPx, spoofText, C'255,200,0', 10, "Segoe UI Bold", ANCHOR_RIGHT);
+   }
+   else
+   {
+      HideLineObject("DADANG_SPOOF_BANNER");
+   }
+}
+
+//+------------------------------------------------------------------+
+//| 3. WHALE FOOTPRINT BADGE DI EKOR LILIN (TRANSAKSI BESAR >= 50L)  |
+//+------------------------------------------------------------------+
+void UpdateWhaleFootprintBadges()
+{
+   if(!InpShowWhaleFootprintWick || !g_bookmapOnline) return;
+   
+   // Cek jika candle saat ini atau bar #1 baru saja mengeksekusi volume paus
+   double netVol = g_bookmapFootM1BuyVol + g_bookmapFootM1SellVol;
+   if(netVol >= 50.0 || g_scWhaleLots >= 50.0)
+   {
+      datetime tBar = iTime(_Symbol, _Period, 0);
+      double highPx = iHigh(_Symbol, _Period, 0);
+      double lowPx  = iLow(_Symbol, _Period, 0);
+      
+      bool isWhaleBuy = (g_bookmapFootM1BuyVol >= g_bookmapFootM1SellVol);
+      string wName = "DADANG_WHALE_" + TimeToString(tBar);
+      
+      if(isWhaleBuy)
+      {
+         SetText(wName, tBar, lowPx - 0.40, StringFormat("🐋 PAUS BUY %.0fL", MathMax(netVol, g_scWhaleLots)), C'0,255,140', 8, "Segoe UI Bold", ANCHOR_CENTER);
+      }
+      else
+      {
+         SetText(wName, tBar, highPx + 0.40, StringFormat("👑 PAUS SELL %.0fL", MathMax(netVol, g_scWhaleLots)), C'255,70,70', 8, "Segoe UI Bold", ANCHOR_CENTER);
+      }
+   }
+}
+
+
+void ScanUserDrawnBoxesAndAttachLots()
+{
+   if(!g_bookmapOnline || g_bookmapPrice <= 0) return;
+   
+   double curPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double offset = curPrice - g_bookmapPrice;
+   string tfStr = StringSubstr(EnumToString(_Period), 7);
+   
+   int totalObj = ObjectsTotal(0);
+   
+   for(int i = 0; i < totalObj; i++)
+   {
+      string name = ObjectName(0, i);
+      ENUM_OBJECT objType = (ENUM_OBJECT)ObjectGetInteger(0, name, OBJPROP_TYPE);
+      
+      // Lewati object internal sistem
+      if(StringFind(name, "SD_") == 0 || StringFind(name, "DD_") == 0 ||
+         StringFind(name, "SC_") == 0 || StringFind(name, "FUS_") == 0 ||
+         StringFind(name, "WALL_") == 0 || StringFind(name, "DADANG_") == 0)
+         continue;
+      
+      // Ambil Timeframe ASLI pembuatan objek (D1/H4/H1/M30/M5) - Terkunci Permanen!
+      string objTf = GetOrSaveOriginTF(name);
+      
+      // ══════════════════════════════════════════════════════════════════
+      // 1. KOTAK RECTANGLE (S&D Zone Discretionary)
+      // ══════════════════════════════════════════════════════════════════
+      if(objType == OBJ_RECTANGLE)
+      {
+         double p1 = ObjectGetDouble(0, name, OBJPROP_PRICE, 0);
+         double p2 = ObjectGetDouble(0, name, OBJPROP_PRICE, 1);
+         datetime t1 = (datetime)ObjectGetInteger(0, name, OBJPROP_TIME, 0);
+         datetime t2 = (datetime)ObjectGetInteger(0, name, OBJPROP_TIME, 1);
+         
+         double top = MathMax(p1, p2);
+         double bottom = MathMin(p1, p2);
+         if(top <= 0 || bottom <= 0 || top == bottom) continue;
+         
+         double totalAskWall = 0.0, totalBidWall = 0.0;
+         int askWallCount = 0, bidWallCount = 0;
+         
+         for(int w = 0; w < WALL_SLOTS_PER_SIDE; w++)
+         {
+            if(g_bookmapAskPx[w] > 0 && g_bookmapAskSz[w] > 0)
+            {
+               double mt5AskPx = g_bookmapAskPx[w] + offset;
+               if(mt5AskPx >= (bottom - 0.50) && mt5AskPx <= (top + 0.50))
+               {
+                  totalAskWall += g_bookmapAskSz[w];
+                  askWallCount++;
+               }
+            }
+            if(g_bookmapBidPx[w] > 0 && g_bookmapBidSz[w] > 0)
+            {
+               double mt5BidPx = g_bookmapBidPx[w] + offset;
+               if(mt5BidPx >= (bottom - 0.50) && mt5BidPx <= (top + 0.50))
+               {
+                  totalBidWall += g_bookmapBidSz[w];
+                  bidWallCount++;
+               }
+            }
+         }
+         
+         double totalWall = totalAskWall + totalBidWall;
+         int totalWalls = askWallCount + bidWallCount;
+         bool isSupply = (bottom >= curPrice - 1.0);
+         
+         string typeTag = isSupply ? "🔴 SUPPLY" : "🟢 DEMAND";
+         color tagColor = isSupply ? C'255,80,80' : C'0,230,118';
+         double zoneDelta = GetZoneDelta(!isSupply, bottom, top);
+         string deltaStr = FormatDeltaString(zoneDelta);
+         
+         // Hitung Volume Historis Candlestick (murni dalam LOT)
+         datetime tStart = MathMin(t1, t2);
+         datetime tEnd   = MathMax(t1, t2);
+         
+         // 4. AUTO-EXTEND KOTAK KE MASA DEPAN (Menembus Candle Berjalan)
+         if(InpAutoExtendBoxesToFuture)
+         {
+            datetime curBarTime = iTime(_Symbol, _Period, 0);
+            if(tEnd < curBarTime)
+            {
+               datetime newEnd = curBarTime + PeriodSeconds(_Period) * 20;
+               ObjectSetInteger(0, name, OBJPROP_TIME, 1, newEnd);
+               tEnd = newEnd;
+            }
+         }
+         int barStart = iBarShift(_Symbol, _Period, tStart);
+         int barEnd   = iBarShift(_Symbol, _Period, tEnd);
+         if(barStart < barEnd) { int tmp = barStart; barStart = barEnd; barEnd = tmp; }
+         
+         long histCandleVol = 0;
+         int totalBars = iBars(_Symbol, _Period);
+         for(int b = barEnd; b <= barStart && b < totalBars; b++)
+         {
+            double bLow  = iLow(_Symbol, _Period, b);
+            double bHigh = iHigh(_Symbol, _Period, b);
+            if(bLow <= top && bHigh >= bottom) histCandleVol += iVolume(_Symbol, _Period, b);
+         }
+         
+         double histLot = (double)histCandleVol / 10.0;
+         if(g_bookmapPocPrice >= bottom && g_bookmapPocPrice <= top && g_bookmapPocVolume > 0) histLot += g_bookmapPocVolume;
+         if(g_bookmapHvnPrice >= bottom && g_bookmapHvnPrice <= top && g_bookmapHvnVolume > 0) histLot += g_bookmapHvnVolume;
+         string histLotStr = (histLot > 0.0) ? StringFormat("HIST: %.0f LOT", histLot) : "HIST: 0 LOT";
+         
+         string patternTag = "", histTf = ""; int retestCount = 0;
+         GetBoxHistoricalSND(bottom, top, isSupply, patternTag, retestCount, histTf);
+         string retestStr = (retestCount > 0) ? StringFormat("Uji %dx", retestCount) : "FRESH";
+         string liveWallStr = (totalWall > 0.0) ? StringFormat("LIVE WALL: %.0f LOT (%d Wall)", totalWall, totalWalls) : "LIVE WALL: 0 LOT";
+         string iconTag = isSupply ? "🔴" : "🟢";
+         string sideName = isSupply ? "SUPPLY" : "DEMAND";
+         
+         // 4. Kalkulasi Otomatis Risk to Reward Ratio (RR) & Lot Ideal
+         double boxThick = top - bottom;
+         double slDistance = boxThick + 1.0; // SL 1 USD di luar kotak
+         double tpDistance = slDistance * 3.5; // Default Target 1:3.5
+         double rrRatio = 3.5;
+         double recLot = MathMax(0.01, MathRound((InpBoxSniperRiskUsd / (slDistance * 100.0)) * 100.0) / 100.0);
+         if(recLot > 5.0) recLot = 5.0;
+         
+         // 5. Deteksi Interaksi Real-Time (Harga Sedang Menyentuh Kotak Dadang!)
+         bool isTouching = (curPrice >= bottom - 0.20 && curPrice <= top + 0.20);
+         string touchStatus = "";
+         if(isTouching)
+         {
+            if(!isSupply && (zoneDelta >= 10.0 || g_bookmapAbsorption == "BID"))
+               touchStatus = " • 🔥 SNIPER REBOUND CONFIRMED!";
+            else if(isSupply && (zoneDelta <= -10.0 || g_bookmapAbsorption == "ASK"))
+               touchStatus = " • 🔥 SNIPER REJECTION CONFIRMED!";
+            else
+               touchStatus = " • ⚡ HARGA DI DALAM KOTAK!";
+               
+            // Auto Sniper Execution jika diaktifkan Dadang
+            if(InpEnableBoxSniperTrap && (TimeCurrent() - g_lastSniperTradeTime > 300))
+            {
+               if(!isSupply && zoneDelta >= 15.0) // Demand Buy Rebound
+               {
+                  double sl = bottom - 1.0;
+                  double tp = curPrice + (slDistance * 3.5);
+                  if(TryOpen("BUY", "DADANG_BOX_SNIPER_BUY", false, 0, 0, sl, tp))
+                     g_lastSniperTradeTime = TimeCurrent();
+               }
+               else if(isSupply && zoneDelta <= -15.0) // Supply Sell Rejection
+               {
+                  double sl = top + 1.0;
+                  double tp = curPrice - (slDistance * 3.5);
+                  if(TryOpen("SELL", "DADANG_BOX_SNIPER_SELL", false, 0, 0, sl, tp))
+                     g_lastSniperTradeTime = TimeCurrent();
+               }
+            }
+         }
+         
+         string labelText = StringFormat("%s %s [%s] : %s • %s • %s [%s] • %s • ⚖️ RR 1:%.1f (Lot: %.2fL)%s",
+                                         iconTag, sideName, objTf, liveWallStr, histLotStr, patternTag, retestStr, deltaStr, rrRatio, recLot, touchStatus);
+         
+         string lblName = "DADANG_BOX_LBL_" + name;
+         datetime labelPosT = tStart + PeriodSeconds(_Period) * 2;
+         double midY = (top + bottom) * 0.5;
+         double labelPosP = (top - bottom > 2.0) ? (top - (top - bottom) * 0.25) : midY;
+         
+         if(ObjectFind(0, lblName) < 0)
+         {
+            ObjectCreate(0, lblName, OBJ_TEXT, 0, labelPosT, labelPosP);
+            ObjectSetInteger(0, lblName, OBJPROP_SELECTABLE, false);
+            ObjectSetInteger(0, lblName, OBJPROP_HIDDEN, true);
+         }
+         ObjectMove(0, lblName, 0, labelPosT, labelPosP);
+         ObjectSetString(0, lblName, OBJPROP_TEXT, labelText);
+         ObjectSetInteger(0, lblName, OBJPROP_COLOR, tagColor);
+         ObjectSetInteger(0, lblName, OBJPROP_FONTSIZE, 10);
+         ObjectSetString(0, lblName, OBJPROP_FONT, "Segoe UI Bold");
+         ObjectSetInteger(0, lblName, OBJPROP_ANCHOR, ANCHOR_LEFT);
+      }
+      
+      // ══════════════════════════════════════════════════════════════════
+      // 2. GARIS HORISONTAL (OBJ_HLINE - Penanda Body Candle / Key Level)
+      // ══════════════════════════════════════════════════════════════════
+      else if(objType == OBJ_HLINE)
+      {
+         double linePx = ObjectGetDouble(0, name, OBJPROP_PRICE, 0);
+         if(linePx <= 0) continue;
+         
+         // Deteksi apakah garis ini menandai Body Candle (Open/Close)
+         string bodyTag = "";
+         for(int b = 0; b < 25; b++)
+         {
+            double op = iOpen(_Symbol, _Period, b);
+            double cl = iClose(_Symbol, _Period, b);
+            if(MathAbs(linePx - op) <= 0.35 || MathAbs(linePx - cl) <= 0.35)
+            {
+               bodyTag = (b == 0) ? "Body Running" : StringFormat("Body Bar #%d", b);
+               break;
+            }
+         }
+         if(bodyTag == "") bodyTag = "Key Level";
+         
+         // 1. Hitung Live Wall Bookmap di sekitar garis (± 0.60 USD)
+         double wallLot = 0.0;
+         int wallCnt = 0;
+         bool isAsk = (linePx >= curPrice);
+         for(int w = 0; w < WALL_SLOTS_PER_SIDE; w++)
+         {
+            double mt5Px = (isAsk ? g_bookmapAskPx[w] : g_bookmapBidPx[w]) + offset;
+            double sz    = (isAsk ? g_bookmapAskSz[w] : g_bookmapBidSz[w]);
+            if(sz > 0 && MathAbs(mt5Px - linePx) <= 0.60)
+            {
+               wallLot += sz;
+               wallCnt++;
+            }
+         }
+         
+         // 2. Hitung Akumulasi Lot Transaksi Historis di sekitar garis (± 0.75 USD)
+         double histLotLine = 0.0;
+         long candleVolLine = 0;
+         int nBars = MathMin(100, iBars(_Symbol, _Period));
+         for(int b = 0; b < nBars; b++)
+         {
+            double bLow  = iLow(_Symbol, _Period, b);
+            double bHigh = iHigh(_Symbol, _Period, b);
+            if(bLow <= linePx + 0.75 && bHigh >= linePx - 0.75) candleVolLine += iVolume(_Symbol, _Period, b);
+         }
+         histLotLine = (double)candleVolLine / 10.0;
+         if(MathAbs(g_bookmapPocPrice - linePx) <= 0.75 && g_bookmapPocVolume > 0) histLotLine += g_bookmapPocVolume;
+         if(MathAbs(g_bookmapHvnPrice - linePx) <= 0.75 && g_bookmapHvnVolume > 0) histLotLine += g_bookmapHvnVolume;
+         string histLotStr = (histLotLine > 0.0) ? StringFormat("HIST: %.0f LOT", histLotLine) : "HIST: 0 LOT";
+         
+         // 3. Cek Histori Pola S&D di sekitar garis
+         string linePat = "", lineTf = ""; int lineRetest = 0;
+         GetBoxHistoricalSND(linePx - 0.75, linePx + 0.75, isAsk, linePat, lineRetest, lineTf);
+         string retestStr = (lineRetest > 0) ? StringFormat("Uji %dx", lineRetest) : "FRESH";
+         
+         string liveWallStr = (wallLot > 0) ? StringFormat("LIVE WALL: %.0f LOT (%d)", wallLot, wallCnt) : "LIVE WALL: 0 LOT";
+         string lineLabel = StringFormat("📍 [%s %s] @%.2f : %s • %s • %s [%s]",
+                                         objTf, bodyTag, linePx, liveWallStr, histLotStr, linePat, retestStr);
+         
+         string lblHLine = "DADANG_BOX_LBL_" + name;
+         datetime tRight = ChartRightEdgeTime(30);
+         
+         if(ObjectFind(0, lblHLine) < 0)
+         {
+            ObjectCreate(0, lblHLine, OBJ_TEXT, 0, tRight, linePx);
+            ObjectSetInteger(0, lblHLine, OBJPROP_SELECTABLE, false);
+            ObjectSetInteger(0, lblHLine, OBJPROP_HIDDEN, true);
+         }
+         ObjectMove(0, lblHLine, 0, tRight, linePx);
+         ObjectSetString(0, lblHLine, OBJPROP_TEXT, lineLabel);
+         ObjectSetInteger(0, lblHLine, OBJPROP_COLOR, isAsk ? C'255,140,140' : C'140,255,180');
+         ObjectSetInteger(0, lblHLine, OBJPROP_FONTSIZE, 9);
+         ObjectSetString(0, lblHLine, OBJPROP_FONT, "Segoe UI Semibold");
+         ObjectSetInteger(0, lblHLine, OBJPROP_ANCHOR, ANCHOR_RIGHT);
+      }
+      
+      // ══════════════════════════════════════════════════════════════════
+      // 3. GARIS TRENDLINE (OBJ_TREND)
+      // ══════════════════════════════════════════════════════════════════
+      else if(objType == OBJ_TREND)
+      {
+         double p2 = ObjectGetDouble(0, name, OBJPROP_PRICE, 1);
+         datetime t2 = (datetime)ObjectGetInteger(0, name, OBJPROP_TIME, 1);
+         if(p2 <= 0) continue;
+         
+         double wallLot = 0.0;
+         bool isAsk = (p2 >= curPrice);
+         for(int w = 0; w < WALL_SLOTS_PER_SIDE; w++)
+         {
+            double mt5Px = (isAsk ? g_bookmapAskPx[w] : g_bookmapBidPx[w]) + offset;
+            double sz    = (isAsk ? g_bookmapAskSz[w] : g_bookmapBidSz[w]);
+            if(sz > 0 && MathAbs(mt5Px - p2) <= 0.60) wallLot += sz;
+         }
+         
+         // Hitung Akumulasi Lot Transaksi Historis di sekitar garis trendline
+         double histLotTrend = 0.0;
+         long candleVolTrend = 0;
+         int nBars = MathMin(100, iBars(_Symbol, _Period));
+         for(int b = 0; b < nBars; b++)
+         {
+            double bLow  = iLow(_Symbol, _Period, b);
+            double bHigh = iHigh(_Symbol, _Period, b);
+            if(bLow <= p2 + 0.75 && bHigh >= p2 - 0.75) candleVolTrend += iVolume(_Symbol, _Period, b);
+         }
+         histLotTrend = (double)candleVolTrend / 10.0;
+         if(MathAbs(g_bookmapPocPrice - p2) <= 0.75 && g_bookmapPocVolume > 0) histLotTrend += g_bookmapPocVolume;
+         string histLotTrendStr = (histLotTrend > 0.0) ? StringFormat("HIST: %.0f LOT", histLotTrend) : "HIST: 0 LOT";
+         
+         string trendLiveWallStr = (wallLot > 0) ? StringFormat("LIVE WALL: %.0f LOT", wallLot) : "LIVE WALL: 0 LOT";
+         string trendLabel = StringFormat("📐 TREND [%s] @%.2f : %s • %s", objTf, p2, trendLiveWallStr, histLotTrendStr);
+         
+         string lblTrend = "DADANG_BOX_LBL_" + name;
+         datetime tPos = t2 + PeriodSeconds(_Period) * 2;
+         
+         if(ObjectFind(0, lblTrend) < 0)
+         {
+            ObjectCreate(0, lblTrend, OBJ_TEXT, 0, tPos, p2);
+            ObjectSetInteger(0, lblTrend, OBJPROP_SELECTABLE, false);
+            ObjectSetInteger(0, lblTrend, OBJPROP_HIDDEN, true);
+         }
+         ObjectMove(0, lblTrend, 0, tPos, p2);
+         ObjectSetString(0, lblTrend, OBJPROP_TEXT, trendLabel);
+         ObjectSetInteger(0, lblTrend, OBJPROP_COLOR, isAsk ? C'255,140,140' : C'140,255,180');
+         ObjectSetInteger(0, lblTrend, OBJPROP_FONTSIZE, 9);
+         ObjectSetString(0, lblTrend, OBJPROP_FONT, "Segoe UI Semibold");
+         ObjectSetInteger(0, lblTrend, OBJPROP_ANCHOR, ANCHOR_LEFT);
+      }
+   }
+   
+   // Pembersihan label yatim piatu jika object aslinya dihapus
+   int totalAll = ObjectsTotal(0);
+   for(int k = totalAll - 1; k >= 0; k--)
+   {
+      string objN = ObjectName(0, k);
+      if(StringFind(objN, "DADANG_BOX_LBL_") == 0)
+      {
+         string originalName = StringSubstr(objN, 15);
+         if(ObjectFind(0, originalName) < 0)
+         {
+            ObjectDelete(0, objN);
+         }
+      }
+   }
+}
+
 void DrawAllZones()
 {
    g_supplyRoadCount = 0;
@@ -5318,11 +6169,14 @@ void DrawAllZones()
    for(int i = 0; i < sCnt && sFinal < SD_MAX_ZONES; i++)
    {
       // Jika zona ini bertabrakan / tumpang tindih dengan zona sebelumnya, lewati!
-      if(sFinal > 0 && rawSLo[i] < sHi[sFinal-1] + 1.50) continue;
+      if(sFinal > 0 && rawSLo[i] < sHi[sFinal-1] + 2.50) continue;
+
+      double bmWall = GetLiveWallInZone(false, rawSLo[i], rawSHi[i]);
+      double finalLot = (bmWall > 0) ? bmWall : rawSLot[i];
 
       ArrayResize(sLo, sFinal + 1);    sLo[sFinal]    = rawSLo[i];
       ArrayResize(sHi, sFinal + 1);    sHi[sFinal]    = rawSHi[i];
-      ArrayResize(sLot, sFinal + 1);   sLot[sFinal]   = rawSLot[i];
+      ArrayResize(sLot, sFinal + 1);   sLot[sFinal]   = finalLot;
       ArrayResize(sScore, sFinal + 1); sScore[sFinal] = rawSScore[i];
       ArrayResize(sRet, sFinal + 1);   sRet[sFinal]   = rawSRetest[i];
       ArrayResize(sAbs, sFinal + 1);   sAbs[sFinal]   = rawSAbsorb[i];
@@ -5334,11 +6188,14 @@ void DrawAllZones()
    for(int i = 0; i < dCnt && dFinal < SD_MAX_ZONES; i++)
    {
       // Jika zona ini bertabrakan / tumpang tindih dengan zona sebelumnya, lewati!
-      if(dFinal > 0 && rawDHi[i] > dLo[dFinal-1] - 1.50) continue;
+      if(dFinal > 0 && rawDHi[i] > dLo[dFinal-1] - 2.50) continue;
+
+      double bmWall = GetLiveWallInZone(true, rawDLo[i], rawDHi[i]);
+      double finalLot = (bmWall > 0) ? bmWall : rawDLot[i];
 
       ArrayResize(dLo, dFinal + 1);    dLo[dFinal]    = rawDLo[i];
       ArrayResize(dHi, dFinal + 1);    dHi[dFinal]    = rawDHi[i];
-      ArrayResize(dLot, dFinal + 1);   dLot[dFinal]   = rawDLot[i];
+      ArrayResize(dLot, dFinal + 1);   dLot[dFinal]   = finalLot;
       ArrayResize(dScore, dFinal + 1); dScore[dFinal] = rawDScore[i];
       ArrayResize(dRet, dFinal + 1);   dRet[dFinal]   = rawDRetest[i];
       ArrayResize(dAbs, dFinal + 1);   dAbs[dFinal]   = rawDAbsorb[i];
@@ -5373,6 +6230,17 @@ void DrawAllZones()
          if(a < dFinal) DrawZoneBox(a, "DEMAND", dLo[a], dHi[a], dLot[a], dSt[a], dRet[a], dAbs[a], dScore[a]);
          else { HideZoneSlot(StringFormat("D%d", a+1)); g_demandState[a].active = false; }
       }
+   }
+   else
+   {
+      for(int a = 0; a < SD_MAX_ZONES; a++)
+      {
+         HideZoneSlot(StringFormat("S%d", a+1));
+         HideZoneSlot(StringFormat("D%d", a+1));
+         g_supplyState[a].active = false;
+         g_demandState[a].active = false;
+      }
+      ObjectsDeleteAll(0, "SD_");
    }
 }
 
@@ -6374,13 +7242,14 @@ void UpdateSweepMarker()
       ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
       ObjectSetInteger(0, name, OBJPROP_BACK, true);
    }
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clrDeepSkyBlue);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_DASH);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, C'0,195,255');
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
    ObjectSetDouble(0, name, OBJPROP_PRICE, mt5Price);
    ObjectSetString(0, name, OBJPROP_TEXT,
-      StringFormat("SWEEP %s %.0f lot @ %.2f - REVERSAL (%s lalu, masih berlaku)", g_sweepRecSide, g_sweepRecSize, mt5Price, TimeAgoText(ageSec)));
+      StringFormat("SWEEP %s %.0f lot @ %.2f", g_sweepRecSide, g_sweepRecSize, mt5Price));
 
-   datetime labelTime = TimeCurrent() + PeriodSeconds(_Period) * 70;   // own lane, past wall/POC/VAH/VAL/Iceberg (8-65)
+   datetime labelTime = TimeCurrent() + PeriodSeconds(_Period) * 70;
    if(ObjectFind(0, textName) < 0)
    {
       ObjectCreate(0, textName, OBJ_TEXT, 0, labelTime, mt5Price);
@@ -6390,10 +7259,11 @@ void UpdateSweepMarker()
    }
    ObjectSetInteger(0, textName, OBJPROP_TIME, labelTime);
    ObjectSetDouble(0, textName, OBJPROP_PRICE, mt5Price);
-   ObjectSetInteger(0, textName, OBJPROP_COLOR, clrDeepSkyBlue);
-   ObjectSetInteger(0, textName, OBJPROP_FONTSIZE, 14);
+   ObjectSetInteger(0, textName, OBJPROP_COLOR, C'100,225,255');
+   ObjectSetInteger(0, textName, OBJPROP_FONTSIZE, 9);
+   ObjectSetString(0, textName, OBJPROP_FONT, "Segoe UI Semibold");
    ObjectSetString(0, textName, OBJPROP_TEXT,
-      StringFormat(" SWEEP %s: REVERSAL (%s)", g_sweepRecSide, TimeAgoText(ageSec)));
+      StringFormat(" 🌊 SWEEP %s (%.0fL)", g_sweepRecSide, g_sweepRecSize));
 }
 
 //--- v29: POC (Point of Control) - price level with the most TOTAL traded
@@ -6449,20 +7319,18 @@ void UpdatePocLine()
    if(ObjectFind(0, name) < 0)
    {
       ObjectCreate(0, name, OBJ_HLINE, 0, 0, mt5Price);
-      ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
+      ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_DASH);
       ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
       ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
       ObjectSetInteger(0, name, OBJPROP_BACK, true);
    }
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clrGold);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_DASH);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, C'255,205,60');
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
    ObjectSetDouble(0, name, OBJPROP_PRICE, mt5Price);
    ObjectSetString(0, name, OBJPROP_TEXT,
-      StringFormat("POC %.0f vol @ %.2f (bookmap %.2f)", g_bookmapPocVolume, mt5Price, g_bookmapPocPrice));
+      StringFormat("POC %.0f vol @ %.2f", g_bookmapPocVolume, mt5Price));
 
-   // v52.37: pinned to the chart's actual visible right edge (see
-   // ChartRightEdgeTime()) instead of a fixed bar-count lane - always
-   // visible regardless of zoom/scroll.
    datetime labelTime = ChartRightEdgeTime(20);
    if(ObjectFind(0, textName) < 0)
    {
@@ -6473,9 +7341,10 @@ void UpdatePocLine()
    }
    ObjectSetInteger(0, textName, OBJPROP_TIME, labelTime);
    ObjectSetDouble(0, textName, OBJPROP_PRICE, mt5Price);
-   ObjectSetInteger(0, textName, OBJPROP_COLOR, clrGold);
-   ObjectSetInteger(0, textName, OBJPROP_FONTSIZE, 14);
-   ObjectSetString(0, textName, OBJPROP_TEXT, StringFormat("POC: %.0f vol ", g_bookmapPocVolume));
+   ObjectSetInteger(0, textName, OBJPROP_COLOR, C'255,225,110');
+   ObjectSetInteger(0, textName, OBJPROP_FONTSIZE, 9);
+   ObjectSetString(0, textName, OBJPROP_FONT, "Segoe UI Semibold");
+   ObjectSetString(0, textName, OBJPROP_TEXT, StringFormat("🧲 POC: %.0f VOL ", g_bookmapPocVolume));
 }
 
 //--- v52.36: 5-state POC/Value-Area location, POC/VA-only (no H4 mixed in -
@@ -6964,6 +7833,54 @@ void WriteSultanStatus()
    json += "\"confluence_radar\":{";
    json += StringFormat("\"score\":%.0f,\"dir\":\"%s\",\"grade\":\"%s\"", cfScore, cfTradeDir, cfGrade);
    json += "},";
+
+      // v53.75 - Export Dadang Manual Drawn Boxes to sultan_status.json
+   json += "\"user_drawn_boxes\":[";
+   int totalObjExp = ObjectsTotal(0);
+   int boxExportCount = 0;
+   double curBidExp = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double offsetExp = (g_bookmapPrice > 0) ? (curBidExp - g_bookmapPrice) : 0.0;
+   
+   for(int i = 0; i < totalObjExp; i++)
+   {
+      string bName = ObjectName(0, i);
+      if((ENUM_OBJECT)ObjectGetInteger(0, bName, OBJPROP_TYPE) != OBJ_RECTANGLE) continue;
+      if(StringFind(bName, "SD_") == 0 || StringFind(bName, "DD_") == 0 ||
+         StringFind(bName, "SC_") == 0 || StringFind(bName, "FUS_") == 0) continue;
+      
+      double p1 = ObjectGetDouble(0, bName, OBJPROP_PRICE, 0);
+      double p2 = ObjectGetDouble(0, bName, OBJPROP_PRICE, 1);
+      datetime t1 = (datetime)ObjectGetInteger(0, bName, OBJPROP_TIME, 0);
+      datetime t2 = (datetime)ObjectGetInteger(0, bName, OBJPROP_TIME, 1);
+      double top = MathMax(p1, p2);
+      double bottom = MathMin(p1, p2);
+      if(top <= 0 || bottom <= 0 || top == bottom) continue;
+      
+      bool isSup = (bottom >= curBidExp - 1.0);
+      double bAsk = 0, bBid = 0; int bAskC = 0, bBidC = 0;
+      for(int w = 0; w < WALL_SLOTS_PER_SIDE; w++)
+      {
+         if(g_bookmapAskPx[w] > 0 && g_bookmapAskSz[w] > 0) {
+            double px = g_bookmapAskPx[w] + offsetExp;
+            if(px >= bottom - 0.50 && px <= top + 0.50) { bAsk += g_bookmapAskSz[w]; bAskC++; }
+         }
+         if(g_bookmapBidPx[w] > 0 && g_bookmapBidSz[w] > 0) {
+            double px = g_bookmapBidPx[w] + offsetExp;
+            if(px >= bottom - 0.50 && px <= top + 0.50) { bBid += g_bookmapBidSz[w]; bBidC++; }
+         }
+      }
+      double totW = bAsk + bBid;
+      int totWC = bAskC + bBidC;
+      string pTag = "", hTf = ""; int rCnt = 0;
+      GetBoxHistoricalSND(bottom, top, isSup, pTag, rCnt, hTf);
+      if(hTf == "") hTf = StringSubstr(EnumToString(_Period), 7);
+      
+      if(boxExportCount > 0) json += ",";
+      json += StringFormat("{\"name\":\"%s\",\"side\":\"%s\",\"tf\":\"%s\",\"top\":%.2f,\"bottom\":%.2f,\"time1\":%d,\"time2\":%d,\"live_wall\":%.0f,\"wall_count\":%d,\"pattern\":\"%s\",\"retest\":%d}",
+                           bName, isSup ? "SUPPLY" : "DEMAND", hTf, top, bottom, (long)MathMin(t1, t2), (long)MathMax(t1, t2), totW, totWC, pTag, rCnt);
+      boxExportCount++;
+   }
+   json += "],";
 
    json += "\"data_status\":{";
    json += StringFormat("\"bookmap_online\":%s,\"bridge_latency_ms\":%.0f", g_bookmapOnline ? "true" : "false", g_bookmapAgeMs);
@@ -8916,7 +9833,7 @@ void OnTick()
    // v53.31: Separate DATA from VISUAL update - no visual work on tick
    if(InpUseZoneCFEntry || InpShowZonesOnChart)
    {
-      ReadZonesCsv();            // DATA ONLY - for trading logic
+      BuildZonesFromBarrierCMP(); // DATA ONLY - for trading logic (ganti total dari zones_v2.csv ke Barrier CMP, v53.58)
       RefreshDecisionContext(); // reads roadmap arrays - for trading logic
       UpdateSDBreakEngine();    // detection/display only
       // DrawAllZones() moved to OnTimer - no visual work on tick
@@ -8950,6 +9867,14 @@ void OnTick()
       UpdateBarrierTracking(g_hExportM15, PERIOD_M15, g_m15LastDir, g_m15LastLevel, g_m15Queue, "M15");   // v52.59: awareness only
       UpdateBarrierTracking(g_hScalpEntry, InpScalpEntryTF, g_m5LastDir, g_m5LastLevel, g_m5Queue, "M5"); // v52.59: awareness only
       UpdateBarrierTracking(g_hExportD1, PERIOD_D1, g_d1LastDir, g_d1LastLevel, g_d1Queue, "D1");         // v52.61: awareness only, H4's "parent"
+
+      // v53.60: retest count beneran buat 4 TF yang dipakai BuildZonesFromBarrierCMP()
+      // (M30/H1/H4/D1 - M15/M5 gak perlu, gak dipakai zona). Toleransi SAMA
+      // PERSIS array tol[] di BuildZonesFromBarrierCMP().
+      TrackBarrierRetests(g_d1Queue, 2.0);
+      TrackBarrierRetests(g_h4Queue, 2.0);
+      TrackBarrierRetests(g_h1Queue, 1.5);
+      TrackBarrierRetests(g_m30Queue, 1.0);
    }
 
    UpdateStateAndExecute();

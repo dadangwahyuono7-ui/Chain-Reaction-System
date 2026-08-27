@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Chain Reaction</string>
+    <string name="notification_channel_name">Trading Live Stream</string>
+    <string name="notification_channel_desc">Real-time status background service for Chain Reaction System</string>
+    <string name="disclaimer_financial">⚠️ Bukan saran finansial — keputusan &amp; risiko di tangan Anda.</string>
+</resources>
