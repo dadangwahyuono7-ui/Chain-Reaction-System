@@ -1,0 +1,3 @@
+@echo off
+title Chain Reaction - Starting...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0start_trading.ps1"
