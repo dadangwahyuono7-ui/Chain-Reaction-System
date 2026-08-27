@@ -1880,23 +1880,19 @@ export class WindowManager {
   // 1. LIVE SPEEDOMETER JARAK KE TEMBOK REAL-TIME (WEB CHART)
     // ─────────────────────────────────────────────────────────────────────────
   // 1. LIVE SPEEDOMETER & MEGA WALL LINES ON THE CHART (1:1 DENGAN EA)
+    // ─────────────────────────────────────────────────────────────────────────
+  // 1. LIVE SPEEDOMETER (DUAL: FLOATING HUD TOP-RIGHT + ON-CHART LINES)
   // ─────────────────────────────────────────────────────────────────────────
   updateWallSpeedometerHUD(raw) {
     if (!raw || !raw.liquidity) return;
     const curPrice = raw.price || (this.windows[0]?.currentPrice || 0);
     if (!curPrice) return;
 
-    // Bersihkan elemen HTML di pojok bawah jika ada
-    const oldSpeedo = document.getElementById("web-wall-speedometer");
-    if (oldSpeedo) oldSpeedo.remove();
-
     if (!this.megaWallPriceLines) this.megaWallPriceLines = [];
     this.megaWallPriceLines.forEach(pl => {
       try { this.candleSeries.removePriceLine(pl); } catch (e) {}
     });
     this.megaWallPriceLines = [];
-
-    if (!this.candleSeries || this.symbol !== "XAUUSD") return;
 
     let askPx = 0, askSz = 0;
     const askLadder = raw.liquidity.ask_ladder || [];
@@ -1918,34 +1914,69 @@ export class WindowManager {
       }
     }
 
-    // 1. Gambar Garis Ask Wall di Chart
+    // A. FLOATING HUD DI POJOK KANAN ATAS CHART
+    let speedoContainer = document.getElementById("web-wall-speedometer");
+    if (!speedoContainer) {
+      speedoContainer = document.createElement("div");
+      speedoContainer.id = "web-wall-speedometer";
+      speedoContainer.className = "web-wall-speedometer-hud";
+      const chartWrapper = document.querySelector(".chart-area-container") || document.body;
+      chartWrapper.appendChild(speedoContainer);
+    }
+
+    let html = "";
     if (askPx > 0) {
       const distAsk = askPx - curPrice;
       const isImpact = distAsk <= 1.0;
-      const plAsk = this.candleSeries.createPriceLine({
-        price: askPx,
-        color: isImpact ? "#ff334b" : "rgba(255, 80, 80, 0.75)",
-        lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: `🔺 WALL ${askSz.toFixed(0)}L (+${distAsk.toFixed(1)}$)`,
-      });
-      this.megaWallPriceLines.push(plAsk);
+      html += `<div class="speedo-item ask ${isImpact ? 'impact' : ''}">
+        <span class="speedo-icon">🔺</span>
+        <span class="speedo-label">ATAS: Wall ${askSz.toFixed(0)}L @${askPx.toFixed(2)}</span>
+        <span class="speedo-dist">(+${distAsk.toFixed(1)} USD / +${(distAsk * 10).toFixed(0)} pips)</span>
+        ${isImpact ? '<span class="speedo-badge">🚨 IMPACT!</span>' : ''}
+      </div>`;
     }
 
-    // 2. Gambar Garis Bid Wall di Chart
     if (bidPx > 0) {
       const distBid = curPrice - bidPx;
       const isImpact = distBid <= 1.0;
-      const plBid = this.candleSeries.createPriceLine({
-        price: bidPx,
-        color: isImpact ? "#00e676" : "rgba(0, 230, 118, 0.75)",
-        lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: `🔻 WALL ${bidSz.toFixed(0)}L (-${distBid.toFixed(1)}$)`,
-      });
-      this.megaWallPriceLines.push(plBid);
+      html += `<div class="speedo-item bid ${isImpact ? 'impact' : ''}">
+        <span class="speedo-icon">🔻</span>
+        <span class="speedo-label">BAWAH: Wall ${bidSz.toFixed(0)}L @${bidPx.toFixed(2)}</span>
+        <span class="speedo-dist">(-${distBid.toFixed(1)} USD / -${(distBid * 10).toFixed(0)} pips)</span>
+        ${isImpact ? '<span class="speedo-badge">🚨 IMPACT!</span>' : ''}
+      </div>`;
+    }
+    speedoContainer.innerHTML = html;
+
+    // B. ON-CHART PRICE LINES
+    if (this.candleSeries && this.symbol === "XAUUSD") {
+      if (askPx > 0) {
+        const distAsk = askPx - curPrice;
+        const isImpact = distAsk <= 1.0;
+        const plAsk = this.candleSeries.createPriceLine({
+          price: askPx,
+          color: isImpact ? "#ff334b" : "rgba(255, 80, 80, 0.75)",
+          lineWidth: 1,
+          lineStyle: LightweightCharts.LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: `🔺 WALL ${askSz.toFixed(0)}L (+${distAsk.toFixed(1)}$)`,
+        });
+        this.megaWallPriceLines.push(plAsk);
+      }
+
+      if (bidPx > 0) {
+        const distBid = curPrice - bidPx;
+        const isImpact = distBid <= 1.0;
+        const plBid = this.candleSeries.createPriceLine({
+          price: bidPx,
+          color: isImpact ? "#00e676" : "rgba(0, 230, 118, 0.75)",
+          lineWidth: 1,
+          lineStyle: LightweightCharts.LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: `🔻 WALL ${bidSz.toFixed(0)}L (-${distBid.toFixed(1)}$)`,
+        });
+        this.megaWallPriceLines.push(plBid);
+      }
     }
   }
 

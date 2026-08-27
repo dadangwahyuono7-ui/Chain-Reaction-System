@@ -5571,13 +5571,13 @@ void UpdateWallDistanceSpeedometer()
 {
    if(!InpShowWallDistanceSpeedo || !g_bookmapOnline || g_bookmapPrice <= 0)
    {
+      HideLineObject("DADANG_SPEEDO_BG");
+      HideLineObject("DADANG_SPEEDO_ASK");
+      HideLineObject("DADANG_SPEEDO_BID");
       HideLineObject("DADANG_SPEEDO_ASK_LINE");
       HideLineObject("DADANG_SPEEDO_ASK_TXT");
       HideLineObject("DADANG_SPEEDO_BID_LINE");
       HideLineObject("DADANG_SPEEDO_BID_TXT");
-      HideLineObject("DADANG_SPEEDO_BG");
-      HideLineObject("DADANG_SPEEDO_ASK");
-      HideLineObject("DADANG_SPEEDO_BID");
       return;
    }
    
@@ -5612,16 +5612,71 @@ void UpdateWallDistanceSpeedometer()
       }
    }
    
-   datetime tRight = ChartRightEdgeTime(25);
+   string txtAsk = (askPx > 0) ? StringFormat("🔺 ATAS: Wall %.0fL @%.2f (+%.1f USD / +%.0f pips)", askSz, askPx, (askPx - curPrice), (askPx - curPrice) * 10.0) : "🔺 ATAS: Wall Tipis / Kosong";
+   string txtBid = (bidPx > 0) ? StringFormat("🔻 BAWAH: Wall %.0fL @%.2f (-%.1f USD / -%.0f pips)", bidSz, bidPx, (curPrice - bidPx), (curPrice - bidPx) * 10.0) : "🔻 BAWAH: Wall Tipis / Kosong";
    
-   // 1. Gambar Garis Ask Wall di Chart
+   if(askPx > 0 && (askPx - curPrice) <= 1.0) txtAsk += " 🚨 IMPACT!";
+   if(bidPx > 0 && (curPrice - bidPx) <= 1.0) txtBid += " 🚨 IMPACT!";
+   
+   // ══════════════════════════════════════════════════════════════════════
+   // A. FLOATING SPEEDOMETER HUD DI POJOK KANAN ATAS (ALWAYS VISIBLE)
+   // ══════════════════════════════════════════════════════════════════════
+   int chartW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+   int posX = chartW - 325;
+   if(posX < 360) posX = 360;
+   
+   string bgName = "DADANG_SPEEDO_BG";
+   if(EnsureObject(bgName, OBJ_RECTANGLE_LABEL))
+   {
+      ObjectSetInteger(0, bgName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, bgName, OBJPROP_XDISTANCE, posX);
+      ObjectSetInteger(0, bgName, OBJPROP_YDISTANCE, 12);
+      ObjectSetInteger(0, bgName, OBJPROP_XSIZE, 310);
+      ObjectSetInteger(0, bgName, OBJPROP_YSIZE, 42);
+      ObjectSetInteger(0, bgName, OBJPROP_BGCOLOR, C'12,18,26');
+      ObjectSetInteger(0, bgName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+      ObjectSetInteger(0, bgName, OBJPROP_COLOR, C'50,70,95');
+      ObjectSetInteger(0, bgName, OBJPROP_WIDTH, 1);
+      ObjectSetInteger(0, bgName, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, bgName, OBJPROP_HIDDEN, true);
+   }
+   
+   string lblAsk = "DADANG_SPEEDO_ASK";
+   if(EnsureObject(lblAsk, OBJ_LABEL))
+   {
+      ObjectSetInteger(0, lblAsk, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, lblAsk, OBJPROP_XDISTANCE, posX + 8);
+      ObjectSetInteger(0, lblAsk, OBJPROP_YDISTANCE, 16);
+      ObjectSetString(0, lblAsk, OBJPROP_TEXT, txtAsk);
+      ObjectSetInteger(0, lblAsk, OBJPROP_COLOR, (askPx > 0 && (askPx - curPrice) <= 1.0) ? C'255,50,50' : C'255,140,140');
+      ObjectSetInteger(0, lblAsk, OBJPROP_FONTSIZE, 8);
+      ObjectSetString(0, lblAsk, OBJPROP_FONT, "Segoe UI Semibold");
+      ObjectSetInteger(0, lblAsk, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, lblAsk, OBJPROP_HIDDEN, true);
+   }
+   
+   string lblBid = "DADANG_SPEEDO_BID";
+   if(EnsureObject(lblBid, OBJ_LABEL))
+   {
+      ObjectSetInteger(0, lblBid, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, lblBid, OBJPROP_XDISTANCE, posX + 8);
+      ObjectSetInteger(0, lblBid, OBJPROP_YDISTANCE, 33);
+      ObjectSetString(0, lblBid, OBJPROP_TEXT, txtBid);
+      ObjectSetInteger(0, lblBid, OBJPROP_COLOR, (bidPx > 0 && (curPrice - bidPx) <= 1.0) ? C'0,255,120' : C'140,255,180');
+      ObjectSetInteger(0, lblBid, OBJPROP_FONTSIZE, 8);
+      ObjectSetString(0, lblBid, OBJPROP_FONT, "Segoe UI Semibold");
+      ObjectSetInteger(0, lblBid, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, lblBid, OBJPROP_HIDDEN, true);
+   }
+   
+   // ══════════════════════════════════════════════════════════════════════
+   // B. GARIS HARGA DI DALAM CHART (ON-CHART PRICE LINES)
+   // ══════════════════════════════════════════════════════════════════════
+   datetime tRight = ChartRightEdgeTime(25);
    if(askPx > 0)
    {
       double distAsk = askPx - curPrice;
-      string txtAsk = StringFormat("🔺 WALL: %.0fL @%.2f (+%.1f USD / +%.0f pips)", askSz, askPx, distAsk, distAsk * 10.0);
       color clrAsk = (distAsk <= 1.0) ? C'255,60,60' : C'255,140,140';
-      if(distAsk <= 1.0) txtAsk += " 🚨 IMPACT!";
-      
       SetHLine("DADANG_SPEEDO_ASK_LINE", askPx, clrAsk, 1, STYLE_DASH);
       SetText("DADANG_SPEEDO_ASK_TXT", tRight, askPx, txtAsk, clrAsk, 9, "Segoe UI Semibold", ANCHOR_RIGHT);
    }
@@ -5631,14 +5686,10 @@ void UpdateWallDistanceSpeedometer()
       HideLineObject("DADANG_SPEEDO_ASK_TXT");
    }
    
-   // 2. Gambar Garis Bid Wall di Chart
    if(bidPx > 0)
    {
       double distBid = curPrice - bidPx;
-      string txtBid = StringFormat("🔻 WALL: %.0fL @%.2f (-%.1f USD / -%.0f pips)", bidSz, bidPx, distBid, distBid * 10.0);
       color clrBid = (distBid <= 1.0) ? C'0,255,120' : C'140,255,180';
-      if(distBid <= 1.0) txtBid += " 🚨 IMPACT!";
-      
       SetHLine("DADANG_SPEEDO_BID_LINE", bidPx, clrBid, 1, STYLE_DASH);
       SetText("DADANG_SPEEDO_BID_TXT", tRight, bidPx, txtBid, clrBid, 9, "Segoe UI Semibold", ANCHOR_RIGHT);
    }
