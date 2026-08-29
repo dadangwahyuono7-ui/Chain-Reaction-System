@@ -1841,6 +1841,9 @@ void DrawSpeedometerCanvas(int x, int y, double cvdVal, double pulseVal)
    g_gaugeCanvas.Update();
 }
 
+//+------------------------------------------------------------------+
+//| 👑 UPDATE PANEL (100% FLICKER-FREE PERSISTENT NATIVE GUI)         |
+//+------------------------------------------------------------------+
 void UpdatePanel()
 {
    if(!InpShowPanel || !g_toggleShowPanel)
@@ -1868,10 +1871,10 @@ void UpdatePanel()
 
    if(g_cockpitMinimized)
    {
-      // Clean up body objects when minimized
       for(int i = 0; i < 4; i++) ObjectDelete(0, CKP_PREFIX + "TAB_" + IntegerToString(i));
       ObjectDelete(0, CKP_PREFIX + "RIBBON");
       ObjectDelete(0, CKP_PREFIX + "RIBBON_TXT");
+      g_gaugeCanvas.Destroy();
       return;
    }
 
@@ -1901,11 +1904,17 @@ void UpdatePanel()
                                   d1Cd, h4Cd, h1Cd, m30Cd, m15Cd, m5Cd);
    CkpCreateLabel("RIBBON_TXT", ox + 18, oy + 76, cdRibbon, C'0,229,255', 9, true);
 
-   // 5. Clean Previous Tab Views
-   ObjectsDeleteAll(0, CKP_PREFIX + "T0_");
-   ObjectsDeleteAll(0, CKP_PREFIX + "T1_");
-   ObjectsDeleteAll(0, CKP_PREFIX + "T2_");
-   ObjectsDeleteAll(0, CKP_PREFIX + "T3_");
+   // 5. Check Tab Switch to prevent flicker
+   static int s_lastRenderedTab = -1;
+   if(s_lastRenderedTab != (int)g_activeCockpitTab)
+   {
+      ObjectsDeleteAll(0, CKP_PREFIX + "T0_");
+      ObjectsDeleteAll(0, CKP_PREFIX + "T1_");
+      ObjectsDeleteAll(0, CKP_PREFIX + "T2_");
+      ObjectsDeleteAll(0, CKP_PREFIX + "T3_");
+      if(g_activeCockpitTab != TAB_ORDER_FLOW_INTEL) g_gaugeCanvas.Destroy();
+      s_lastRenderedTab = (int)g_activeCockpitTab;
+   }
 
    // ==================== TAB 0: ORDER FLOW INTEL ====================
    if(g_activeCockpitTab == TAB_ORDER_FLOW_INTEL)
