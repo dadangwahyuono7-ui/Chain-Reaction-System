@@ -5,7 +5,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { WindowManager } from '../charts/WindowManager.js?v=20260829_17';
+import { WindowManager } from '../charts/WindowManager.js?v=20260829_19';
 
 try {
   console.log("App.js Initializing...");
@@ -182,9 +182,7 @@ try {
       sidebarCockpit.classList.toggle("mobile-open");
       const isOpen = sidebarCockpit.classList.contains("mobile-open");
       if (btnToggleSidebar) btnToggleSidebar.classList.toggle("active", isOpen);
-      const isOpen = sidebarCockpit.classList.contains("mobile-open");
-      if (btnToggleSidebar) btnToggleSidebar.classList.toggle("active", isOpen);
-      if (window.showToast) window.showToast(isOpen ? "📊 Cockpit Dibuka" : "📊 Cockpit Ditutup");
+if (window.showToast) window.showToast(isOpen ? "📊 Cockpit Dibuka" : "📊 Cockpit Ditutup");
     } else {
       sidebarCockpit.classList.toggle("collapsed");
       const isCollapsed = sidebarCockpit.classList.contains("collapsed");
