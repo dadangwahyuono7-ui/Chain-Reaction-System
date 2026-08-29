@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v55.00-V5-MODULAR-MASTER-COCKPIT-INTERACTIVE"
+#define EA_VERSION "v55.10-V5-ULTRA-COCKPIT-NEWS-STRADDLE"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -1844,6 +1844,49 @@ void DrawSpeedometerCanvas(int x, int y, double cvdVal, double pulseVal)
 //+------------------------------------------------------------------+
 //| 👑 UPDATE PANEL (100% FLICKER-FREE PERSISTENT NATIVE GUI)         |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| ⚡ EXECUTE NEWS STRADDLE (DUAL BUY STOP + SELL STOP + AUTO SL/TP) |
+//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| ⚡ NEWS STRADDLE CONFIGURATION & EXECUTION (DUAL TRAP BREAKOUT)    |
+//+------------------------------------------------------------------+
+double            g_newsStraddleOffsetPips = 20.0;   // Distance from current price (pips)
+double            g_newsStraddleSlPips     = 20.0;   // SL distance (pips)
+double            g_newsStraddleTpPips     = 50.0;   // TP distance (pips)
+bool              g_newsStraddleActive     = false;  // Active Trap State
+
+void ExecuteNewsStraddle()
+{
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double pSize = PipSize();
+   
+   double buyStopPx  = NormalizeDouble(ask + (g_newsStraddleOffsetPips * pSize), _Digits);
+   double buyStopSl  = NormalizeDouble(buyStopPx - (g_newsStraddleSlPips * pSize), _Digits);
+   double buyStopTp  = NormalizeDouble(buyStopPx + (g_newsStraddleTpPips * pSize), _Digits);
+   
+   double sellStopPx = NormalizeDouble(bid - (g_newsStraddleOffsetPips * pSize), _Digits);
+   double sellStopSl = NormalizeDouble(sellStopPx + (g_newsStraddleSlPips * pSize), _Digits);
+   double sellStopTp = NormalizeDouble(sellStopPx - (g_newsStraddleTpPips * pSize), _Digits);
+   
+   double lot = g_execCalculatedLot;
+   if(lot < SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN)) lot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   
+   PrintFormat("⚡ [NEWS STRADDLE] Placing Dual Trap Orders! BuyStop @ %.2f (SL:%.2f TP:%.2f) | SellStop @ %.2f (SL:%.2f TP:%.2f)",
+               buyStopPx, buyStopSl, buyStopTp, sellStopPx, sellStopSl, sellStopTp);
+   
+   // 1. Buy Stop
+   trade.BuyStop(lot, buyStopPx, _Symbol, buyStopSl, buyStopTp, ORDER_TIME_GTC, 0, "SULTAN-NEWS-BUYSTOP");
+   
+   // 2. Sell Stop
+   trade.SellStop(lot, sellStopPx, _Symbol, sellStopSl, sellStopTp, ORDER_TIME_GTC, 0, "SULTAN-NEWS-SELLSTOP");
+}
+
+
+
+//+------------------------------------------------------------------+
+//| 👑 MASTER COCKPIT V5: SLEEK ULTRA-AESTHETIC CANVAS HUD           |
+//+------------------------------------------------------------------+
 void UpdatePanel()
 {
    if(!InpShowPanel || !g_toggleShowPanel)
@@ -1856,15 +1899,15 @@ void UpdatePanel()
    int oy = g_cockpitY;
    int curH = g_cockpitMinimized ? 36 : g_cockpitH;
 
-   // 1. Outer Background & Gold Frame
-   CkpCreateRect("BG", ox, oy, g_cockpitW, curH, C'14,19,26', C'229,169,60', 1);
+   // 1. Outer Sleek Glass Window with Rounded Gold Accent
+   CkpCreateRect("BG", ox, oy, g_cockpitW, curH, C'12,16,22', C'229,169,60', 1);
 
    // 2. Header Bar
-   CkpCreateRect("HEADER", ox + 2, oy + 2, g_cockpitW - 4, 32, C'24,34,48', C'42,54,72', 2);
-   CkpCreateLabel("TITLE", ox + 15, oy + 9, "CHAIN REACTION MASTER COCKPIT  [ v55.00 ZERO-CLIENT ]", C'255,199,69', 10, true);
+   CkpCreateRect("HEADER", ox + 2, oy + 2, g_cockpitW - 4, 32, C'20,28,38', C'35,46,62', 2);
+   CkpCreateLabel("TITLE", ox + 15, oy + 9, "CHAIN REACTION MASTER COCKPIT  [ v55.10 ZERO-CLIENT ]", C'255,199,69', 10, true);
    
    color liveClr = g_bookmapOnline ? C'0,255,140' : C'255,72,98';
-   CkpCreateLabel("LIVE_STATUS", ox + 490, oy + 9, g_bookmapOnline ? "● BOOKMAP LIVE" : "● OFFLINE", liveClr, 9, true);
+   CkpCreateLabel("LIVE_STATUS", ox + 480, oy + 9, g_bookmapOnline ? "● BOOKMAP LIVE" : "● OFFLINE", liveClr, 9, true);
    
    CkpCreateButton("BTN_MIN", ox + 605, oy + 6, 22, 22, g_cockpitMinimized ? "🗖" : "_", C'30,41,59', C'142,158,181', C'51,65,85', 9);
    CkpCreateButton("BTN_CLS", ox + 630, oy + 6, 22, 22, "✕", C'59,16,21', C'255,72,98', C'100,20,30', 9);
@@ -1878,22 +1921,22 @@ void UpdatePanel()
       return;
    }
 
-   // 3. Top Navigation Tabs (4 Tabs)
+   // 3. Top Navigation Tabs (4 Pill Buttons)
    int tabX[4] = {10, 165, 325, 495};
    int tabW[4] = {150, 155, 165, 155};
-   string tabNames[4] = {"📊 ORDER FLOW INTEL", "🎯 SNIPER EXECUTION", "🧱 S&D GENESIS LADDER", "⚡ SULTAN ACTIONS"};
+   string tabNames[4] = {"📊 ORDER FLOW INTEL", "🎯 SNIPER EXECUTION", "🧱 CME WALL LADDER", "⚡ SULTAN ACTIONS"};
 
    for(int t = 0; t < 4; t++)
    {
       bool active = (g_activeCockpitTab == t);
-      color tBg = active ? C'42,36,21' : C'21,30,42';
-      color tBrd = active ? C'229,169,60' : C'42,54,72';
+      color tBg = active ? C'42,36,21' : C'18,25,35';
+      color tBrd = active ? C'229,169,60' : C'35,46,62';
       color tTxt = active ? C'255,199,69' : C'142,158,181';
       CkpCreateButton("TAB_" + IntegerToString(t), ox + tabX[t], oy + 38, tabW[t], 28, tabNames[t], tBg, tTxt, tBrd, 9, active);
    }
 
    // 4. Multi-TF Candle Close Countdown Ribbon
-   CkpCreateRect("RIBBON", ox + 10, oy + 70, g_cockpitW - 20, 26, C'19,27,38', C'42,54,72', 2);
+   CkpCreateRect("RIBBON", ox + 10, oy + 70, g_cockpitW - 20, 26, C'16,23,32', C'35,46,62', 2);
    string d1Cd  = GetTfCountdownStr(PERIOD_D1);
    string h4Cd  = GetTfCountdownStr(PERIOD_H4);
    string h1Cd  = GetTfCountdownStr(PERIOD_H1);
@@ -1920,7 +1963,7 @@ void UpdatePanel()
    if(g_activeCockpitTab == TAB_ORDER_FLOW_INTEL)
    {
       // Card 1: Multi-TF Status Cards (Left Top)
-      CkpCreateRect("T0_CARD1", ox + 10, oy + 102, 245, 140, C'21,29,40', C'42,54,72', 2);
+      CkpCreateRect("T0_CARD1", ox + 10, oy + 102, 245, 140, C'18,25,35', C'35,46,62', 2);
       CkpCreateLabel("T0_C1_TIT", ox + 20, oy + 110, "MULTI-TF CMP REGIME", C'255,199,69', 9, true);
       
       int tfY = oy + 132;
@@ -1934,8 +1977,8 @@ void UpdatePanel()
          tfY += 24;
       }
 
-      // Card 2: Market Pressure & Pulse Speedometer Gauge (Left Bottom - EXACT MOCKUP)
-      CkpCreateRect("T0_CARD2", ox + 10, oy + 248, 245, 222, C'21,29,40', C'42,54,72', 2);
+      // Card 2: Market Pressure & Pulse Speedometer Gauge (Left Bottom)
+      CkpCreateRect("T0_CARD2", ox + 10, oy + 248, 245, 222, C'18,25,35', C'35,46,62', 2);
       CkpCreateLabel("T0_C2_TIT", ox + 20, oy + 256, "MARKET PRESSURE & PULSE", C'255,199,69', 9, true);
       
       DrawSpeedometerCanvas(ox + 18, oy + 285, g_bookmapCvd, g_bookmapPulsePct);
@@ -1944,7 +1987,7 @@ void UpdatePanel()
       CkpCreateLabel("T0_VERDICT", ox + 20, oy + 440, narrVerdict, C'255,199,69', 8, true);
 
       // Card 3: CME Wall Intelligence (Right Top)
-      CkpCreateRect("T0_CARD3", ox + 262, oy + 102, g_cockpitW - 272, 160, C'21,29,40', C'42,54,72', 2);
+      CkpCreateRect("T0_CARD3", ox + 262, oy + 102, g_cockpitW - 272, 160, C'18,25,35', C'35,46,62', 2);
       CkpCreateLabel("T0_C3_TIT", ox + 275, oy + 110, "BOOKMAP CME WALL & PROFILE INTEL", C'255,199,69', 9, true);
       
       int wy = oy + 132;
@@ -1970,7 +2013,7 @@ void UpdatePanel()
       CkpCreateButton("T0_LTHL_BADGE", ox + 275, wy, 190, 22, "🧲 LTHL MAGNET ACTIVE", C'40,30,16', C'255,199,69', C'229,169,60', 8, true);
 
       // Card 4: Sierra Chart Suite & Genesis (Right Bottom)
-      CkpCreateRect("T0_CARD4", ox + 262, oy + 268, g_cockpitW - 272, 202, C'21,29,40', C'42,54,72', 2);
+      CkpCreateRect("T0_CARD4", ox + 262, oy + 268, g_cockpitW - 272, 202, C'18,25,35', C'35,46,62', 2);
       CkpCreateLabel("T0_C4_TIT", ox + 275, oy + 276, "SIERRA CHART SUITE & NARRATIVE", C'255,199,69', 9, true);
       
       int sy = oy + 300;
@@ -2002,83 +2045,107 @@ void UpdatePanel()
    // ==================== TAB 1: SNIPER EXECUTION ====================
    else if(g_activeCockpitTab == TAB_SNIPER_EXECUTION)
    {
-      CkpCreateRect("T1_CARD", ox + 10, oy + 102, g_cockpitW - 20, 368, C'21,29,40', C'42,54,72', 2);
+      CkpCreateRect("T1_CARD", ox + 10, oy + 102, g_cockpitW - 20, 368, C'18,25,35', C'35,46,62', 2);
       CkpCreateLabel("T1_TIT", ox + 25, oy + 112, "SNIPER RISK SIZING & PROTOCOL EXECUTION", C'255,199,69', 10, true);
       
-      int ey = oy + 140;
-      CkpCreateButton("T1_RISK_FIX", ox + 25, ey, 110, 26, "[ Fixed Lot ]", C'30,41,59', C'142,158,181', C'51,65,85', 8);
-      CkpCreateButton("T1_RISK_BAL", ox + 145, ey, 180, 26, "% Balance (2.0% Risk)", C'42,36,21', C'255,199,69', C'229,169,60', 9, true);
-      CkpCreateButton("T1_RISK_EQ", ox + 335, ey, 120, 26, "[ % Equity ]", C'30,41,59', C'142,158,181', C'51,65,85', 8);
-      ey += 38;
+      int ey = oy + 138;
+      CkpCreateButton("T1_RISK_FIX", ox + 25, ey, 110, 24, "[ Fixed Lot ]", C'30,41,59', C'142,158,181', C'51,65,85', 8);
+      CkpCreateButton("T1_RISK_BAL", ox + 145, ey, 180, 24, "% Balance (2.0% Risk)", C'42,36,21', C'255,199,69', C'229,169,60', 9, true);
+      CkpCreateButton("T1_RISK_EQ", ox + 335, ey, 120, 24, "[ % Equity ]", C'30,41,59', C'142,158,181', C'51,65,85', 8);
+      ey += 32;
 
       // Risk & Target Summary Box
-      CkpCreateRect("T1_SUM_BG", ox + 25, ey, g_cockpitW - 50, 38, C'16,23,32', C'42,54,72', 3);
+      CkpCreateRect("T1_SUM_BG", ox + 25, ey, g_cockpitW - 50, 32, C'14,19,26', C'35,46,62', 3);
       double bal = AccountInfoDouble(ACCOUNT_BALANCE);
       double riskUsd = bal * (g_execRiskPct / 100.0);
       double targetUsd = riskUsd * 1.5;
       string riskSummary = StringFormat("Auto Lot: %.2f L  |  Risk SL: -$%.2f (-%.1f%%)  |  Target TP: +$%.2f (+%.1f%%)  |  R:R 1:1.50",
                                         g_execCalculatedLot, riskUsd, g_execRiskPct, targetUsd, g_execRiskPct * 1.5);
-      CkpCreateLabel("T1_SUM_TXT", ox + 35, ey + 11, riskSummary, clrWhite, 9, true);
-      ey += 48;
+      CkpCreateLabel("T1_SUM_TXT", ox + 35, ey + 8, riskSummary, clrWhite, 9, true);
+      ey += 40;
 
       // Protocol Selector (Doktrin Bagian B4)
-      CkpCreateLabel("T1_PROT_TIT", ox + 25, ey, "EXECUTION PROTOCOL (DOKTRIN BAGIAN B4):", C'255,199,69', 9, true);
-      ey += 20;
+      CkpCreateLabel("T1_PROT_TIT", ox + 25, ey, "ENTRY TRIGGER MODE (DOKTRIN B4):", C'255,199,69', 9, true);
+      ey += 18;
 
-      color fBg = g_execFastSniper ? C'42,36,21' : C'30,41,59';
-      color fBrd = g_execFastSniper ? C'229,169,60' : C'51,65,85';
+      color fBg = g_execFastSniper ? C'42,36,21' : C'25,32,45';
+      color fBrd = g_execFastSniper ? C'229,169,60' : C'45,55,75';
       color fTxt = g_execFastSniper ? C'255,199,69' : C'142,158,181';
-      CkpCreateButton("T1_PROT_FAST", ox + 25, ey, 220, 28, "⚡ FAST SNIPER (Wick Sweep)", fBg, fTxt, fBrd, 9, true);
+      CkpCreateButton("T1_PROT_FAST", ox + 25, ey, 290, 26, "⚡ FAST SNIPER (Wick Sweep CME/SND)", fBg, fTxt, fBrd, 8, true);
 
-      color sBg = !g_execFastSniper ? C'42,36,21' : C'30,41,59';
-      color sBrd = !g_execFastSniper ? C'229,169,60' : C'51,65,85';
+      color sBg = !g_execFastSniper ? C'42,36,21' : C'25,32,45';
+      color sBrd = !g_execFastSniper ? C'229,169,60' : C'45,55,75';
       color sTxt = !g_execFastSniper ? C'255,199,69' : C'142,158,181';
-      CkpCreateButton("T1_PROT_SAFE", ox + 255, ey, 240, 28, "🛡️ SAFE DISCIPLINE (Body Close)", sBg, sTxt, sBrd, 9, true);
-      ey += 38;
+      CkpCreateButton("T1_PROT_SAFE", ox + 325, ey, 305, 26, "🛡️ SAFE DISCIPLINE (Wait Body Close)", sBg, sTxt, sBrd, 8, true);
+      ey += 34;
 
       // Big Dual Execution Buttons
       double askPx = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double bidPx = SymbolInfoDouble(_Symbol, SYMBOL_BID);
       
-      CkpCreateButton("T1_BTN_SELL", ox + 25, ey, 290, 50, StringFormat("🔴 SELL SNIPER @ %.2f", bidPx), C'59,16,21', C'255,72,98', C'255,72,98', 11, true);
-      CkpCreateButton("T1_BTN_BUY", ox + 325, ey, 305, 50, StringFormat("🟢 BUY SNIPER @ %.2f", askPx), C'13,48,32', C'0,255,140', C'0,255,140', 11, true);
-      ey += 60;
+      CkpCreateButton("T1_BTN_SELL", ox + 25, ey, 290, 46, StringFormat("🔴 SELL SNIPER @ %.2f", bidPx), C'59,16,21', C'255,72,98', C'255,72,98', 11, true);
+      CkpCreateButton("T1_BTN_BUY", ox + 325, ey, 305, 46, StringFormat("🟢 BUY SNIPER @ %.2f", askPx), C'13,48,32', C'0,255,140', C'0,255,140', 11, true);
+      ey += 54;
+
+      // ⚡ DEDICATED NEWS STRADDLE 1-CLICK BUTTON (BREAKOUT TRAP)
+      CkpCreateButton("T1_NEWS_TRAP", ox + 25, ey, g_cockpitW - 50, 36, "⚡ 1-CLICK NEWS STRADDLE: BUY STOP + SELL STOP (+20p / SL:20p / TP:50p)", C'36,20,50', C'216,180,254', C'168,85,247', 9, true);
+      ey += 44;
 
       // Pending Limit Triggers
-      CkpCreateButton("T1_PEND_1", ox + 25, ey, 140, 26, "SELL LIMIT @ WALL", C'30,41,59', clrWhite, C'51,65,85', 8);
-      CkpCreateButton("T1_PEND_2", ox + 175, ey, 145, 26, "BUY LIMIT @ DEMAND", C'30,41,59', clrWhite, C'51,65,85', 8);
-      CkpCreateButton("T1_PEND_3", ox + 330, ey, 140, 26, "SELL STOP", C'30,41,59', clrWhite, C'51,65,85', 8);
-      CkpCreateButton("T1_PEND_4", ox + 480, ey, 150, 26, "BUY STOP", C'30,41,59', clrWhite, C'51,65,85', 8);
-      ey += 36;
-
-      // Runway Radar
-      CkpCreateRect("T1_RUNWAY_BG", ox + 25, ey, g_cockpitW - 50, 24, C'16,23,32', C'42,54,72', 3);
-      CkpCreateLabel("T1_RUNWAY_TXT", ox + 35, ey + 5, "✈️ Runway to M5 Barrier: 45.2 pips (CLEAR - DOKTRIN MIN 30p PASS)", C'0,255,140', 9, true);
+      CkpCreateButton("T1_PEND_1", ox + 25, ey, 140, 24, "SELL LIMIT @ WALL", C'25,32,45', clrWhite, C'45,55,75', 8);
+      CkpCreateButton("T1_PEND_2", ox + 175, ey, 145, 24, "BUY LIMIT @ DEMAND", C'25,32,45', clrWhite, C'45,55,75', 8);
+      CkpCreateButton("T1_PEND_3", ox + 330, ey, 140, 24, "DELETE BUY STOP", C'25,32,45', C'255,72,98', C'45,55,75', 8);
+      CkpCreateButton("T1_PEND_4", ox + 480, ey, 150, 24, "DELETE SELL STOP", C'25,32,45', C'255,72,98', C'45,55,75', 8);
    }
 
-   // ==================== TAB 2: S&D GENESIS LADDER ====================
+   // ==================== TAB 2: CME WALL & S&D LADDER ====================
    else if(g_activeCockpitTab == TAB_SD_GENESIS_LADDER)
    {
-      CkpCreateRect("T2_CARD", ox + 10, oy + 102, g_cockpitW - 20, 368, C'21,29,40', C'42,54,72', 2);
-      CkpCreateLabel("T2_TIT", ox + 25, oy + 112, "S&D GENESIS ZONES & CME WALL ACCUMULATION", C'255,199,69', 10, true);
+      CkpCreateRect("T2_CARD", ox + 10, oy + 102, g_cockpitW - 20, 368, C'18,25,35', C'35,46,62', 2);
+      CkpCreateLabel("T2_TIT", ox + 25, oy + 112, "🧱 CME ORDER FLOW WALL LADDER & S&D GENESIS ZONES", C'255,199,69', 10, true);
       
       int ly = oy + 140;
-      CkpCreateLabel("T2_H1", ox + 25, ly, "ZONE SIDE", C'142,158,181', 9, true);
+      CkpCreateLabel("T2_H1", ox + 25, ly, "LEVEL TYPE", C'142,158,181', 9, true);
       CkpCreateLabel("T2_H2", ox + 140, ly, "PRICE LEVEL", C'142,158,181', 9, true);
-      CkpCreateLabel("T2_H3", ox + 270, ly, "GENESIS STATUS", C'142,158,181', 9, true);
-      CkpCreateLabel("T2_H4", ox + 450, ly, "SCORE", C'142,158,181', 9, true);
-      CkpCreateLabel("T2_H5", ox + 540, ly, "RETEST", C'142,158,181', 9, true);
+      CkpCreateLabel("T2_H3", ox + 260, ly, "ORDER VOLUME / STRENGTH", C'142,158,181', 9, true);
+      CkpCreateLabel("T2_H4", ox + 450, ly, "ZONE SCORE", C'142,158,181', 9, true);
+      CkpCreateLabel("T2_H5", ox + 540, ly, "STATUS", C'142,158,181', 9, true);
       ly += 22;
 
-      int maxZ = MathMin(7, ArraySize(g_zoneSide));
+      // 1. Top Ask Wall (Resistance)
+      CkpCreateLabel("T2_W_ASK", ox + 25, ly, "ASK WALL #1", C'255,72,98', 9, true);
+      CkpCreateLabel("T2_W_ASK_PX", ox + 140, ly, StringFormat("%.2f", g_bookmapAskPx[0]), C'255,72,98', 9, true);
+      CkpCreateLabel("T2_W_ASK_SZ", ox + 260, ly, StringFormat("%.0f Lots CME Limit", g_bookmapAskSz[0]), clrWhite, 9, false);
+      CkpCreateLabel("T2_W_ASK_SC", ox + 450, ly, "95 pts", C'0,229,255', 9, false);
+      CkpCreateLabel("T2_W_ASK_ST", ox + 540, ly, "RESISTEN", C'255,72,98', 9, true);
+      ly += 24;
+
+      // 2. Point of Control (POC)
+      CkpCreateLabel("T2_W_POC", ox + 25, ly, "VPOC MAGNET", C'255,199,69', 9, true);
+      CkpCreateLabel("T2_W_POC_PX", ox + 140, ly, StringFormat("%.2f", g_bookmapPocPrice), C'255,199,69', 9, true);
+      CkpCreateLabel("T2_W_POC_SZ", ox + 260, ly, StringFormat("%.0f Lots High Volume", g_bookmapPocVolume), clrWhite, 9, false);
+      CkpCreateLabel("T2_W_POC_SC", ox + 450, ly, "85 pts", C'0,229,255', 9, false);
+      CkpCreateLabel("T2_W_POC_ST", ox + 540, ly, "MAGNET POC", C'255,199,69', 9, true);
+      ly += 24;
+
+      // 3. Nearest Bid Wall (Support)
+      CkpCreateLabel("T2_W_BID", ox + 25, ly, "BID WALL #1", C'0,255,140', 9, true);
+      CkpCreateLabel("T2_W_BID_PX", ox + 140, ly, StringFormat("%.2f", g_bookmapBidPx[0]), C'0,255,140', 9, true);
+      CkpCreateLabel("T2_W_BID_SZ", ox + 260, ly, StringFormat("%.0f Lots CME Limit", g_bookmapBidSz[0]), clrWhite, 9, false);
+      CkpCreateLabel("T2_W_BID_SC", ox + 450, ly, "90 pts", C'0,229,255', 9, false);
+      CkpCreateLabel("T2_W_BID_ST", ox + 540, ly, "SUPORT", C'0,255,140', 9, true);
+      ly += 26;
+
+      // 4. S&D Genesis Zones Ladder
+      int maxZ = MathMin(4, ArraySize(g_zoneSide));
       for(int i = 0; i < maxZ; i++)
       {
          color sClr = (g_zoneSide[i] == "DEMAND") ? C'0,255,140' : C'255,72,98';
-         CkpCreateLabel("T2_R1_" + IntegerToString(i), ox + 25, ly, g_zoneSide[i], sClr, 9, true);
+         CkpCreateLabel("T2_R1_" + IntegerToString(i), ox + 25, ly, "S&D " + g_zoneSide[i], sClr, 9, true);
          CkpCreateLabel("T2_R2_" + IntegerToString(i), ox + 140, ly, StringFormat("%.2f - %.2f", g_zoneLo[i], g_zoneHi[i]), clrWhite, 9, false);
-         CkpCreateLabel("T2_R3_" + IntegerToString(i), ox + 270, ly, g_zoneStatus[i], C'255,199,69', 9, true);
+         CkpCreateLabel("T2_R3_" + IntegerToString(i), ox + 260, ly, g_zoneStatus[i], C'255,199,69', 9, true);
          CkpCreateLabel("T2_R4_" + IntegerToString(i), ox + 450, ly, StringFormat("%.0f pts", g_zoneScore[i]), C'0,229,255', 9, false);
-         CkpCreateLabel("T2_R5_" + IntegerToString(i), ox + 540, ly, StringFormat("%dx", g_zoneRetest[i]), C'142,158,181', 9, false);
+         CkpCreateLabel("T2_R5_" + IntegerToString(i), ox + 540, ly, StringFormat("%dx Retest", g_zoneRetest[i]), C'142,158,181', 9, false);
          ly += 24;
       }
    }
@@ -2086,7 +2153,7 @@ void UpdatePanel()
    // ==================== TAB 3: SULTAN ACTIONS ====================
    else if(g_activeCockpitTab == TAB_SULTAN_ACTIONS)
    {
-      CkpCreateRect("T3_CARD", ox + 10, oy + 102, g_cockpitW - 20, 368, C'21,29,40', C'42,54,72', 2);
+      CkpCreateRect("T3_CARD", ox + 10, oy + 102, g_cockpitW - 20, 368, C'18,25,35', C'35,46,62', 2);
       CkpCreateLabel("T3_TIT", ox + 25, oy + 112, "SULTAN 1-CLICK POSITION MANAGEMENT & EMERGENCY ACTIONS", C'255,199,69', 10, true);
       
       int ay = oy + 150;
@@ -2099,7 +2166,7 @@ void UpdatePanel()
       ay += 70;
 
       // Floating Account PnL
-      CkpCreateRect("T3_ACC_BG", ox + 25, ay, g_cockpitW - 50, 38, C'16,23,32', C'42,54,72', 3);
+      CkpCreateRect("T3_ACC_BG", ox + 25, ay, g_cockpitW - 50, 38, C'14,19,26', C'35,46,62', 3);
       double eq = AccountInfoDouble(ACCOUNT_EQUITY);
       double bl = AccountInfoDouble(ACCOUNT_BALANCE);
       double flPnl = eq - bl;
@@ -10557,6 +10624,34 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
          TryOpen("BUY", "MANUAL-SNIPER-BUY", false, 0, 0, sl, tp);
          return;
       }
+      
+      // ⚡ NEWS STRADDLE TRAP CLICK
+      if(sparam == CKP_PREFIX + "T1_NEWS_TRAP")
+      {
+         ExecuteNewsStraddle();
+         return;
+      }
+      if(sparam == CKP_PREFIX + "T1_PEND_3") // Delete Buy Stop
+      {
+         for(int i = OrdersTotal() - 1; i >= 0; i--)
+         {
+            ulong ticket = OrderGetTicket(i);
+            if(OrderGetString(ORDER_SYMBOL) == _Symbol && OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_BUY_STOP)
+               trade.OrderDelete(ticket);
+         }
+         return;
+      }
+      if(sparam == CKP_PREFIX + "T1_PEND_4") // Delete Sell Stop
+      {
+         for(int i = OrdersTotal() - 1; i >= 0; i--)
+         {
+            ulong ticket = OrderGetTicket(i);
+            if(OrderGetString(ORDER_SYMBOL) == _Symbol && OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_SELL_STOP)
+               trade.OrderDelete(ticket);
+         }
+         return;
+      }
+
       if(sparam == CKP_PREFIX + "T1_PROT_FAST") { g_execFastSniper = true;  UpdatePanel(); return; }
       if(sparam == CKP_PREFIX + "T1_PROT_SAFE") { g_execFastSniper = false; UpdatePanel(); return; }
 
