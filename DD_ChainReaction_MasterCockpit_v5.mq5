@@ -78,62 +78,6 @@ enum ENUM_TRADE_DIRECTION
    DIR_SELL_ONLY = 2    // SELL only
 };
 
-//+------------------------------------------------------------------+
-//| 👑 MASTER COCKPIT V5 INTERACTIVE STATE & PALETTE                  |
-//+------------------------------------------------------------------+
-enum ENUM_COCKPIT_TAB
-{
-   TAB_ORDER_FLOW_INTEL = 0,   // [ 📊 ORDER FLOW INTEL ]
-   TAB_SNIPER_EXECUTION = 1,   // [ 🎯 SNIPER EXECUTION ]
-   TAB_SD_GENESIS_LADDER = 2,  // [ 🧱 S&D GENESIS LADDER ]
-   TAB_SULTAN_ACTIONS   = 3    // [ ⚡ SULTAN ACTIONS ]
-};
-
-int               g_cockpitX = 30;              // Window X offset
-int               g_cockpitY = 40;              // Window Y offset
-int               g_cockpitW = 660;             // Window Width
-int               g_cockpitH = 480;             // Window Height
-ENUM_COCKPIT_TAB  g_activeCockpitTab = TAB_ORDER_FLOW_INTEL; // Active Tab
-bool              g_isDraggingCockpit = false;  // Drag State
-int               g_dragOffsetX = 0;            // Drag relative X
-int               g_dragOffsetY = 0;            // Drag relative Y
-bool              g_cockpitMinimized = false;   // Minimized State
-
-// Sniper Execution Settings
-double            g_execRiskPct = 2.0;          // Risk % Balance
-bool              g_execFastSniper = true;      // Fast Sniper (Wick) vs Safe Discipline (Close)
-double            g_execCalculatedLot = 0.10;   // Calculated Lot
-double            g_execSlPips = 30.0;          // SL Pips
-double            g_execTpPips = 60.0;          // TP Pips
-bool              g_showRiskRewardBox = true;   // Visual Drag Box on chart
-
-// Color Palette V5 (Dark Glass & Gold Luxury)
-#define C_V5_BG         0xFF0E131A   // Opaque Dark Blue-Black Glass
-#define C_V5_CARD_BG    0xFF151D28   // Card Background
-#define C_V5_BORDER     0xFFE5A93C   // Neon Gold Border
-#define C_V5_BORDER_DIM 0xFF2A3648   // Dim Slate Border
-#define C_V5_GOLD       0xFFFFC745   // Bright Neon Gold Text
-#define C_V5_EMERALD    0xFF00FF8C   // Bright Neon Emerald Green
-#define C_V5_ROSE       0xFFFF4862   // Bright Neon Rose Red
-#define C_V5_CYAN       0xFF00E5FF   // Bright Neon Cyan
-#define C_V5_TEXT_MAIN  0xFFFFFFFF   // Pure White Text
-#define C_V5_TEXT_MUTED 0xFF8E9EB5   // Slate Muted Text
-#define C_V5_TAB_ACTIVE 0xFF2A2415   // Active Tab Gold Glow
-
-// ⏳ Multi-TF Candle Closing Countdown Helper
-string GetTfCountdownStr(ENUM_TIMEFRAMES tf)
-{
-   datetime now = TimeCurrent();
-   int pSec = PeriodSeconds(tf);
-   if(pSec <= 0) return "--:--";
-   int remSec = pSec - (int)(now % pSec);
-   int h = remSec / 3600;
-   int m = (remSec % 3600) / 60;
-   int s = remSec % 60;
-   if(h > 0) return StringFormat("%02dh %02dm", h, m);
-   return StringFormat("%02dm %02ds", m, s);
-}
-
 input group "=== FLICKER DIAGNOSTICS (DADANG) ==="
 input bool                Diag_BookmapData       = true;  // [DIAG] Bookmap Data Stream (true=read CSV live, false=freeze cache)
 input bool                Diag_BookmapVisual     = true;  // [DIAG] Bookmap Visual Renderer (true=render VAH/VAL/POC/Ice/Sweep, false=hide all visual)
@@ -1157,11 +1101,6 @@ int OnInit()
    ObjectsDeleteAll(0, "DD_SW_"); // v53.30: remove toggle panel buttons
    InitZoneStateCache(); // v53.31: init render state cache
    EventSetTimer(1); // v53.32: 1-second timer tick for smooth dispatch
-      // 🚀 Instant Frame 0 Render on Attach/TF Change
-   UpdateStateAndExecute();
-   UpdatePanel();
-   ChartRedraw(0);
-   
    return(INIT_SUCCEEDED);
 }
 
@@ -1301,6 +1240,50 @@ void OnDeinit(const int reason)
 color DirColor(string d) { return (d == "BUY") ? clrLime : (d == "SELL" ? clrTomato : clrSilver); }
 
 CCanvas g_panelCanvas;
+
+//+------------------------------------------------------------------+
+//| 👑 MASTER COCKPIT V5 INTERACTIVE STATE & PALETTE                  |
+//+------------------------------------------------------------------+
+enum ENUM_COCKPIT_TAB
+{
+   TAB_ORDER_FLOW_INTEL = 0,   // [ 📊 ORDER FLOW INTEL ]
+   TAB_SNIPER_EXECUTION = 1,   // [ 🎯 SNIPER EXECUTION ]
+   TAB_SD_GENESIS_LADDER = 2,  // [ 🧱 S&D GENESIS LADDER ]
+   TAB_SULTAN_ACTIONS   = 3    // [ ⚡ SULTAN ACTIONS ]
+};
+
+int               g_cockpitX = 25;              // Window X offset
+int               g_cockpitY = 35;              // Window Y offset
+int               g_cockpitW = 660;             // Window Width
+int               g_cockpitH = 480;             // Window Height
+ENUM_COCKPIT_TAB  g_activeCockpitTab = TAB_ORDER_FLOW_INTEL; // Active Tab
+bool              g_isDraggingCockpit = false;  // Drag State
+int               g_dragOffsetX = 0;            // Drag relative X
+int               g_dragOffsetY = 0;            // Drag relative Y
+bool              g_cockpitMinimized = false;   // Minimized State
+
+// Sniper Execution Settings
+double            g_execRiskPct = 2.0;          // Risk % Balance
+bool              g_execFastSniper = true;      // Fast Sniper (Wick) vs Safe Discipline (Close)
+double            g_execCalculatedLot = 0.10;   // Calculated Lot
+double            g_execSlPips = 30.0;          // SL Pips
+double            g_execTpPips = 60.0;          // TP Pips
+bool              g_showRiskRewardBox = true;   // Visual Drag Box on chart
+
+// ⏳ Multi-TF Candle Closing Countdown Helper
+string GetTfCountdownStr(ENUM_TIMEFRAMES tf)
+{
+   datetime now = TimeCurrent();
+   int pSec = PeriodSeconds(tf);
+   if(pSec <= 0) return "--:--";
+   int remSec = pSec - (int)(now % pSec);
+   int h = remSec / 3600;
+   int m = (remSec % 3600) / 60;
+   int s = remSec % 60;
+   if(h > 0) return StringFormat("%02dh %02dm", h, m);
+   return StringFormat("%02dm %02ds", m, s);
+}
+
 CCanvas g_hudCanvas;
 bool    g_hudCanvasCreated = false;
 uint    g_lastPanelDrawMs = 0;
@@ -1457,7 +1440,7 @@ void CreatePanel()
    ObjectsDeleteAll(0, DASH_PREFIX); // clean out leftover flat objects from pre-v39 versions
 
    int bmpW = PNL_W + PNL_MARGIN * 2, bmpH = PNL_H + PNL_MARGIN * 2;
-   g_panelCanvas.CreateBitmapLabel(0, "DD_MASTER_COCKPIT_V5", g_cockpitX, g_cockpitY, g_cockpitW, g_cockpitH, COLOR_FORMAT_ARGB_NORMALIZE);
+   g_panelCanvas.CreateBitmapLabel(0, "SULTAN_MASTER_COCKPIT_V5", g_cockpitX, g_cockpitY, g_cockpitW, g_cockpitH, COLOR_FORMAT_ARGB_NORMALIZE);
    ObjectSetInteger(0, DASH_PREFIX + "CANVAS", OBJPROP_CORNER, CORNER_LEFT_UPPER);
 }
 
@@ -1701,11 +1684,6 @@ void UpdateTopCenterConfluenceHUD()
    g_hudCanvas.Update(false);
 }
 
-void DrawV5Rect(int x1, int y1, int x2, int y2, uint clr)
-{
-   g_panelCanvas.FillRectangle(x1, y1, x2, y2, clr);
-}
-
 void DrawV5BorderRect(int x1, int y1, int x2, int y2, uint bgClr, uint borderClr)
 {
    g_panelCanvas.FillRectangle(x1, y1, x2, y2, borderClr);
@@ -1753,22 +1731,22 @@ void UpdatePanel()
 {
    if(!InpShowPanel || !g_toggleShowPanel)
    {
-      if(ObjectFind(0, "DD_MASTER_COCKPIT_V5") >= 0) g_panelCanvas.Destroy();
+      if(ObjectFind(0, "SULTAN_MASTER_COCKPIT_V5") >= 0) g_panelCanvas.Destroy();
       return;
    }
 
    int curH = g_cockpitMinimized ? 36 : g_cockpitH;
    
-   if(ObjectFind(0, "DD_MASTER_COCKPIT_V5") < 0 || g_panelCanvas.Width() != g_cockpitW || g_panelCanvas.Height() != curH)
+   if(ObjectFind(0, "SULTAN_MASTER_COCKPIT_V5") < 0 || g_panelCanvas.Width() != g_cockpitW || g_panelCanvas.Height() != curH)
    {
       g_panelCanvas.Destroy();
-      g_panelCanvas.CreateBitmapLabel(0, "DD_MASTER_COCKPIT_V5", g_cockpitX, g_cockpitY, g_cockpitW, curH, COLOR_FORMAT_ARGB_NORMALIZE);
+      g_panelCanvas.CreateBitmapLabel(0, "SULTAN_MASTER_COCKPIT_V5", g_cockpitX, g_cockpitY, g_cockpitW, curH, COLOR_FORMAT_ARGB_NORMALIZE);
    }
-   else
-   {
-      ObjectSetInteger(0, "DD_MASTER_COCKPIT_V5", OBJPROP_XDISTANCE, g_cockpitX);
-      ObjectSetInteger(0, "DD_MASTER_COCKPIT_V5", OBJPROP_YDISTANCE, g_cockpitY);
-   }
+   
+   ObjectSetInteger(0, "SULTAN_MASTER_COCKPIT_V5", OBJPROP_XDISTANCE, g_cockpitX);
+   ObjectSetInteger(0, "SULTAN_MASTER_COCKPIT_V5", OBJPROP_YDISTANCE, g_cockpitY);
+   ObjectSetInteger(0, "SULTAN_MASTER_COCKPIT_V5", OBJPROP_HIDDEN, false);
+   ObjectSetInteger(0, "SULTAN_MASTER_COCKPIT_V5", OBJPROP_SELECTABLE, false);
    
    g_panelCanvas.Erase(0x00000000);
    
@@ -10487,10 +10465,6 @@ void UpdateHudToggleButtons()
    ObjectSetInteger(0, pocBtn, OBJPROP_STATE, g_togglePocVa);
 }
 
-//+------------------------------------------------------------------+
-//| 🖱️ MASTER COCKPIT V5 INTERACTIVE EVENT DISPATCHER                 |
-//| Handles Draggable Window, Tab Switching & 1-Click Execution      |
-//+------------------------------------------------------------------+
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
    // 1. Mouse Dragging of Window Header
@@ -10601,5 +10575,3 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       }
    }
 }
-
-
