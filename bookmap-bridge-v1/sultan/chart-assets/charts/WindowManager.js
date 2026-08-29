@@ -250,6 +250,7 @@ export class ChartWindow {
 
   bindDOMEvents() {
         // --- Scale Mode Toggle Button (Persistent MT5 Spot <--> Raw CME GC) ---
+    // --- Scale Mode Toggle Button (Persistent MT5 Spot <--> Raw CME GC) ---
     const btnScale = this.el.querySelector(".btn-scale-mode");
     if (btnScale) {
       btnScale.addEventListener("click", () => {
@@ -273,29 +274,7 @@ export class ChartWindow {
         this.loadHistory(true);
       });
     }
-
-    const btnScale = this.el.querySelector(".btn-scale-mode");
-    if (btnScale) {
-      btnScale.addEventListener("click", () => {
-        this.scaleMode = (this.scaleMode === "mt5") ? "cme" : "mt5";
-        if (this.scaleMode === "cme") {
-          btnScale.textContent = "🟡 RAW CME GC";
-          btnScale.style.background = "rgba(255, 199, 69, 0.18)";
-          btnScale.style.borderColor = "#ffc745";
-          btnScale.style.color = "#ffc745";
-          if (window.showToast) window.showToast("🏛️ Switch: Mode RAW CME Futures Scale (Bookmap Asli)");
-        } else {
-          btnScale.textContent = "🟢 MT5 SPOT";
-          btnScale.style.background = "rgba(0, 230, 118, 0.18)";
-          btnScale.style.borderColor = "#00e676";
-          btnScale.style.color = "#00e676";
-          if (window.showToast) window.showToast("🟢 Switch: Mode MT5 Spot Aligned Scale (Broker MT5)");
-        }
-        this.loadHistory(true);
-      });
-    }
-
-    // --- Symbol Search Input (TradingView style) ---
+// --- Symbol Search Input (TradingView style) ---
     const symInput = this.el.querySelector(".sym-search-input");
     const symDropdown = this.el.querySelector(".sym-search-dropdown");
 
