@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v61.00-DADANG-MASTER-COCKPIT-PERFECT-ALIGNMENT"
+#define EA_VERSION "v61.02-DADANG-MASTER-COCKPIT-PRICEFIX"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -1849,8 +1849,14 @@ void RenderTopCenterRadarHUD(string radarText, uint borderClr, uint textClr)
    g_topRadarCanvas.Erase(0x00000000);
    
    // Rounded Pill Glass with 2px Glowing Border
-   PnlFillRoundedRect_Canvas(g_topRadarCanvas, 0, 0, hudW, hudH, 10, borderClr);
-   PnlFillRoundedRect_Canvas(g_topRadarCanvas, 2, 2, hudW - 2, hudH - 2, 8, 0xFF0D1219);
+   // v61.01 fix: was passing hudW/hudH raw (480/42) as the far corner into a
+   // canvas allocated EXACTLY hudW x hudH pixels (valid indices 0..hudW-1 /
+   // 0..hudH-1) - classic off-by-one buffer overrun in CCanvas's internal
+   // pixel array, matches the "Abnormal termination" crash right after this
+   // HUD started rendering. g_hudCanvas's own call a few hundred lines up
+   // already does this correctly with the -1 - this one just didn't match it.
+   PnlFillRoundedRect_Canvas(g_topRadarCanvas, 0, 0, hudW - 1, hudH - 1, 10, borderClr);
+   PnlFillRoundedRect_Canvas(g_topRadarCanvas, 2, 2, hudW - 3, hudH - 3, 8, 0xFF0D1219);
 
    // Perfectly centered text inside buffer
    g_topRadarCanvas.FontSet("Tahoma", 11, 700);
@@ -1861,6 +1867,8 @@ void RenderTopCenterRadarHUD(string radarText, uint borderClr, uint textClr)
 
 void UpdatePanel()
 {
+   WriteSultanStatus();
+
    if(!InpShowPanel || !g_toggleShowPanel)
    {
       if(ObjectFind(0, "SULTAN_MASTER_COCKPIT_V5") >= 0) g_panelCanvas.Destroy();
@@ -2032,34 +2040,41 @@ void UpdatePanel()
       g_panelCanvas.TextOut(372, 156, "BOOKMAP CME WALL & LIQUIDITY DEPTH", 0xFFFFC745, TA_LEFT | TA_TOP);
       
       int wy = 180;
-      double bidWall = g_bookmapBidPx[0];
-      double askWall = g_bookmapAskPx[0];
-      
+      // v61.02 fix: g_bookmap* prices are Bookmap's OWN instrument (GCZ6
+      // futures), NOT XAUUSD - every other export (JSON, wall ladder) adds
+      // this same offset before display, this card was showing the raw
+      // futures price unconverted, ~50 USD off from the real XAUUSD level
+      // (Dadang caught this: Sniper tab's real SymbolInfoDouble price vs
+      // this card's numbers didn't match at all).
+      double cmeOffset = (g_bookmapPrice > 0) ? (SymbolInfoDouble(_Symbol, SYMBOL_BID) - g_bookmapPrice) : 0.0;
+      double bidWall = g_bookmapBidPx[0] + cmeOffset;
+      double askWall = g_bookmapAskPx[0] + cmeOffset;
+
       g_panelCanvas.FontSet("Tahoma", 9, 700);
       g_panelCanvas.TextOut(372, wy, "Nearest Bid Wall (Suport):", 0xFFE2E8F0, TA_LEFT | TA_TOP);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
       g_panelCanvas.TextOut(550, wy, StringFormat("%.2f (%0.fL)", bidWall, g_bookmapBidSz[0]), 0xFF00FF8C, TA_LEFT | TA_TOP);
       DrawVisualBar(655, wy + 2, 65, 8, MathMin(100.0, g_bookmapBidSz[0] * 5.0), 0xFF00FF8C, 0xFF0E2E1D);
       wy += 25;
-      
+
       g_panelCanvas.FontSet("Tahoma", 9, 700);
       g_panelCanvas.TextOut(372, wy, "Nearest Ask Wall (Resisten):", 0xFFE2E8F0, TA_LEFT | TA_TOP);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
       g_panelCanvas.TextOut(550, wy, StringFormat("%.2f (%0.fL)", askWall, g_bookmapAskSz[0]), 0xFFFF4862, TA_LEFT | TA_TOP);
       DrawVisualBar(655, wy + 2, 65, 8, MathMin(100.0, g_bookmapAskSz[0] * 5.0), 0xFFFF4862, 0xFF351216);
       wy += 25;
-      
+
       g_panelCanvas.FontSet("Tahoma", 9, 700);
       g_panelCanvas.TextOut(372, wy, "Point of Control (VPOC):", 0xFFE2E8F0, TA_LEFT | TA_TOP);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
-      g_panelCanvas.TextOut(550, wy, StringFormat("%.2f (%0.fL)", g_bookmapPocPrice, g_bookmapPocVolume), 0xFFFFC745, TA_LEFT | TA_TOP);
+      g_panelCanvas.TextOut(550, wy, StringFormat("%.2f (%0.fL)", g_bookmapPocPrice + cmeOffset, g_bookmapPocVolume), 0xFFFFC745, TA_LEFT | TA_TOP);
       DrawVisualBar(655, wy + 2, 65, 8, MathMin(100.0, g_bookmapPocVolume * 2.0), 0xFFFFC745, 0xFF2A2012);
       wy += 25;
-      
+
       g_panelCanvas.FontSet("Tahoma", 9, 700);
       g_panelCanvas.TextOut(372, wy, "Value Area (VAH / VAL):", 0xFFE2E8F0, TA_LEFT | TA_TOP);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
-      g_panelCanvas.TextOut(550, wy, StringFormat("%.2f / %.2f", g_bookmapVah, g_bookmapVal), 0xFF00E5FF, TA_LEFT | TA_TOP);
+      g_panelCanvas.TextOut(550, wy, StringFormat("%.2f / %.2f", g_bookmapVah + cmeOffset, g_bookmapVal + cmeOffset), 0xFF00E5FF, TA_LEFT | TA_TOP);
       wy += 27;
 
       DrawPillButton(372, wy, 630, wy + 24, 6, "🧲 LTHL MAGNET ACCUMULATION ACTIVE", 0xFF2A2012, 0xFFFFC745, 0xFFFFC745, 8, true);
@@ -2227,7 +2242,9 @@ void UpdatePanel()
       g_panelCanvas.FontSet("Tahoma", 9, 700);
       g_panelCanvas.TextOut(20, fpy, "Imbalance Price Level:", 0xFFE2E8F0, TA_LEFT | TA_TOP);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
-      g_panelCanvas.TextOut(210, fpy, StringFormat("%.2f", g_bookmapBidPx[0]), 0xFF00FF8C, TA_LEFT | TA_TOP);
+      // v61.02 fix: same GCZ6->XAUUSD offset issue as CME Wall Intelligence/Ladder
+      double fpOffset = (g_bookmapPrice > 0) ? (SymbolInfoDouble(_Symbol, SYMBOL_BID) - g_bookmapPrice) : 0.0;
+      g_panelCanvas.TextOut(210, fpy, StringFormat("%.2f", g_bookmapBidPx[0] + fpOffset), 0xFF00FF8C, TA_LEFT | TA_TOP);
       fpy += 25;
 
       g_panelCanvas.FontSet("Tahoma", 9, 700);
@@ -2327,10 +2344,15 @@ void UpdatePanel()
       g_panelCanvas.Line(24, ly, g_cockpitW - 24, ly, 0xFF263345);
       ly += 10;
 
+      // v61.02 fix: same GCZ6->XAUUSD offset fix as the Order Flow tab's
+      // CME Wall Intelligence card - this ladder was showing raw futures
+      // prices too.
+      double ladderOffset = (g_bookmapPrice > 0) ? (SymbolInfoDouble(_Symbol, SYMBOL_BID) - g_bookmapPrice) : 0.0;
+
       // 1. Ask Wall #1
       DrawPillButton(24, ly - 2, 130, ly + 18, 4, "ASK WALL #1", 0xFF351216, 0xFFFF4862, 0xFFFF4862, 9, true);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
-      g_panelCanvas.TextOut(150, ly, StringFormat("%.2f", g_bookmapAskPx[0]), 0xFFFF4862, TA_LEFT | TA_TOP);
+      g_panelCanvas.TextOut(150, ly, StringFormat("%.2f", g_bookmapAskPx[0] + ladderOffset), 0xFFFF4862, TA_LEFT | TA_TOP);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
       g_panelCanvas.TextOut(290, ly, StringFormat("%.0f Lots CME Limit", g_bookmapAskSz[0]), 0xFFFFFFFF, TA_LEFT | TA_TOP);
       g_panelCanvas.TextOut(500, ly, "95 pts", 0xFF00E5FF, TA_LEFT | TA_TOP);
@@ -2340,7 +2362,7 @@ void UpdatePanel()
       // 2. VPOC Magnet
       DrawPillButton(24, ly - 2, 130, ly + 18, 4, "VPOC MAGNET", 0xFF2A2012, 0xFFFFC745, 0xFFFFC745, 9, true);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
-      g_panelCanvas.TextOut(150, ly, StringFormat("%.2f", g_bookmapPocPrice), 0xFFFFC745, TA_LEFT | TA_TOP);
+      g_panelCanvas.TextOut(150, ly, StringFormat("%.2f", g_bookmapPocPrice + ladderOffset), 0xFFFFC745, TA_LEFT | TA_TOP);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
       g_panelCanvas.TextOut(290, ly, StringFormat("%.0f Lots High Volume", g_bookmapPocVolume), 0xFFFFFFFF, TA_LEFT | TA_TOP);
       g_panelCanvas.TextOut(500, ly, "85 pts", 0xFF00E5FF, TA_LEFT | TA_TOP);
@@ -2350,7 +2372,7 @@ void UpdatePanel()
       // 3. Bid Wall #1
       DrawPillButton(24, ly - 2, 130, ly + 18, 4, "BID WALL #1", 0xFF0E2E1D, 0xFF00FF8C, 0xFF00FF8C, 9, true);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
-      g_panelCanvas.TextOut(150, ly, StringFormat("%.2f", g_bookmapBidPx[0]), 0xFF00FF8C, TA_LEFT | TA_TOP);
+      g_panelCanvas.TextOut(150, ly, StringFormat("%.2f", g_bookmapBidPx[0] + ladderOffset), 0xFF00FF8C, TA_LEFT | TA_TOP);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
       g_panelCanvas.TextOut(290, ly, StringFormat("%.0f Lots CME Limit", g_bookmapBidSz[0]), 0xFFFFFFFF, TA_LEFT | TA_TOP);
       g_panelCanvas.TextOut(500, ly, "90 pts", 0xFF00E5FF, TA_LEFT | TA_TOP);
