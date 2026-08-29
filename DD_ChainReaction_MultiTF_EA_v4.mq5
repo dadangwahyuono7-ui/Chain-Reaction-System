@@ -586,7 +586,7 @@ datetime g_momEntryLastEvent = 0;        // last M5 BreakoutEventTime (buffer 7)
 // queue (instead of overwriting), and QueuePrune() removes an entry the
 // moment price genuinely closes past it (permanently - once jebol, always
 // jebol, never re-added). LastDir/LastLevel (flip DETECTION) unchanged.
-struct BarrierEntry { string dir; double level; int retestCount; bool wasInside; };
+struct BarrierEntry { string dir; double level; int retestCount; bool wasInside; datetime flipTime; bool isGenesis; };
 // v53.63: 8 -> 40 - Dadang: "setiap breakout lama ada panahnya dan ini
 // setiap panah itu adalah area SND" (every CMP flip arrow on the indicator
 // IS its own S&D zone). At 8, BootstrapBarrierFromHistory()'s backward walk
@@ -2236,7 +2236,99 @@ double ReadLiveLevel(int handle, int bufferIndex)
 //--- CLOSE genuinely crosses it (never re-added - "sekali jebol, tetap
 //--- jebol"). Cap MAX_BARRIER_QUEUE keeps this bounded even through a very
 //--- long chop.
-void QueuePush(BarrierEntry &q[], string dir, double level, string tag = "")
+//+------------------------------------------------------------------+
+//| 👑 MAESTRO DADANG MASTER DOCTRINE V4 ENGINES                      |
+//| 1. Time Law Active Gate                                          |
+//| 2. VR TP-Cap (M5/M15 Barrier Locked)                              |
+//| 3. 30-50 Pip Runway Clearance Filter                             |
+//| 4. Genesis Primary H4 Zone Detector                              |
+//+------------------------------------------------------------------+
+datetime g_h4LastFlipTime = 0;
+datetime g_h1LastFlipTime = 0;
+datetime g_m30LastFlipTime = 0;
+datetime g_m15LastFlipTime = 0;
+datetime g_m5LastFlipTime = 0;
+datetime g_d1LastFlipTime = 0;
+
+// 👑 Filter Jarak Minimal 30-50 Pip ke Barrier Penghalang (Doktrin Bagian B2)
+bool CheckRunwayClearance(string dir, double entryPx, double minPips, string &vetoReasonOut)
+{
+   double pip = PipSize();
+   double nearestOpposingBarrier = 0.0;
+   bool have = false;
+   
+   for(int qk = 0; qk < 5; qk++)
+   {
+      int cnt = (qk == 0) ? ArraySize(g_m5Queue) : (qk == 1) ? ArraySize(g_m15Queue) : (qk == 2) ? ArraySize(g_m30Queue) : (qk == 3) ? ArraySize(g_h1Queue) : ArraySize(g_h4Queue);
+      for(int i = 0; i < cnt; i++)
+      {
+         BarrierEntry b = (qk == 0) ? g_m5Queue[i] : (qk == 1) ? g_m15Queue[i] : (qk == 2) ? g_m30Queue[i] : (qk == 3) ? g_h1Queue[i] : g_h4Queue[i];
+         if(b.level <= 0) continue;
+         
+         if(dir == "BUY" && b.level > entryPx)
+         {
+            if(!have || b.level < nearestOpposingBarrier) { nearestOpposingBarrier = b.level; have = true; }
+         }
+         else if(dir == "SELL" && b.level < entryPx)
+         {
+            if(!have || b.level > nearestOpposingBarrier) { nearestOpposingBarrier = b.level; have = true; }
+         }
+      }
+   }
+   
+   if(have && nearestOpposingBarrier > 0)
+   {
+      double distPips = MathAbs(entryPx - nearestOpposingBarrier) / pip;
+      if(distPips < minPips)
+      {
+         vetoReasonOut = StringFormat("RUNWAY VETO: Jarak ke barrier penghalang %.2f hanya %.1f pips (< %.0f pips)", nearestOpposingBarrier, distPips, minPips);
+         return false;
+      }
+   }
+   return true;
+}
+
+// 👑 VR TP-Cap Engine (Doktrin Bagian B2: Dilarang TP ke H4, Wajib Kunci M5/M15)
+double GetNearestVR_TP_Target(string dir, double entryPx, double fallbackPips)
+{
+   double pip = PipSize();
+   double nearestTarget = 0.0;
+   bool have = false;
+   
+   // Prioritas 1: M5 Barrier
+   for(int i = 0; i < ArraySize(g_m5Queue); i++)
+   {
+      if(g_m5Queue[i].level <= 0) continue;
+      if(dir == "BUY" && g_m5Queue[i].level > entryPx)
+      {
+         if(!have || g_m5Queue[i].level < nearestTarget) { nearestTarget = g_m5Queue[i].level; have = true; }
+      }
+      else if(dir == "SELL" && g_m5Queue[i].level < entryPx)
+      {
+         if(!have || g_m5Queue[i].level > nearestTarget) { nearestTarget = g_m5Queue[i].level; have = true; }
+      }
+   }
+   
+   // Prioritas 2: M15 Barrier
+   for(int i = 0; i < ArraySize(g_m15Queue); i++)
+   {
+      if(g_m15Queue[i].level <= 0) continue;
+      if(dir == "BUY" && g_m15Queue[i].level > entryPx)
+      {
+         if(!have || g_m15Queue[i].level < nearestTarget) { nearestTarget = g_m15Queue[i].level; have = true; }
+      }
+      else if(dir == "SELL" && g_m15Queue[i].level < entryPx)
+      {
+         if(!have || g_m15Queue[i].level > nearestTarget) { nearestTarget = g_m15Queue[i].level; have = true; }
+      }
+   }
+   
+   if(have && nearestTarget > 0) return nearestTarget;
+   
+   return (dir == "BUY") ? (entryPx + fallbackPips * pip) : (entryPx - fallbackPips * pip);
+}
+
+void QueuePush(BarrierEntry &q[], string dir, double level, string tag = "", datetime flipTime = 0, bool isGenesis = false)
 {
    if(dir == "" || level <= 0) return;
    int n = ArraySize(q);
@@ -2507,13 +2599,26 @@ void UpdateBarrierTracking(int handle, ENUM_TIMEFRAMES tf, string &lastDir, doub
       double curLevel = ReadLiveLevel(handle, 4);
       if(lastDir != "WAIT" && curDir != lastDir)
       {
-         if(tag != "") Print("BARRIER FLIP [", tag, "]: ", lastDir, " -> ", curDir, " (old level was ", DoubleToString(lastLevel, 2), ")");
-         QueuePush(queue, lastDir, lastLevel, tag);   // fresh flip - what we WERE tracking joins the queue
+         if(tag == "H4") g_h4LastFlipTime = ct;
+         else if(tag == "H1") g_h1LastFlipTime = ct;
+         else if(tag == "M30") g_m30LastFlipTime = ct;
+         else if(tag == "M15") g_m15LastFlipTime = ct;
+         else if(tag == "M5") g_m5LastFlipTime = ct;
+         else if(tag == "D1") g_d1LastFlipTime = ct;
+         
+         bool isGen = false;
+         if(tag != "H4" && tag != "D1")
+         {
+            isGen = (g_h4LastFlipTime > 0 && MathAbs((long)(ct - g_h4LastFlipTime)) <= PeriodSeconds(PERIOD_H4));
+         }
+         
+         if(tag != "") Print("BARRIER FLIP [", tag, "]: ", lastDir, " -> ", curDir, " @ ", DoubleToString(lastLevel, 2), " (Time=", TimeToString(ct, TIME_DATE|TIME_MINUTES), isGen ? " 👑 GENESIS" : "", ")");
+         QueuePush(queue, lastDir, lastLevel, tag, ct, isGen);
       }
       lastDir = curDir;
       if(curLevel > 0) lastLevel = curLevel;
    }
-   QueuePrune(queue, tf, tag);   // every tick - self-clean as price closes beyond entries, permanently
+   QueuePrune(queue, tf, tag);   // strictly owner TF body close
 }
 
 //--- v52.65: just the TF NAMES, dropped price/dir - Dadang: "ini keluar
@@ -9288,6 +9393,36 @@ bool TryOpen(string dir, string tag, bool isScalp, datetime parentFlipTime = 0, 
                       (childFlipTime > parentFlipTime) ? "AFTER" : "!! NOT AFTER !!")
       : "";
       // v53.37: Normalize all values before trade execution
+      // 👑 1. TIME LAW GATE (DOKTRIN BAGIAN A3/B2)
+   if(g_h4LastFlipTime > 0 && childFlipTime > 0)
+   {
+      if(childFlipTime < g_h4LastFlipTime)
+      {
+         Print("⛔ [TIME LAW VETO] Sinyal M5/M30 (", TimeToString(childFlipTime, TIME_DATE|TIME_MINUTES), ") terjadi SEBELUM H4 Master Flip (", TimeToString(g_h4LastFlipTime, TIME_DATE|TIME_MINUTES), "). Sinyal kadaluarsa, turun pangkat jadi Barrier! Entry di-VETO!");
+         return false;
+      }
+   }
+   
+   // 👑 2. FILTER JARAK MINIMAL 30-50 PIP (DOKTRIN BAGIAN B2)
+   string runwayVetoReason = "";
+   if(!CheckRunwayClearance(dir, px, 30.0, runwayVetoReason))
+   {
+      Print("⛔ [RUNWAY VETO] ", runwayVetoReason);
+      return false;
+   }
+   
+   // 👑 3. VR TP-CAP (DOKTRIN BAGIAN B2)
+   bool isVR = (dir != g_masterDir) || isScalp;
+   if(isVR)
+   {
+      double vrTp = GetNearestVR_TP_Target(dir, px, InpScalpTP_Pips);
+      if(vrTp > 0)
+      {
+         tp = vrTp;
+         Print("🎯 [VR TP-CAP APPLIED] Mode Retracement (VR) lawan Master H4 -> TP dikunci ke Barrier M5/M15 terdekat: ", DoubleToString(tp, 2));
+      }
+   }
+
    px = buy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
    px = NormalizeDouble(px, _Digits);
    if(sl > 0) sl = NormalizeDouble(sl, _Digits);
