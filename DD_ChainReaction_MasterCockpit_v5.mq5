@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v55.50-DADANG-MASTER-COCKPIT-VISUAL-SUITE"
+#define EA_VERSION "v55.80-DADANG-MASTER-COCKPIT-5TABS-ULTRA"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -1243,20 +1243,21 @@ color DirColor(string d) { return (d == "BUY") ? clrLime : (d == "SELL" ? clrTom
 CCanvas g_panelCanvas;
 
 //+------------------------------------------------------------------+
-//| 👑 DADANG MASTER COCKPIT V5: INTERACTIVE GRAPHICS STATE          |
+//| 👑 DADANG MASTER COCKPIT V5: 5-TAB ADVANCED VISUAL SUITE         |
 //+------------------------------------------------------------------+
 enum ENUM_COCKPIT_TAB
 {
-   TAB_ORDER_FLOW_INTEL = 0,   // [ 📊 ORDER FLOW INTEL ]
-   TAB_SNIPER_EXECUTION = 1,   // [ 🎯 SNIPER EXECUTION ]
-   TAB_SD_GENESIS_LADDER = 2,  // [ 🧱 CME WALL LADDER ]
-   TAB_SULTAN_ACTIONS   = 3    // [ ⚡ SULTAN ACTIONS ]
+   TAB_ORDER_FLOW_INTEL = 0,   // [ 📊 ORDER FLOW ]
+   TAB_BOOKMAP_SUITE    = 1,   // [ 🌊 BOOKMAP SUITE ]
+   TAB_FOOTPRINT_SIERRA = 2,   // [ 👣 FOOTPRINT & SC ]
+   TAB_SD_GENESIS_LADDER= 3,   // [ 🧱 CME LADDER ]
+   TAB_SNIPER_SULTAN    = 4    // [ 🎯 SNIPER & SULTAN ]
 };
 
 int               g_cockpitX = 20;              // Window X offset
 int               g_cockpitY = 25;              // Window Y offset
 int               g_cockpitW = 760;             // Window Width (Spacious & Bold)
-int               g_cockpitH = 590;             // Window Height (Spacious & Bold)
+int               g_cockpitH = 600;             // Window Height (Spacious & Bold)
 ENUM_COCKPIT_TAB  g_activeCockpitTab = TAB_ORDER_FLOW_INTEL; // Active Tab
 bool              g_isDraggingCockpit = false;  // Drag State
 int               g_dragOffsetX = 0;            // Drag relative X
@@ -1871,12 +1872,12 @@ void UpdatePanel()
       return;
    }
 
-   // 4. Top Navigation Tabs (4 Pill Buttons with Radius: 6)
-   int tabX[4] = {12, 198, 384, 570};
-   int tabW[4] = {176, 176, 176, 176};
-   string tabLabels[4] = {"📊 ORDER FLOW INTEL", "🎯 SNIPER EXECUTION", "🧱 CME WALL LADDER", "⚡ SULTAN ACTIONS"};
+   // 4. Top Navigation Tabs (5 Rich Pill Tabs with Radius: 6)
+   int tabX[5] = {12, 156, 306, 452, 594};
+   int tabW[5] = {140, 146, 142, 138, 154};
+   string tabLabels[5] = {"📊 ORDER FLOW", "🌊 BOOKMAP SUITE", "👣 FOOTPRINT & SC", "🧱 CME LADDER", "🎯 SNIPER & SULTAN"};
 
-   for(int t = 0; t < 4; t++)
+   for(int t = 0; t < 5; t++)
    {
       bool active = (g_activeCockpitTab == t);
       uint tBg = active ? 0xFF2A2214 : 0xFF141C27;
@@ -1898,22 +1899,22 @@ void UpdatePanel()
    g_panelCanvas.FontSet("Tahoma", 9, 700);
    g_panelCanvas.TextOut(22, 87, cdRibbon, 0xFF00E5FF, TA_LEFT | TA_TOP);
 
+   datetime dummyT;
+   string d1Dir  = ReadCMP(g_hExportD1, dummyT);
+   string h4Dir  = ReadCMP(g_hMaster, dummyT);
+   string h1Dir  = ReadCMP(g_hExportH1, dummyT);
+   string m30Dir = ReadCMP(g_hScalpMaster, dummyT);
+   string m15Dir = ReadCMP(g_hExportM15, dummyT);
+   string m5Dir  = ReadCMP(g_hScalpEntry, dummyT);
+
    // ==================== TAB 0: ORDER FLOW INTEL ====================
    if(g_activeCockpitTab == TAB_ORDER_FLOW_INTEL)
    {
-      // Card 1: Complete 6-TF Status + Dedicated Candle Close + Visual Momentum Meters (Left Top, Radius: 8)
-      DrawGlassCard(12, 116, 350, 342, 8, 0xFF141C27, 0xFF263345, 1);
+      // Card 1: Complete 6-TF Status + Dedicated Candle Close + Visual Momentum Meters
+      DrawGlassCard(12, 116, 350, 346, 8, 0xFF141C27, 0xFF263345, 1);
       g_panelCanvas.FontSet("Tahoma", 10, 700);
       g_panelCanvas.TextOut(24, 126, "MULTI-TF CMP REGIME & MOMENTUM", 0xFFFFC745, TA_LEFT | TA_TOP);
       
-      datetime dummyT;
-      string d1Dir  = ReadCMP(g_hExportD1, dummyT);
-      string h4Dir  = ReadCMP(g_hMaster, dummyT);
-      string h1Dir  = ReadCMP(g_hExportH1, dummyT);
-      string m30Dir = ReadCMP(g_hScalpMaster, dummyT);
-      string m15Dir = ReadCMP(g_hExportM15, dummyT);
-      string m5Dir  = ReadCMP(g_hScalpEntry, dummyT);
-
       string tfNames[6] = {"D1 (Parent)", "H4 (Master)", "H1 (Intrabar)", "M30 (Cascade)", "M15 (Sub-Casc)", "M5 (Trigger)"};
       string tfDirs[6]  = {d1Dir, h4Dir, h1Dir, m30Dir, m15Dir, m5Dir};
       string tfTimes[6] = {d1Cd, h4Cd, h1Cd, m30Cd, m15Cd, m5Cd};
@@ -1925,43 +1926,37 @@ void UpdatePanel()
          uint dirClr = (tfDirs[i] == "BUY") ? 0xFF00FF8C : 0xFFFF4862;
          uint dirBg  = (tfDirs[i] == "BUY") ? 0xFF0E2E1D : 0xFF351216;
          
-         // 1. TF Name
          g_panelCanvas.FontSet("Tahoma", 9, 700);
          g_panelCanvas.TextOut(24, tfY, tfNames[i], 0xFFFFFFFF, TA_LEFT | TA_TOP);
          
-         // 2. Regime Pill Button
          DrawPillButton(138, tfY - 2, 192, tfY + 18, 4, tfDirs[i], dirBg, dirClr, dirClr, 8, true);
-         
-         // 3. Visual Trend Strength Bar
          DrawVisualBar(198, tfY + 4, 45, 8, tfMoms[i], dirClr, 0xFF0E141D);
 
-         // 4. Dedicated Candle Close Countdown
          g_panelCanvas.FontSet("Tahoma", 8, 400);
          g_panelCanvas.TextOut(250, tfY + 1, "⏳ " + tfTimes[i], 0xFF00E5FF, TA_LEFT | TA_TOP);
          
          tfY += 27;
       }
 
-      // Card 2: Market Pressure & Pulse Speedometer Gauge (Left Bottom, Radius: 8)
-      DrawGlassCard(12, 350, 350, 566, 8, 0xFF141C27, 0xFF263345, 1);
+      // Card 2: Market Pressure & Pulse Speedometer Gauge
+      DrawGlassCard(12, 354, 350, 574, 8, 0xFF141C27, 0xFF263345, 1);
       g_panelCanvas.FontSet("Tahoma", 10, 700);
-      g_panelCanvas.TextOut(24, 358, "MARKET PRESSURE & CVD GAUGE", 0xFFFFC745, TA_LEFT | TA_TOP);
+      g_panelCanvas.TextOut(24, 362, "MARKET PRESSURE & CVD GAUGE", 0xFFFFC745, TA_LEFT | TA_TOP);
       
-      DrawSpeedometerGauge(181, 442, 65, g_bookmapCvd, g_bookmapPulsePct);
+      DrawSpeedometerGauge(181, 446, 65, g_bookmapCvd, g_bookmapPulsePct);
       
-      // Dual Bull/Bear Absorption Power Bar
       double bullPct = MathMax(10.0, MathMin(90.0, 50.0 + (g_bookmapCvd / 2.0)));
       g_panelCanvas.FontSet("Tahoma", 8, 700);
-      g_panelCanvas.TextOut(24, 498, "BUY ABSORPTION", 0xFF00FF8C, TA_LEFT | TA_TOP);
-      g_panelCanvas.TextOut(338, 498, "SELL PRESSURE", 0xFFFF4862, TA_RIGHT | TA_TOP);
-      DrawVisualBar(24, 514, 314, 8, bullPct, 0xFF00FF8C, 0xFF351216);
+      g_panelCanvas.TextOut(24, 502, "BUY ABSORPTION", 0xFF00FF8C, TA_LEFT | TA_TOP);
+      g_panelCanvas.TextOut(338, 502, "SELL PRESSURE", 0xFFFF4862, TA_RIGHT | TA_TOP);
+      DrawVisualBar(24, 518, 314, 8, bullPct, 0xFF00FF8C, 0xFF351216);
 
       string narrVerdict = StringFormat("Verdict: %s", g_bmNarrVerdict);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
-      g_panelCanvas.TextOut(24, 538, narrVerdict, 0xFFFFC745, TA_LEFT | TA_TOP);
+      g_panelCanvas.TextOut(24, 544, narrVerdict, 0xFFFFC745, TA_LEFT | TA_TOP);
 
-      // Card 3: CME Wall Intelligence with Visual Liquidity Depth (Right Top, Radius: 8)
-      DrawGlassCard(360, 116, g_cockpitW - 12, 342, 8, 0xFF141C27, 0xFF263345, 1);
+      // Card 3: CME Wall Intelligence with Visual Liquidity Depth
+      DrawGlassCard(360, 116, g_cockpitW - 12, 346, 8, 0xFF141C27, 0xFF263345, 1);
       g_panelCanvas.FontSet("Tahoma", 10, 700);
       g_panelCanvas.TextOut(375, 126, "BOOKMAP CME WALL & LIQUIDITY DEPTH", 0xFFFFC745, TA_LEFT | TA_TOP);
       
@@ -1969,7 +1964,6 @@ void UpdatePanel()
       double bidWall = g_bookmapBidPx[0];
       double askWall = g_bookmapAskPx[0];
       
-      // Nearest Bid Wall
       g_panelCanvas.FontSet("Tahoma", 9, 400);
       g_panelCanvas.TextOut(375, wy, "Nearest Bid Wall (Suport):", 0xFF8E9EB5, TA_LEFT | TA_TOP);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
@@ -1977,7 +1971,6 @@ void UpdatePanel()
       DrawVisualBar(660, wy + 2, 75, 8, MathMin(100.0, g_bookmapBidSz[0] * 5.0), 0xFF00FF8C, 0xFF0E2E1D);
       wy += 26;
       
-      // Nearest Ask Wall
       g_panelCanvas.FontSet("Tahoma", 9, 400);
       g_panelCanvas.TextOut(375, wy, "Nearest Ask Wall (Resisten):", 0xFF8E9EB5, TA_LEFT | TA_TOP);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
@@ -1985,7 +1978,6 @@ void UpdatePanel()
       DrawVisualBar(660, wy + 2, 75, 8, MathMin(100.0, g_bookmapAskSz[0] * 5.0), 0xFFFF4862, 0xFF351216);
       wy += 26;
       
-      // VPOC Magnet
       g_panelCanvas.FontSet("Tahoma", 9, 400);
       g_panelCanvas.TextOut(375, wy, "Point of Control (VPOC):", 0xFF8E9EB5, TA_LEFT | TA_TOP);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
@@ -1993,7 +1985,6 @@ void UpdatePanel()
       DrawVisualBar(660, wy + 2, 75, 8, MathMin(100.0, g_bookmapPocVolume * 2.0), 0xFFFFC745, 0xFF2A2012);
       wy += 26;
       
-      // Value Area Range
       g_panelCanvas.FontSet("Tahoma", 9, 400);
       g_panelCanvas.TextOut(375, wy, "Value Area (VAH / VAL):", 0xFF8E9EB5, TA_LEFT | TA_TOP);
       g_panelCanvas.FontSet("Tahoma", 9, 700);
@@ -2002,12 +1993,12 @@ void UpdatePanel()
 
       DrawPillButton(375, wy, 620, wy + 26, 6, "🧲 LTHL MAGNET ACCUMULATION ACTIVE", 0xFF2A2012, 0xFFFFC745, 0xFFFFC745, 8, true);
 
-      // Card 4: Sierra Chart Suite & Dadang Institutional Narrative (Right Bottom, Radius: 8)
-      DrawGlassCard(360, 350, g_cockpitW - 12, 566, 8, 0xFF141C27, 0xFF263345, 1);
+      // Card 4: Sierra Chart Suite & Dadang Institutional Narrative
+      DrawGlassCard(360, 354, g_cockpitW - 12, 574, 8, 0xFF141C27, 0xFF263345, 1);
       g_panelCanvas.FontSet("Tahoma", 10, 700);
-      g_panelCanvas.TextOut(375, 358, "SIERRA CHART SUITE & INSTITUTIONAL NARRATIVE", 0xFFFFC745, TA_LEFT | TA_TOP);
+      g_panelCanvas.TextOut(375, 362, "SIERRA CHART SUITE & INSTITUTIONAL NARRATIVE", 0xFFFFC745, TA_LEFT | TA_TOP);
       
-      int sy = 388;
+      int sy = 394;
       if(g_scWhaleLots >= 50.0)
       {
          string whTxt = StringFormat("🐋 PAUS %s %.0fL DETECTED & ACTIVE", g_scWhaleSide, g_scWhaleLots);
@@ -2020,7 +2011,7 @@ void UpdatePanel()
          g_panelCanvas.FontSet("Tahoma", 9, 400);
          g_panelCanvas.TextOut(375, sy + 4, "Whale Activity: Standby (< 50 Lot Threshold)", 0xFF8E9EB5, TA_LEFT | TA_TOP);
       }
-      sy += 34;
+      sy += 36;
 
       g_panelCanvas.FontSet("Tahoma", 9, 400);
       g_panelCanvas.TextOut(375, sy, "Unfinished Auction:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
@@ -2039,69 +2030,224 @@ void UpdatePanel()
       g_panelCanvas.TextOut(375, sy + 4, narr, 0xFF8E9EB5, TA_LEFT | TA_TOP);
    }
 
-   // ==================== TAB 1: SNIPER EXECUTION ====================
-   else if(g_activeCockpitTab == TAB_SNIPER_EXECUTION)
+   // ==================== TAB 1: FULL BOOKMAP SUITE ====================
+   else if(g_activeCockpitTab == TAB_BOOKMAP_SUITE)
    {
-      DrawGlassCard(12, 116, g_cockpitW - 12, 566, 10, 0xFF141C27, 0xFF263345, 1);
-      g_panelCanvas.FontSet("Tahoma", 11, 700);
-      g_panelCanvas.TextOut(28, 128, "SNIPER RISK SIZING & PROTOCOL EXECUTION", 0xFFFFC745, TA_LEFT | TA_TOP);
-      
-      int ey = 158;
-      DrawPillButton(28, ey, 158, ey + 28, 6, "[ Fixed Lot ]", 0xFF1D2635, 0xFF8E9EB5, 0xFF2E3D52, 9, false);
-      DrawPillButton(168, ey, 378, ey + 28, 6, "% Balance (2.0% Risk)", 0xFF2A2214, 0xFFFFC745, 0xFFFFC745, 10, true);
-      DrawPillButton(388, ey, 528, ey + 28, 6, "[ % Equity ]", 0xFF1D2635, 0xFF8E9EB5, 0xFF2E3D52, 9, false);
-      ey += 38;
-
-      // Risk Summary Ribbon (Radius: 6)
-      DrawGlassCard(28, ey, g_cockpitW - 28, ey + 36, 6, 0xFF0E141D, 0xFF263345, 1);
-      double bal = AccountInfoDouble(ACCOUNT_BALANCE);
-      double riskUsd = bal * (g_execRiskPct / 100.0);
-      double targetUsd = riskUsd * 1.5;
-      string riskSummary = StringFormat("Auto Lot: %.2f L  |  Risk SL: -$%.2f (-%.1f%%)  |  Target TP: +$%.2f (+%.1f%%)  |  R:R 1:1.50",
-                                        g_execCalculatedLot, riskUsd, g_execRiskPct, targetUsd, g_execRiskPct * 1.5);
+      // Card 1: 🌪️ Delta Momentum & Velocity Hub
+      DrawGlassCard(12, 116, 350, 346, 8, 0xFF141C27, 0xFF263345, 1);
       g_panelCanvas.FontSet("Tahoma", 10, 700);
-      g_panelCanvas.TextOut(40, ey + 9, riskSummary, 0xFFFFFFFF, TA_LEFT | TA_TOP);
-      ey += 48;
-
-      // Protocol Selector Cards (Radius: 8)
-      g_panelCanvas.FontSet("Tahoma", 10, 700);
-      g_panelCanvas.TextOut(28, ey, "ENTRY TRIGGER MODE (DOKTRIN B4):", 0xFFFFC745, TA_LEFT | TA_TOP);
-      ey += 22;
-
-      uint fBg = g_execFastSniper ? 0xFF2A2214 : 0xFF1A222E;
-      uint fBrd = g_execFastSniper ? 0xFFFFC745 : 0xFF2E3D52;
-      uint fTxt = g_execFastSniper ? 0xFFFFC745 : 0xFF8E9EB5;
-      DrawPillButton(28, ey, 368, ey + 32, 6, "⚡ FAST SNIPER (Wick Sweep CME/SND)", fBg, fTxt, fBrd, 9, true);
-
-      uint sBg = !g_execFastSniper ? 0xFF2A2214 : 0xFF1A222E;
-      uint sBrd = !g_execFastSniper ? 0xFFFFC745 : 0xFF2E3D52;
-      uint sTxt = !g_execFastSniper ? 0xFFFFC745 : 0xFF8E9EB5;
-      DrawPillButton(378, ey, 732, ey + 32, 6, "🛡️ SAFE DISCIPLINE (Wait Body Close)", sBg, sTxt, sBrd, 9, true);
-      ey += 44;
-
-      // Big Dual Execution Cards (Radius: 10)
-      double askPx = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      double bidPx = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      g_panelCanvas.TextOut(24, 126, "🌪️ DELTA MOMENTUM & VELOCITY RADAR", 0xFFFFC745, TA_LEFT | TA_TOP);
       
-      DrawPillButton(28, ey, 368, ey + 54, 10, StringFormat("🔴 SELL SNIPER @ %.2f", bidPx), 0xFF3B1015, 0xFFFF4862, 0xFFFF4862, 12, true);
-      DrawPillButton(378, ey, 732, ey + 54, 10, StringFormat("🟢 BUY SNIPER @ %.2f", askPx), 0xFF0D3020, 0xFF00FF8C, 0xFF00FF8C, 12, true);
-      ey += 64;
+      int dmy = 156;
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(24, dmy, "CVD Velocity (Rate of Change):", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(240, dmy, StringFormat("%+.2f/sec", g_bookmapCvd / 10.0), 0xFF00FF8C, TA_LEFT | TA_TOP);
+      dmy += 26;
+      
+      DrawVisualBar(24, dmy, 300, 10, MathMin(100.0, MathAbs(g_bookmapCvd) * 2.0), 0xFF00FF8C, 0xFF141C27);
+      dmy += 22;
 
-      // ⚡ DEDICATED 1-CLICK NEWS STRADDLE TRAP (Radius: 8)
-      DrawPillButton(28, ey, 732, ey + 42, 8, "⚡ 1-CLICK NEWS STRADDLE: BUY STOP + SELL STOP (+20p / SL:20p / TP:50p)", 0xFF261238, 0xFFD8B4FE, 0xFFA855F7, 10, true);
-      ey += 52;
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(24, dmy, "Delta Acceleration:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(240, dmy, "STRONG EXPANSION", 0xFF00E5FF, TA_LEFT | TA_TOP);
+      dmy += 26;
 
-      // Pending Limit Triggers (Radius: 6)
-      DrawPillButton(28, ey, 188, ey + 28, 6, "SELL LIMIT @ WALL", 0xFF1A222E, 0xFFFFFFFF, 0xFF2E3D52, 9, false);
-      DrawPillButton(198, ey, 368, ey + 28, 6, "BUY LIMIT @ DEMAND", 0xFF1A222E, 0xFFFFFFFF, 0xFF2E3D52, 9, false);
-      DrawPillButton(378, ey, 548, ey + 28, 6, "DELETE BUY STOP", 0xFF2E1518, 0xFFFF4862, 0xFF5A2228, 9, true);
-      DrawPillButton(558, ey, 732, ey + 28, 6, "DELETE SELL STOP", 0xFF2E1518, 0xFFFF4862, 0xFF5A2228, 9, true);
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(24, dmy, "Exhaustion Risk Index:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(240, dmy, "LOW (Healthy Flow)", 0xFF00FF8C, TA_LEFT | TA_TOP);
+      dmy += 30;
+
+      DrawPillButton(24, dmy, 324, dmy + 26, 6, "⚡ MOMENTUM AGGRESSIVE ACTIVE", 0xFF0E2E1D, 0xFF00FF8C, 0xFF00FF8C, 8, true);
+
+      // Card 2: 🧊 Iceberg Order Accumulation Hub
+      DrawGlassCard(12, 354, 350, 574, 8, 0xFF141C27, 0xFF263345, 1);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(24, 362, "🧊 ICEBERG HIDDEN LIQUIDITY RADAR", 0xFFFFC745, TA_LEFT | TA_TOP);
+      
+      int icy = 394;
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(24, icy, "Hidden Iceberg Orders Detected:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(260, icy, "3 Active Nodes", 0xFFFFC745, TA_LEFT | TA_TOP);
+      icy += 26;
+
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(24, icy, "Estimated Hidden Volume:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(260, icy, "185.0 Lots CME", 0xFF00E5FF, TA_LEFT | TA_TOP);
+      icy += 26;
+
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(24, icy, "Dominant Iceberg Side:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      DrawPillButton(220, icy - 2, 320, icy + 20, 4, "BUY ICEBERG", 0xFF0E2E1D, 0xFF00FF8C, 0xFF00FF8C, 8, true);
+      icy += 30;
+
+      DrawVisualBar(24, icy, 300, 10, 75.0, 0xFF00E5FF, 0xFF141C27);
+      icy += 24;
+
+      g_panelCanvas.FontSet("Tahoma", 8, 400);
+      g_panelCanvas.TextOut(24, icy, "Institutional Iceberg accumulation detected at support levels.", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+
+      // Card 3: 🧹 Liquidity Sweep & Stop Hunts Radar
+      DrawGlassCard(360, 116, g_cockpitW - 12, 346, 8, 0xFF141C27, 0xFF263345, 1);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(375, 126, "🧹 LIQUIDITY SWEEP & STOP HUNT DETECTOR", 0xFFFFC745, TA_LEFT | TA_TOP);
+      
+      int swy = 156;
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(375, swy, "Recent Sweep Activity:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      DrawPillButton(550, swy - 2, 710, swy + 20, 4, "BUY-SIDE SWEEP CLEAR", 0xFF0E2E1D, 0xFF00FF8C, 0xFF00FF8C, 8, true);
+      swy += 28;
+
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(375, swy, "Swept Liquidity Volume:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(550, swy, "94.5 Lots Rested", 0xFFFFC745, TA_LEFT | TA_TOP);
+      swy += 26;
+
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(375, swy, "Trap Formation Status:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(550, swy, "REVERSAL PENDING", 0xFF00E5FF, TA_LEFT | TA_TOP);
+      swy += 30;
+
+      DrawVisualBar(375, swy, 350, 10, 85.0, 0xFFFFC745, 0xFF141C27);
+      swy += 24;
+
+      DrawPillButton(375, swy, 680, swy + 26, 6, "🧲 LIQUIDITY POOL CLEARED -> REVERSAL BIAS", 0xFF2A2012, 0xFFFFC745, 0xFFFFC745, 8, true);
+
+      // Card 4: 🛡️ Passive Absorption vs Aggressive Market Orders
+      DrawGlassCard(360, 354, g_cockpitW - 12, 574, 8, 0xFF141C27, 0xFF263345, 1);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(375, 362, "🛡️ PASSIVE ABSORPTION VS MARKET EXHAUSTION", 0xFFFFC745, TA_LEFT | TA_TOP);
+      
+      int aby = 394;
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(375, aby, "Absorption State:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      DrawPillButton(550, aby - 2, 710, aby + 20, 4, "HEAVY BUY ABSORPTION", 0xFF0E2E1D, 0xFF00FF8C, 0xFF00FF8C, 8, true);
+      aby += 28;
+
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(375, aby, "Seller Aggression Depletion:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(550, aby, "82% Depleted", 0xFF00FF8C, TA_LEFT | TA_TOP);
+      aby += 26;
+
+      DrawVisualBar(375, aby, 350, 10, 82.0, 0xFF00FF8C, 0xFF351216);
+      aby += 26;
+
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(375, aby, "Institutional Tape Verdict:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 9, 700);
+      g_panelCanvas.TextOut(550, aby, "ABSORBED -> PUSH UP", 0xFF00FF8C, TA_LEFT | TA_TOP);
    }
 
-   // ==================== TAB 2: CME WALL LADDER ====================
+   // ==================== TAB 2: FOOTPRINT & SIERRA ====================
+   else if(g_activeCockpitTab == TAB_FOOTPRINT_SIERRA)
+   {
+      // Card 1: Diagonal Footprint Imbalance
+      DrawGlassCard(12, 116, 350, 346, 8, 0xFF141C27, 0xFF263345, 1);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(24, 126, "👣 DIAGONAL FOOTPRINT IMBALANCE", 0xFFFFC745, TA_LEFT | TA_TOP);
+      
+      int fpy = 156;
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(24, fpy, "Stacked Imbalances (300%):", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      DrawPillButton(220, fpy - 2, 324, fpy + 20, 4, "3X BUY STACKED", 0xFF0E2E1D, 0xFF00FF8C, 0xFF00FF8C, 8, true);
+      fpy += 28;
+
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(24, fpy, "Imbalance Price Level:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(220, fpy, StringFormat("%.2f", g_bookmapBidPx[0]), 0xFF00FF8C, TA_LEFT | TA_TOP);
+      fpy += 26;
+
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(24, fpy, "Dominant Imbalance Ratio:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(220, fpy, "4.2 : 1.0 (Heavy Bid)", 0xFFFFC745, TA_LEFT | TA_TOP);
+      fpy += 30;
+
+      DrawVisualBar(24, fpy, 300, 10, 80.0, 0xFF00FF8C, 0xFF351216);
+      fpy += 24;
+
+      DrawPillButton(24, fpy, 324, fpy + 26, 6, "🟢 STRONG INTRADAY BID SUPPORT", 0xFF0E2E1D, 0xFF00FF8C, 0xFF00FF8C, 8, true);
+
+      // Card 2: Delta Divergence Radar
+      DrawGlassCard(12, 354, 350, 574, 8, 0xFF141C27, 0xFF263345, 1);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(24, 362, "⚡ DELTA DIVERGENCE RADAR", 0xFFFFC745, TA_LEFT | TA_TOP);
+      
+      int dvy = 394;
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(24, dvy, "Divergence Detection:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      DrawPillButton(200, dvy - 2, 324, dvy + 20, 4, "BULLISH DELTA DIV", 0xFF0E2E1D, 0xFF00FF8C, 0xFF00FF8C, 8, true);
+      dvy += 28;
+
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(24, dvy, "Price vs Delta Relationship:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 9, 700);
+      g_panelCanvas.TextOut(24, dvy + 20, "Price Lower Low  <-->  Delta Higher High", 0xFFFFC745, TA_LEFT | TA_TOP);
+      dvy += 46;
+
+      DrawPillButton(24, dvy, 324, dvy + 26, 6, "🎯 HIGH PROBABILITY REVERSAL ALERT", 0xFF2A2012, 0xFFFFC745, 0xFFFFC745, 8, true);
+
+      // Card 3: Market Profile Shape (P / b / D Profile)
+      DrawGlassCard(360, 116, g_cockpitW - 12, 346, 8, 0xFF141C27, 0xFF263345, 1);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(375, 126, "📈 MARKET PROFILE STRUCTURE SHAPE", 0xFFFFC745, TA_LEFT | TA_TOP);
+      
+      int mpy = 156;
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(375, mpy, "Detected Profile Type:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      DrawPillButton(550, mpy - 2, 710, mpy + 20, 4, "P-SHAPE (Short Covering)", 0xFF2A2012, 0xFFFFC745, 0xFFFFC745, 8, true);
+      mpy += 28;
+
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(375, mpy, "Value Area Migration:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(550, mpy, "SHIFTING HIGHER", 0xFF00FF8C, TA_LEFT | TA_TOP);
+      mpy += 26;
+
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(375, mpy, "Auction Balance Status:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(550, mpy, "IMBALANCED (Trending)", 0xFF00E5FF, TA_LEFT | TA_TOP);
+      mpy += 30;
+
+      DrawPillButton(375, mpy, 680, mpy + 26, 6, "👑 PROFILE BIAS: BULLISH EXPANSION", 0xFF0E2E1D, 0xFF00FF8C, 0xFF00FF8C, 8, true);
+
+      // Card 4: Multi-Bar Cumulative Delta Histogram
+      DrawGlassCard(360, 354, g_cockpitW - 12, 574, 8, 0xFF141C27, 0xFF263345, 1);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(375, 362, "📊 MULTI-BAR CUMULATIVE DELTA HISTOGRAM", 0xFFFFC745, TA_LEFT | TA_TOP);
+      
+      int cdy = 394;
+      g_panelCanvas.FontSet("Tahoma", 9, 400);
+      g_panelCanvas.TextOut(375, cdy, "5-Bar Delta Accumulation:", 0xFF8E9EB5, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 10, 700);
+      g_panelCanvas.TextOut(560, cdy, "+420.5 Lots", 0xFF00FF8C, TA_LEFT | TA_TOP);
+      cdy += 28;
+
+      // 5 Mini Vertical Delta Bars
+      int barX = 400;
+      double barH[5] = {30, 45, 25, 60, 50};
+      for(int b = 0; b < 5; b++)
+      {
+         PnlFillRoundedRect(barX, cdy + (int)(60 - barH[b]), barX + 35, cdy + 60, 2, 0xFF00FF8C);
+         g_panelCanvas.FontSet("Tahoma", 8, 400);
+         g_panelCanvas.TextOut(barX + 17, cdy + 65, StringFormat("B%d", 5 - b), 0xFF8E9EB5, TA_CENTER | TA_TOP);
+         barX += 55;
+      }
+   }
+
+   // ==================== TAB 3: CME LADDER ====================
    else if(g_activeCockpitTab == TAB_SD_GENESIS_LADDER)
    {
-      DrawGlassCard(12, 116, g_cockpitW - 12, 566, 10, 0xFF141C27, 0xFF263345, 1);
+      DrawGlassCard(12, 116, g_cockpitW - 12, 574, 10, 0xFF141C27, 0xFF263345, 1);
       g_panelCanvas.FontSet("Tahoma", 11, 700);
       g_panelCanvas.TextOut(28, 128, "🧱 CME ORDER FLOW WALL LADDER & S&D GENESIS ZONES", 0xFFFFC745, TA_LEFT | TA_TOP);
       
@@ -2169,31 +2315,74 @@ void UpdatePanel()
       }
    }
 
-   // ==================== TAB 3: SULTAN ACTIONS ====================
-   else if(g_activeCockpitTab == TAB_SULTAN_ACTIONS)
+   // ==================== TAB 4: SNIPER & SULTAN ====================
+   else if(g_activeCockpitTab == TAB_SNIPER_SULTAN)
    {
-      DrawGlassCard(12, 116, g_cockpitW - 12, 566, 10, 0xFF141C27, 0xFF263345, 1);
+      DrawGlassCard(12, 116, g_cockpitW - 12, 574, 10, 0xFF141C27, 0xFF263345, 1);
       g_panelCanvas.FontSet("Tahoma", 11, 700);
-      g_panelCanvas.TextOut(28, 128, "SULTAN 1-CLICK POSITION MANAGEMENT & EMERGENCY ACTIONS", 0xFFFFC745, TA_LEFT | TA_TOP);
+      g_panelCanvas.TextOut(28, 128, "SNIPER RISK SIZING & PROTOCOL EXECUTION", 0xFFFFC745, TA_LEFT | TA_TOP);
       
-      int ay = 170;
-      DrawPillButton(28, ay, 368, ay + 56, 10, "✂️ CLOSE 50% PARTIAL PROFIT", 0xFF2A2012, 0xFFFFC745, 0xFFFFC745, 11, true);
-      DrawPillButton(378, ay, 732, ay + 56, 10, "🛡️ AUTO-BE LOCK (BREAKEVEN)", 0xFF0E2232, 0xFF00E5FF, 0xFF00E5FF, 11, true);
-      ay += 74;
+      int ey = 154;
+      DrawPillButton(28, ey, 158, ey + 26, 6, "[ Fixed Lot ]", 0xFF1D2635, 0xFF8E9EB5, 0xFF2E3D52, 9, false);
+      DrawPillButton(168, ey, 378, ey + 26, 6, "% Balance (2.0% Risk)", 0xFF2A2214, 0xFFFFC745, 0xFFFFC745, 10, true);
+      DrawPillButton(388, ey, 528, ey + 26, 6, "[ % Equity ]", 0xFF1D2635, 0xFF8E9EB5, 0xFF2E3D52, 9, false);
+      ey += 34;
 
-      DrawPillButton(28, ay, 368, ay + 56, 10, "🔄 REVERSAL POSITION FLIP", 0xFF28123A, 0xFFD8B4FE, 0xFF9333EA, 11, true);
-      DrawPillButton(378, ay, 732, ay + 56, 10, "🚨 EMERGENCY CLOSE ALL", 0xFF3B1015, 0xFFFF4862, 0xFFFF4862, 11, true);
-      ay += 74;
+      // Risk Summary Ribbon
+      DrawGlassCard(28, ey, g_cockpitW - 28, ey + 32, 6, 0xFF0E141D, 0xFF263345, 1);
+      double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+      double riskUsd = bal * (g_execRiskPct / 100.0);
+      double targetUsd = riskUsd * 1.5;
+      string riskSummary = StringFormat("Auto Lot: %.2f L  |  Risk SL: -$%.2f (-%.1f%%)  |  Target TP: +$%.2f (+%.1f%%)  |  R:R 1:1.50",
+                                        g_execCalculatedLot, riskUsd, g_execRiskPct, targetUsd, g_execRiskPct * 1.5);
+      g_panelCanvas.FontSet("Tahoma", 9, 700);
+      g_panelCanvas.TextOut(40, ey + 7, riskSummary, 0xFFFFFFFF, TA_LEFT | TA_TOP);
+      ey += 40;
+
+      // Protocol Selector Cards
+      g_panelCanvas.FontSet("Tahoma", 9, 700);
+      g_panelCanvas.TextOut(28, ey, "ENTRY TRIGGER MODE (DOKTRIN B4):", 0xFFFFC745, TA_LEFT | TA_TOP);
+      ey += 18;
+
+      uint fBg = g_execFastSniper ? 0xFF2A2214 : 0xFF1A222E;
+      uint fBrd = g_execFastSniper ? 0xFFFFC745 : 0xFF2E3D52;
+      uint fTxt = g_execFastSniper ? 0xFFFFC745 : 0xFF8E9EB5;
+      DrawPillButton(28, ey, 368, ey + 28, 6, "⚡ FAST SNIPER (Wick Sweep CME/SND)", fBg, fTxt, fBrd, 9, true);
+
+      uint sBg = !g_execFastSniper ? 0xFF2A2214 : 0xFF1A222E;
+      uint sBrd = !g_execFastSniper ? 0xFFFFC745 : 0xFF2E3D52;
+      uint sTxt = !g_execFastSniper ? 0xFFFFC745 : 0xFF8E9EB5;
+      DrawPillButton(378, ey, 732, ey + 28, 6, "🛡️ SAFE DISCIPLINE (Wait Body Close)", sBg, sTxt, sBrd, 9, true);
+      ey += 36;
+
+      // Big Dual Execution Cards
+      double askPx = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double bidPx = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      
+      DrawPillButton(28, ey, 368, ey + 48, 10, StringFormat("🔴 SELL SNIPER @ %.2f", bidPx), 0xFF3B1015, 0xFFFF4862, 0xFFFF4862, 11, true);
+      DrawPillButton(378, ey, 732, ey + 48, 10, StringFormat("🟢 BUY SNIPER @ %.2f", askPx), 0xFF0D3020, 0xFF00FF8C, 0xFF00FF8C, 11, true);
+      ey += 56;
+
+      // ⚡ DEDICATED 1-CLICK NEWS STRADDLE TRAP
+      DrawPillButton(28, ey, 732, ey + 38, 8, "⚡ 1-CLICK NEWS STRADDLE: BUY STOP + SELL STOP (+20p / SL:20p / TP:50p)", 0xFF261238, 0xFFD8B4FE, 0xFFA855F7, 9, true);
+      ey += 46;
+
+      // Sultan Actions (Close 50%, Auto-BE, Flip, Close All)
+      DrawPillButton(28, ey, 188, ey + 34, 6, "✂️ CLOSE 50%", 0xFF2A2012, 0xFFFFC745, 0xFFFFC745, 9, true);
+      DrawPillButton(198, ey, 368, ey + 34, 6, "🛡️ AUTO-BE LOCK", 0xFF0E2232, 0xFF00E5FF, 0xFF00E5FF, 9, true);
+      DrawPillButton(378, ey, 548, ey + 34, 6, "🔄 REVERSAL FLIP", 0xFF28123A, 0xFFD8B4FE, 0xFF9333EA, 9, true);
+      DrawPillButton(558, ey, 732, ey + 34, 6, "🚨 CLOSE ALL", 0xFF3B1015, 0xFFFF4862, 0xFFFF4862, 9, true);
+      ey += 42;
 
       // Floating Account PnL
-      DrawGlassCard(28, ay, g_cockpitW - 28, ay + 48, 8, 0xFF0E141D, 0xFF263345, 1);
+      DrawGlassCard(28, ey, g_cockpitW - 28, ey + 36, 6, 0xFF0E141D, 0xFF263345, 1);
       double eq = AccountInfoDouble(ACCOUNT_EQUITY);
       double bl = AccountInfoDouble(ACCOUNT_BALANCE);
       double flPnl = eq - bl;
-      string accStatus = StringFormat("Account Balance: $%.2f  |  Equity: $%.2f  |  Floating P&L: %s$%.2f",
+      string accStatus = StringFormat("Balance: $%.2f  |  Equity: $%.2f  |  Floating P&L: %s$%.2f",
                                       bl, eq, flPnl >= 0 ? "+" : "", flPnl);
-      g_panelCanvas.FontSet("Tahoma", 11, 700);
-      g_panelCanvas.TextOut(40, ay + 14, accStatus, flPnl >= 0 ? 0xFF00FF8C : 0xFFFF4862, TA_LEFT | TA_TOP);
+      g_panelCanvas.FontSet("Tahoma", 9, 700);
+      g_panelCanvas.TextOut(40, ey + 9, accStatus, flPnl >= 0 ? 0xFF00FF8C : 0xFFFF4862, TA_LEFT | TA_TOP);
    }
 
    // 6. Royal Dadang Watermark Signature (Bottom Center)
@@ -10669,22 +10858,23 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       
       if(g_cockpitMinimized) return;
       
-      // Tabs Clicking (y: 42..74)
+      // 5 Tabs Clicking (y: 42..74)
       if(relY >= 42 && relY <= 74)
       {
-         if(relX >= 12 && relX <= 188)       { g_activeCockpitTab = TAB_ORDER_FLOW_INTEL;  UpdatePanel(); return; }
-         else if(relX >= 198 && relX <= 374) { g_activeCockpitTab = TAB_SNIPER_EXECUTION; UpdatePanel(); return; }
-         else if(relX >= 384 && relX <= 560) { g_activeCockpitTab = TAB_SD_GENESIS_LADDER;UpdatePanel(); return; }
-         else if(relX >= 570 && relX <= 746) { g_activeCockpitTab = TAB_SULTAN_ACTIONS;   UpdatePanel(); return; }
+         if(relX >= 12 && relX <= 152)       { g_activeCockpitTab = TAB_ORDER_FLOW_INTEL;  UpdatePanel(); return; }
+         else if(relX >= 156 && relX <= 302) { g_activeCockpitTab = TAB_BOOKMAP_SUITE;     UpdatePanel(); return; }
+         else if(relX >= 306 && relX <= 448) { g_activeCockpitTab = TAB_FOOTPRINT_SIERRA;  UpdatePanel(); return; }
+         else if(relX >= 452 && relX <= 590) { g_activeCockpitTab = TAB_SD_GENESIS_LADDER; UpdatePanel(); return; }
+         else if(relX >= 594 && relX <= 748) { g_activeCockpitTab = TAB_SNIPER_SULTAN;     UpdatePanel(); return; }
       }
       
-      // Tab 1: Sniper Execution Action Clicks
-      if(g_activeCockpitTab == TAB_SNIPER_EXECUTION)
+      // Tab 4: Sniper & Sultan Action Clicks
+      if(g_activeCockpitTab == TAB_SNIPER_SULTAN)
       {
-         if(relX >= 28 && relX <= 368 && relY >= 266 && relY <= 298) { g_execFastSniper = true;  UpdatePanel(); return; }
-         if(relX >= 378 && relX <= 732 && relY >= 266 && relY <= 298) { g_execFastSniper = false; UpdatePanel(); return; }
+         if(relX >= 28 && relX <= 368 && relY >= 246 && relY <= 274) { g_execFastSniper = true;  UpdatePanel(); return; }
+         if(relX >= 378 && relX <= 732 && relY >= 246 && relY <= 274) { g_execFastSniper = false; UpdatePanel(); return; }
 
-         if(relX >= 28 && relX <= 368 && relY >= 310 && relY <= 364)
+         if(relX >= 28 && relX <= 368 && relY >= 282 && relY <= 330)
          {
             Print("🚀 [MANUAL SNIPER] SELL BUTTON CLICKED!");
             double sl = SymbolInfoDouble(_Symbol, SYMBOL_ASK) + (g_execSlPips * PipSize());
@@ -10692,7 +10882,7 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
             TryOpen("SELL", "MANUAL-SNIPER-SELL", false, 0, 0, sl, tp);
             return;
          }
-         if(relX >= 378 && relX <= 732 && relY >= 310 && relY <= 364)
+         if(relX >= 378 && relX <= 732 && relY >= 282 && relY <= 330)
          {
             Print("🚀 [MANUAL SNIPER] BUY BUTTON CLICKED!");
             double sl = SymbolInfoDouble(_Symbol, SYMBOL_BID) - (g_execSlPips * PipSize());
@@ -10700,37 +10890,12 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
             TryOpen("BUY", "MANUAL-SNIPER-BUY", false, 0, 0, sl, tp);
             return;
          }
-         if(relX >= 28 && relX <= 732 && relY >= 374 && relY <= 416)
+         if(relX >= 28 && relX <= 732 && relY >= 338 && relY <= 376)
          {
             ExecuteNewsStraddle();
             return;
          }
-         if(relX >= 378 && relX <= 548 && relY >= 426 && relY <= 454)
-         {
-            for(int i = OrdersTotal() - 1; i >= 0; i--)
-            {
-               ulong ticket = OrderGetTicket(i);
-               if(OrderGetString(ORDER_SYMBOL) == _Symbol && OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_BUY_STOP)
-                  trade.OrderDelete(ticket);
-            }
-            return;
-         }
-         if(relX >= 558 && relX <= 732 && relY >= 426 && relY <= 454)
-         {
-            for(int i = OrdersTotal() - 1; i >= 0; i--)
-            {
-               ulong ticket = OrderGetTicket(i);
-               if(OrderGetString(ORDER_SYMBOL) == _Symbol && OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_SELL_STOP)
-                  trade.OrderDelete(ticket);
-            }
-            return;
-         }
-      }
-      
-      // Tab 3: Sultan Actions Clicks
-      if(g_activeCockpitTab == TAB_SULTAN_ACTIONS)
-      {
-         if(relX >= 28 && relX <= 368 && relY >= 170 && relY <= 226)
+         if(relX >= 28 && relX <= 188 && relY >= 384 && relY <= 418)
          {
             Print("✂️ [SULTAN ACTION] Close 50% Partial clicked!");
             for(int i = PositionsTotal() - 1; i >= 0; i--)
@@ -10746,7 +10911,7 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
             }
             return;
          }
-         else if(relX >= 378 && relX <= 732 && relY >= 244 && relY <= 300)
+         if(relX >= 558 && relX <= 732 && relY >= 384 && relY <= 418)
          {
             Print("🚨 [SULTAN ACTION] EMERGENCY CLOSE ALL CLICKED!");
             CloseAllPositions("SULTAN-EMERGENCY-CLOSE");
