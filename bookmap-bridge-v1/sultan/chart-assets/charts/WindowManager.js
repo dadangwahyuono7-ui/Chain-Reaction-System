@@ -1763,7 +1763,7 @@ export class WindowManager {
       pill.className = "status-pill sim";
     } else {
       pill.innerHTML = `<span class="pulse-dot"></span> MT5 LIVE`;
-      pill.className = "status-pill";
+      pill.className = "status-pill live";
     }
   }
 
@@ -2269,7 +2269,7 @@ export class WindowManager {
     }
 
     setTimeout(() => {
-      this.windows.forEach(w => w.resize());
+      this.windows.forEach(w => { w.resize(); if (w.chart) w.chart.timeScale().fitContent(); });
     }, 50);
 
     this.updateActiveLayoutButtons();
