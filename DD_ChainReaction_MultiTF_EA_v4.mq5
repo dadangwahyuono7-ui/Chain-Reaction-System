@@ -1,4 +1,4 @@
-﻿//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
 //| DD_ChainReaction_MultiTF_EA_v2.mq5                                |
 //| Forked from DD_ChainReaction_MultiTF_EA_UPGRADE.mq5 (v51-H1CUTSAFE|
 //| stable production core) 2026-08-17 per Dadang: "kita buat ea baru|
@@ -50,7 +50,7 @@ CTrade trade;
 // panel + startup Print so Dadang can visually confirm a freshly compiled
 // .ex5 actually loaded (vs a stale cached one MT5 didn't reload properly).
 // Simple v1/v2/v3... - easier to eyeball than a compile timestamp.
-#define EA_VERSION "v54.00-V4-NATIVE-WEBREQUEST-ZERO-CLIENT"
+#define EA_VERSION "v54.10-V4-MASTER-DOCTRINE-ZERO-CLIENT"
 
 // v52.11: MT5 terminal-wide GlobalVariable (survives EA reload/reattach AND
 // terminal restart, expires only after 4 weeks unused) - Dadang caught this
@@ -1108,6 +1108,7 @@ void OnTimer()
 {
    // 🌐 1-Second Native HTTP Fetch from Mini PC (Zero Client Setup)
    FetchBookmapDataWebRequest();
+   UpdateStateAndExecute();
 
    UpdateHudToggleButtons();
    // Scan Struktur HTF H4 & H1 Sahaja (Anti Noise)
@@ -10060,6 +10061,39 @@ void ClosePositionsOppositeTo(string newDir)
    }
 }
 
+//+------------------------------------------------------------------+
+//| 👑 MAESTRO DADANG CMP DOCTRINE: NO "WAIT" STATE (ALWAYS CMP AKTIF)|
+//| CMP selalu memegang status terakhir dari histori (BUY atau SELL)  |
+//+------------------------------------------------------------------+
+string GetLastConfirmedCmpDir(int handle, ENUM_TIMEFRAMES tf, string currentDir = "")
+{
+   if(handle != INVALID_HANDLE)
+   {
+      double dirBuf[20];
+      int copied = CopyBuffer(handle, 2, 0, 20, dirBuf);
+      if(copied > 0)
+      {
+         for(int b = 0; b < copied; b++)
+         {
+            if(dirBuf[b] > 0.5) return "BUY";
+            if(dirBuf[b] < -0.5) return "SELL";
+         }
+      }
+   }
+   
+   if(currentDir == "BUY" || currentDir == "SELL") return currentDir;
+   
+   // Fallback ke candle terakhir jika indicator belum siap
+   int bars = iBars(_Symbol, tf);
+   if(bars > 1)
+   {
+      double cC = iClose(_Symbol, tf, 1);
+      double cO = iOpen(_Symbol, tf, 1);
+      return (cC >= cO) ? "BUY" : "SELL";
+   }
+   return "SELL"; // Default fallback
+}
+
 void UpdateStateAndExecute()
 {
    double cmpMasterBuf[2], cmpScalpMasterBuf[2], cmpScalpEntryBuf[2];
@@ -10074,9 +10108,14 @@ void UpdateStateAndExecute()
 
    string oldScalpMasterDir = g_scalpMasterDir;
 
-   g_masterDir      = (cmpMasterBuf[0] == 1.0) ? "BUY" : ((cmpMasterBuf[0] == -1.0) ? "SELL" : "WAIT");
-   g_scalpMasterDir = (cmpScalpMasterBuf[0] == 1.0) ? "BUY" : ((cmpScalpMasterBuf[0] == -1.0) ? "SELL" : "WAIT");
-   g_scalpEntryDir  = (cmpScalpEntryBuf[0] == 1.0) ? "BUY" : ((cmpScalpEntryBuf[0] == -1.0) ? "SELL" : "WAIT");
+   g_masterDir      = (cmpMasterBuf[0] == 1.0) ? "BUY" : ((cmpMasterBuf[0] == -1.0) ? "SELL" : GetLastConfirmedCmpDir(g_hMaster, InpMasterTF, g_h4LastDir));
+   g_scalpMasterDir = (cmpScalpMasterBuf[0] == 1.0) ? "BUY" : ((cmpScalpMasterBuf[0] == -1.0) ? "SELL" : GetLastConfirmedCmpDir(g_hScalpMaster, InpScalpMasterTF, g_m30LastDir));
+   g_scalpEntryDir  = (cmpScalpEntryBuf[0] == 1.0) ? "BUY" : ((cmpScalpEntryBuf[0] == -1.0) ? "SELL" : GetLastConfirmedCmpDir(g_hScalpEntry, InpScalpEntryTF, g_m5LastDir));
+   
+   // Sync global direction trackers
+   g_h4LastDir = g_masterDir;
+   g_m30LastDir = g_scalpMasterDir;
+   g_m5LastDir = g_scalpEntryDir;
 
    datetime m5EventTime = (datetime)eventTimeBuf[0];
    datetime currentM30BarTime = iTime(_Symbol, InpScalpMasterTF, 0);
