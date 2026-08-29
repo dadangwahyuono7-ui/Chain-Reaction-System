@@ -24,6 +24,7 @@ export class DrawingEngine {
     // High-DPI Overlay Canvas
     this.canvas = document.createElement("canvas");
     this.canvas.className = "drawing-canvas-overlay";
+    this.canvas.style.pointerEvents = "none";
     this.ctx = this.canvas.getContext("2d");
     this.container.appendChild(this.canvas);
 
@@ -978,11 +979,6 @@ export class DrawingEngine {
           const ryy = Math.min(ry0, ry1);
           const rw = Math.abs(rx1 - rx0);
           const rh = Math.abs(ry1 - ry0);
-
-          // Web Auto-Extend box to future
-          let rx1 = rx1;
-          if (rx1 < screenW - 80) rx1 = screenW - 50;
-          const rw = Math.abs(rx1 - rx0);
           if (rw < 1 || rh < 1) break;
 
           ctx.fillStyle = fillColor;
@@ -996,10 +992,11 @@ export class DrawingEngine {
             const sultan = window.lastSultanStatus || this.win.sultanData;
             const curPrice = this.win.lastPrice || (this.win.candles?.[this.win.candles.length - 1]?.close) || 0;
             
-            const isSupply = (pBottom >= curPrice - 1.0);
-            const sideName = isSupply ? "SUPPLY" : "DEMAND";
-            const icon = isSupply ? "🔴" : "🟢";
-            const badgeColor = isSupply ? "#ff5252" : "#00e676";
+            const midBox = (pTop + pBottom) * 0.5;
+            const isResisten = (midBox >= curPrice);
+            const sideName = isResisten ? "RESISTEN" : "SUPORT";
+            const icon = isResisten ? "🔴" : "🟢";
+            const badgeColor = isResisten ? "#ff5252" : "#00e676";
             if (!d.createdTimeframe) d.createdTimeframe = (this.timeframe || "M30").toUpperCase();
             const tfTag = (d.createdTimeframe || d.sourceTimeframe || this.timeframe || "M30").toUpperCase();
 
@@ -1040,16 +1037,44 @@ export class DrawingEngine {
             const patternStr = isSupply ? "SBR [Uji 1x]" : "DBR [FRESH]";
             const rangeStr = `$${(pTop - pBottom).toFixed(2)} (${pBottom.toFixed(2)} - ${pTop.toFixed(2)})`;
 
-            // 4. Auto RR Sizing & Touch status on Web Canvas
-            const boxThick = pTop - pBottom;
-            const slDist = boxThick + 1.0;
-            const recLot = Math.max(0.01, Math.min(5.0, Math.round((50.0 / (slDist * 100.0)) * 100.0) / 100.0));
-            const isTouching = (curPrice >= pBottom - 0.20 && curPrice <= pTop + 0.20);
-            const touchStr = isTouching ? " • 🔥 TOUCH ACTIVE" : "";
+            // 4. Smart Quality Classification (Murni SUPORT & RESISTEN)
+            let qualityCategory = isResisten ? "⚖️ RESISTEN SEDANG" : "⚖️ SUPORT SEDANG";
+            let qualityColor = badgeColor;
 
-            const badgeText = `${icon} ${sideName} [${tfTag}] : ${liveWallStr} • ${histLotStr} • ${patternStr} • ⚖️ RR 1:3.5 (Lot: ${recLot}L)${touchStr}`;
+            const isSpoofActive = (sultan?.spoofing_alert?.active && Math.abs(sultan.spoofing_alert.price - (pTop + pBottom)/2) <= (boxThick/2 + 0.5));
+            if (isSpoofActive) {
+              qualityCategory = isResisten ? "🎭 SPOOFING RESISTEN (TEMBOK JUAL DICABUT)" : "🎭 SPOOFING SUPORT (TEMBOK BELI DICABUT)";
+              qualityColor = "#ffb703";
+            } else if (isResisten && liveWallLot < 20 && histLot > 100) {
+              qualityCategory = "🚨 POTENSI JEBOL KE ATAS (BUYER MENANG)";
+              qualityColor = "#ff3b88";
+            } else if (!isResisten && liveWallLot < 20 && histLot > 100) {
+              qualityCategory = "🚨 POTENSI JEBOL KE BAWAH (SELLER MENANG)";
+              qualityColor = "#ff3b88";
+            } else if (liveWallLot >= 40 || histLot >= 200) {
+              qualityCategory = isResisten ? "🛡️ RESISTEN KUAT (TAHANAN ATAS)" : "🛡️ SUPORT KUAT (LANTAI BAWAH)";
+              qualityColor = isResisten ? "#ff5252" : "#00e676";
+            } else if (liveWallLot < 15 && histLot < 50) {
+              qualityCategory = isResisten ? "⚠️ RESISTEN LEMAH (RAWAN TEMBUS)" : "⚠️ SUPORT LEMAH (RAWAN TEMBUS)";
+              qualityColor = "#94a3b8";
+            }
 
-            // 4. Render Obsidian Glass Badge inside box
+            // 5. Ultra-Sensitive Multi-Sensor Touch Detection
+            const lastCandle = candles[candles.length - 1];
+            const cHigh = lastCandle ? lastCandle.high : curPrice;
+            const cLow = lastCandle ? lastCandle.low : curPrice;
+            const isInside = (curPrice >= pBottom - 0.25 && curPrice <= pTop + 0.25);
+            const isGrazing = (!isInside && cHigh >= pBottom - 0.40 && cLow <= pTop + 0.40);
+            
+            let touchStr = "";
+            if (isInside) touchStr = " • 🎯 HARGA DI DALAM KOTAK";
+            else if (isGrazing) touchStr = " • ⚡ GRAZING WICK";
+
+            const wallShort = liveWallLot > 0 ? `WALL ${liveWallLot.toFixed(0)}L (${wallCount})` : "WALL 0L";
+            const histShort = histLot > 0 ? `HIST ${histLot}L` : "HIST 0L";
+            const badgeText = `${icon} ${sideName} [${tfTag}] [${qualityCategory}] : ${wallShort} • ${histShort} • ${patternStr} • ⚖️ RR 1:3.5 (${recLot}L)${touchStr}`;
+
+            // 6. Render Obsidian Glass Badge Centered Inside Box
             ctx.save();
             ctx.setLineDash([]);
             ctx.font = "bold 10px 'Segoe UI', Inter, -apple-system, sans-serif";
@@ -1057,18 +1082,22 @@ export class DrawingEngine {
             const badgeW = Math.min(rw - 8, textMetrics.width + 16);
             const badgeH = 22;
 
-            if (rw > 60 && rh > 18) {
-              ctx.fillStyle = "rgba(12, 18, 26, 0.88)";
+            // Center coordinates
+            const badgeX = rxx + Math.max(4, (rw - badgeW) / 2);
+            const badgeY = ryy + Math.max(2, (rh - badgeH) / 2);
+
+            if (rw > 50 && rh > 16) {
+              ctx.fillStyle = "rgba(12, 18, 26, 0.90)";
               ctx.beginPath();
-              if (ctx.roundRect) ctx.roundRect(rxx + 4, ryy + 4, badgeW, badgeH, 4);
-              else ctx.rect(rxx + 4, ryy + 4, badgeW, badgeH);
+              if (ctx.roundRect) ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4);
+              else ctx.rect(badgeX, badgeY, badgeW, badgeH);
               ctx.fill();
-              ctx.strokeStyle = badgeColor;
+              ctx.strokeStyle = qualityColor;
               ctx.lineWidth = 1;
               ctx.stroke();
 
-              ctx.fillStyle = badgeColor;
-              ctx.fillText(badgeText, rxx + 10, ryy + 18);
+              ctx.fillStyle = qualityColor;
+              ctx.fillText(badgeText, badgeX + (badgeW - textMetrics.width) / 2, badgeY + 15);
             }
             ctx.restore();
           } catch(e) {

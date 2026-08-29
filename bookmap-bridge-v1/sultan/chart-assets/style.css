@@ -3170,3 +3170,27 @@ canvas {
     padding: 2px 8px !important;
   }
 }
+
+
+
+/* Guarantee Drawing Canvas & Overlay Layers do NOT intercept Touch Gestures */
+.drawing-canvas-overlay {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none !important;
+  z-index: 15;
+}
+
+.sd-badges-container,
+.win-indicators-legend-wrapper,
+.on-chart-radar-banner {
+  pointer-events: none !important;
+}
+
+.btn-toggle-indicators,
+.ind-legend-chip {
+  pointer-events: auto !important;
+}

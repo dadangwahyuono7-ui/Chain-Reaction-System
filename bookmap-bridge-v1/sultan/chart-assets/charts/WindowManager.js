@@ -455,11 +455,18 @@ export class ChartWindow {
         vertTouchDrag: true
       },
       handleScale: {
-        axisPressedMouseMove: true,
+        axisPressedMouseMove: {
+          time: true,
+          price: true
+        },
         mouseWheel: true,
         pinch: true,
         axisReset: true
-      }
+      },
+      kineticScroll: {
+        touch: true,
+        mouse: false
+      },
     });
 
     const isCurrency = (this.symbol.includes("USD") && !this.symbol.includes("XAU") && !this.symbol.includes("BTC"));
