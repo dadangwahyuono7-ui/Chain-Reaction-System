@@ -231,7 +231,6 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
             tf = query.get("tf", ["M5"])[0].upper()
             count = int(query.get("count", ["500"])[0])
             
-            # 1. Read Genuine Candlestick Vault
             vault_file = os.path.join(FOLDER, "candle_vault.json")
             if not os.path.exists(vault_file):
                 vault_file = os.path.join(os.path.dirname(FOLDER), "candle_vault.json")
@@ -243,22 +242,6 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
                         vault = json.load(f)
                     bars = vault.get(tf, [])
                     if bars and len(bars) > 0:
-                        # Append live Bookmap current tick to latest bar
-                        status_path = os.path.join(FOLDER, "live_status.json")
-                        if not os.path.exists(status_path):
-                            status_path = os.path.join(os.path.dirname(FOLDER), "live_status.json")
-                        if os.path.exists(status_path):
-                            try:
-                                with open(status_path, "r", encoding="utf-8") as sf:
-                                    st = json.load(sf)
-                                    cur_px = st.get("current_price") or st.get("price")
-                                    if cur_px and float(cur_px) > 0:
-                                        px = round(float(cur_px), 2)
-                                        bars[-1]["high"] = max(bars[-1]["high"], px)
-                                        bars[-1]["low"] = min(bars[-1]["low"], px)
-                                        bars[-1]["close"] = px
-                            except Exception:
-                                pass
                         candles = bars[-count:]
                 except Exception:
                     pass
@@ -268,7 +251,7 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
                 "tf": tf,
                 "count": len(candles),
                 "candles": candles,
-                "source": "REAL_MARKET_CANDLE_VAULT"
+                "source": "REAL_MT5_SPOT_ALIGNED"
             }).encode("utf-8")
             
             self.send_response(200)
