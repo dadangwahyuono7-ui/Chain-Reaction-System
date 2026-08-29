@@ -143,10 +143,19 @@ try {
 
   // 13. Toggle Right Cockpit Sidebar (Header Button & Floating Edge Tab)
   const btnToggleSidebar = document.getElementById("btn-toggle-sidebar");
+  const btnCloseCockpit = document.getElementById("btn-close-cockpit-mobile");
+  if (btnCloseCockpit) {
+    btnCloseCockpit.addEventListener("click", () => {
+      if (sidebarCockpit) sidebarCockpit.classList.remove("mobile-open");
+      if (btnToggleSidebar) btnToggleSidebar.classList.remove("active");
+    });
+  }
+
   const btnCockpitTab = document.getElementById("btn-cockpit-tab");
   const sidebarCockpit = document.getElementById("sidebar-cockpit");
   // Mobile Auto-Collapse Sidebar & Default View
   const isMobileScreen = window.innerWidth <= 900;
+  if (isMobileScreen && btnToggleSidebar) btnToggleSidebar.classList.remove('active');
   if (isMobileScreen && sidebarCockpit) {
     sidebarCockpit.classList.add("collapsed");
     if (btnToggleSidebar) btnToggleSidebar.classList.remove("active");
@@ -166,15 +175,23 @@ try {
   });
 
 
-  function toggleCockpit() {
+    function toggleCockpit() {
     if (!sidebarCockpit) return;
-    sidebarCockpit.classList.toggle("collapsed");
-    const isCollapsed = sidebarCockpit.classList.contains("collapsed");
-    if (btnToggleSidebar) btnToggleSidebar.classList.toggle("active", !isCollapsed);
-    if (btnCockpitTab) btnCockpitTab.textContent = isCollapsed ? "◀" : "▶";
-    try {
-      localStorage.setItem("cd_cockpit_collapsed", isCollapsed ? "1" : "0");
-    } catch (e) {}
+    const isMobile = window.innerWidth <= 900;
+    if (isMobile) {
+      sidebarCockpit.classList.toggle("mobile-open");
+      const isOpen = sidebarCockpit.classList.contains("mobile-open");
+      if (btnToggleSidebar) btnToggleSidebar.classList.toggle("active", isOpen);
+      if (window.showToast) window.showToast(isOpen ? "📊 Cockpit Dibuka" : "📊 Cockpit Ditutup");
+    } else {
+      sidebarCockpit.classList.toggle("collapsed");
+      const isCollapsed = sidebarCockpit.classList.contains("collapsed");
+      if (btnToggleSidebar) btnToggleSidebar.classList.toggle("active", !isCollapsed);
+      if (btnCockpitTab) btnCockpitTab.textContent = isCollapsed ? "◀" : "▶";
+      try {
+        localStorage.setItem("cd_cockpit_collapsed", isCollapsed ? "1" : "0");
+      } catch (e) {}
+    }
     setTimeout(() => {
       windowManager.windows.forEach(w => w.resize());
     }, 260);

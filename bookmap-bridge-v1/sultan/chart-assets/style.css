@@ -3111,9 +3111,7 @@ canvas {
     display: flex !important;
   }
 
-  .right-sidebar:not(.collapsed) {
-    transform: translateX(0) !important;
-  }
+  
 
   #btn-cockpit-tab {
     display: none !important;
@@ -3193,4 +3191,52 @@ canvas {
 .btn-toggle-indicators,
 .ind-legend-chip {
   pointer-events: auto !important;
+}
+
+
+@media (max-width: 900px) {
+
+  /* Mobile Slide-Over Cockpit Drawer - Hidden by Default */
+  .right-sidebar {
+    position: fixed !important;
+    top: 44px !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 340px !important;
+    max-width: 90vw !important;
+    z-index: 99999 !important;
+    background: rgba(11, 14, 23, 0.98) !important;
+    backdrop-filter: blur(24px) !important;
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.9) !important;
+    transform: translateX(100%) !important; /* ALWAYS hidden offscreen by default on mobile */
+    transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1) !important;
+    display: flex !important;
+  }
+
+  .right-sidebar.mobile-open {
+    transform: translateX(0) !important; /* Only slides in when user clicks [ Cockpit ] */
+  }
+
+  .main-workspace {
+    width: 100vw !important;
+    height: calc(100vh - 44px) !important;
+    position: relative !important;
+    overflow: hidden !important;
+    display: flex !important;
+  }
+
+  .chart-grid-container {
+    width: 100vw !important;
+    height: 100% !important;
+    flex: 1 1 auto !important;
+  }
+
+}
+
+@media (max-width: 900px) {
+  #btn-close-cockpit-mobile {
+    display: block !important;
+    width: 100%;
+    text-align: center;
+  }
 }
