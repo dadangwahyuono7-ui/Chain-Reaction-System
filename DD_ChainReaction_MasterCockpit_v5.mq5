@@ -394,9 +394,9 @@ input string                InpOwnerName    = "Commander Dadang Wahyuono"; // Na
 input int                   InpMomentumHoldSec = 2;   // v52.97 - detik minimal arah baru harus konsisten sebelum baris Momentum (M5/Bookmap/Footprint) boleh flip tampilannya - saring kedip cepat tanpa nunggu candle close. Dadang: "kalo bolak balik stress"
 
 //======================================================================
-string   g_masterDir        = "WAIT";   // H4
-string   g_scalpMasterDir   = "WAIT";   // M30 - the direction actually being traded
-string   g_scalpEntryDir    = "WAIT";   // M5
+string g_masterDir = "BUY";   // H4
+string g_scalpMasterDir = "BUY";   // M30 - the direction actually being traded
+string g_scalpEntryDir = "BUY";   // M5
 
 //--- STRICT DOCTRINE STATE MACHINE (Diagrams 1.png - 4.png)
 string   g_cmpStatus      = "NORMAL"; // Status: NORMAL, VR, CF
@@ -618,7 +618,7 @@ BarrierEntry g_m5Queue[];
 // v52.61: D1 queue added ONLY as H4's "parent" for the self+parent nearest-
 // barrier pairing (Dadang: "h4 mencari h4 dan dayli") - awareness only,
 // same as M15/M5, never checked by BarrierVetoes().
-string       g_d1LastDir = "WAIT";    double g_d1LastLevel = 0.0;
+string g_d1LastDir = "BUY";    double g_d1LastLevel = 0.0;
 BarrierEntry g_d1Queue[];
 
 // v52.6: the 5-step Bookmap read, narrated - Dadang: "dari 5 urutan itu bisa
@@ -1101,7 +1101,15 @@ int OnInit()
    ObjectsDeleteAll(0, "DD_SW_"); // v53.30: remove toggle panel buttons
    InitZoneStateCache(); // v53.31: init render state cache
    EventSetTimer(1); // v53.32: 1-second timer tick for smooth dispatch
-   return(INIT_SUCCEEDED);
+      datetime dummyT;
+   g_masterDir      = (g_hMaster != INVALID_HANDLE) ? ReadCMP(g_hMaster, dummyT) : "BUY";
+   g_scalpMasterDir = (g_hScalpMaster != INVALID_HANDLE) ? ReadCMP(g_hScalpMaster, dummyT) : "BUY";
+   g_scalpEntryDir  = (g_hScalpEntry != INVALID_HANDLE) ? ReadCMP(g_hScalpEntry, dummyT) : "BUY";
+   g_d1LastDir      = (g_hDaily != INVALID_HANDLE) ? ReadCMP(g_hDaily, dummyT) : "BUY";
+   
+   UpdatePanel();
+   
+return(INIT_SUCCEEDED);
 }
 
 void OnTimer()
@@ -2024,14 +2032,34 @@ void UpdatePanel()
 
 string ReadCMP(int handle, datetime &changeTime)
 {
-   double buf[1], tbuf[1];
    changeTime = 0;
-   if(CopyBuffer(handle, 2, 0, 1, buf) <= 0) return "WAIT";
-   if(CopyBuffer(handle, 3, 0, 1, tbuf) <= 0) tbuf[0] = 0;
-   changeTime = (datetime)tbuf[0];
-   if(buf[0] > 0.5)  return "BUY";
-   if(buf[0] < -0.5) return "SELL";
-   return "WAIT";
+   if(handle != INVALID_HANDLE)
+   {
+      double buf[50], tbuf[50];
+      int copied = CopyBuffer(handle, 2, 0, 50, buf);
+      int copiedT = CopyBuffer(handle, 3, 0, 50, tbuf);
+      if(copied > 0)
+      {
+         for(int i = 0; i < copied; i++)
+         {
+            if(buf[i] > 0.5)
+            {
+               if(copiedT > i) changeTime = (datetime)tbuf[i];
+               return "BUY";
+            }
+            if(buf[i] < -0.5)
+            {
+               if(copiedT > i) changeTime = (datetime)tbuf[i];
+               return "SELL";
+            }
+         }
+      }
+   }
+   
+   // Fallback ke candle terakhir (ALWAYS BUY atau SELL)
+   double c1 = iClose(_Symbol, _Period, 1);
+   double o1 = iOpen(_Symbol, _Period, 1);
+   return (c1 >= o1) ? "BUY" : "SELL";
 }
 
 //--- reads buffer 5 (live sup) or 6 (live res) - these keep updating on
