@@ -189,7 +189,7 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
         if path.startswith("/api/chart/"):
             self._proxy_to_chart_engine()
             return
-                if path == "/bookmap_full_depth.csv":
+        if path == "/bookmap_full_depth.csv":
             self._serve_full_depth_csv()
             return
         if path in ("/bookmap_live_signal.csv", "/signal.csv"):
@@ -223,7 +223,7 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.path = "/index.html"
         super().do_GET()
 
-        def _serve_chart_history(self):
+    def _serve_chart_history(self):
         try:
             from urllib.parse import urlparse, parse_qs
             query = parse_qs(urlparse(self.path).query)
@@ -231,78 +231,44 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
             tf = query.get("tf", ["M5"])[0].upper()
             count = int(query.get("count", ["500"])[0])
             
-            tf_seconds = {"M1": 60, "M2": 120, "M3": 180, "M5": 300, "M15": 900, "M30": 1800, "H1": 3600, "H4": 14400, "D1": 86400, "W1": 604800}
-            secs = tf_seconds.get(tf, 300)
-            now_ts = int(time.time())
+            # 1. Read Genuine Candlestick Vault
+            vault_file = os.path.join(FOLDER, "candle_vault.json")
+            if not os.path.exists(vault_file):
+                vault_file = os.path.join(os.path.dirname(FOLDER), "candle_vault.json")
             
-            # Fetch anchor price from live_status.json (Real Bookmap CME Feed)
-            cur_price = 4506.10
-            status_path = os.path.join(FOLDER, "live_status.json")
-            if not os.path.exists(status_path):
-                status_path = os.path.join(os.path.dirname(FOLDER), "live_status.json")
-            if os.path.exists(status_path):
-                try:
-                    with open(status_path, "r", encoding="utf-8") as sf:
-                        st = json.load(sf)
-                        p = st.get("current_price") or st.get("price")
-                        if p and float(p) > 0:
-                            cur_price = float(p)
-                except Exception:
-                    pass
-
-            # Check if cmp_engine or trades.db has historical candles
             candles = []
-            db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trades.db")
-            if os.path.exists(db_path):
+            if os.path.exists(vault_file):
                 try:
-                    import sqlite3
-                    conn = sqlite3.connect(db_path)
-                    c = conn.cursor()
-                    c.execute('''SELECT (timestamp / ?) * ? as bucket, 
-                                        min(price) as low, max(price) as high, 
-                                        sum(size) as volume
-                                 FROM trades
-                                 GROUP BY bucket
-                                 ORDER BY bucket DESC
-                                 LIMIT ?''', (secs, secs, count))
-                    rows = c.fetchall()
-                    conn.close()
-                    if rows and len(rows) > 5:
-                        for r in reversed(rows):
-                            t = int(r[0])
-                            h = float(r[2])
-                            l = float(r[1])
-                            o = round(l + (h - l) * 0.4, 2)
-                            cl = round(l + (h - l) * 0.6, 2)
-                            candles.append({"time": t, "open": o, "high": h, "low": l, "close": cl, "volume": int(r[3])})
+                    with open(vault_file, "r", encoding="utf-8") as f:
+                        vault = json.load(f)
+                    bars = vault.get(tf, [])
+                    if bars and len(bars) > 0:
+                        # Append live Bookmap current tick to latest bar
+                        status_path = os.path.join(FOLDER, "live_status.json")
+                        if not os.path.exists(status_path):
+                            status_path = os.path.join(os.path.dirname(FOLDER), "live_status.json")
+                        if os.path.exists(status_path):
+                            try:
+                                with open(status_path, "r", encoding="utf-8") as sf:
+                                    st = json.load(sf)
+                                    cur_px = st.get("current_price") or st.get("price")
+                                    if cur_px and float(cur_px) > 0:
+                                        px = round(float(cur_px), 2)
+                                        bars[-1]["high"] = max(bars[-1]["high"], px)
+                                        bars[-1]["low"] = min(bars[-1]["low"], px)
+                                        bars[-1]["close"] = px
+                            except Exception:
+                                pass
+                        candles = bars[-count:]
                 except Exception:
                     pass
-
-            # If not enough stored bars, synthesize historical baseline anchored perfectly to Bookmap CME current price
-            if len(candles) < 20:
-                import math
-                amplitude = 3.50 * math.sqrt(secs / 300.0)
-                start_ts = (now_ts // secs) * secs - (count - 1) * secs
-                candles = []
-                p = cur_price
-                for i in range(count):
-                    t = start_ts + i * secs
-                    angle = (i * 0.15)
-                    wave = math.sin(angle) * amplitude + math.cos(angle * 1.8) * (amplitude * 0.4)
-                    o = p
-                    cl = cur_price if i == count - 1 else round(cur_price - 5.0 + wave, 2)
-                    h = round(max(o, cl) + abs(math.sin(i * 0.3)) * (amplitude * 0.3) + 0.20, 2)
-                    l = round(min(o, cl) - abs(math.cos(i * 0.3)) * (amplitude * 0.3) - 0.20, 2)
-                    vol = int(120 + abs(math.sin(i * 0.5)) * 350)
-                    candles.append({"time": t, "open": o, "high": h, "low": l, "close": cl, "volume": vol})
-                    p = cl
 
             payload = json.dumps({
                 "symbol": symbol,
                 "tf": tf,
                 "count": len(candles),
                 "candles": candles,
-                "source": "BOOKMAP_CME_REALTIME"
+                "source": "REAL_MARKET_CANDLE_VAULT"
             }).encode("utf-8")
             
             self.send_response(200)
@@ -313,6 +279,7 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(payload)
         except Exception as e:
             self.send_error(500, f"Chart history error: {e}")
+
 
 def log_message(self, fmt, *args):
         pass  # keep the console/log quiet - same JSON polled ~1x/sec
