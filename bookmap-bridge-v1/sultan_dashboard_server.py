@@ -230,28 +230,59 @@ class SultanRequestHandler(http.server.SimpleHTTPRequestHandler):
             symbol = query.get("symbol", ["XAUUSD"])[0].upper()
             tf = query.get("tf", ["M5"])[0].upper()
             count = int(query.get("count", ["500"])[0])
+            mode = query.get("mode", ["mt5"])[0].lower()
             
             vault_file = os.path.join(FOLDER, "candle_vault.json")
             if not os.path.exists(vault_file):
                 vault_file = os.path.join(os.path.dirname(FOLDER), "candle_vault.json")
             
             candles = []
+            basis_offset = 51.82
+            
+            # Read real bookmap basis offset if available
+            status_path = os.path.join(FOLDER, "live_status.json")
+            if not os.path.exists(status_path):
+                status_path = os.path.join(os.path.dirname(FOLDER), "live_status.json")
+            if os.path.exists(status_path):
+                try:
+                    with open(status_path, "r", encoding="utf-8") as sf:
+                        st = json.load(sf)
+                        p_gc = float(st.get("current_price") or st.get("price") or 4506.10)
+                        basis_offset = round(p_gc - 4454.28, 2)
+                except Exception:
+                    pass
+
             if os.path.exists(vault_file):
                 try:
                     with open(vault_file, "r", encoding="utf-8") as f:
                         vault = json.load(f)
                     bars = vault.get(tf, [])
                     if bars and len(bars) > 0:
-                        candles = bars[-count:]
+                        if mode == "cme":
+                            # Raw CME GC scale (+basis_offset)
+                            for b in bars[-count:]:
+                                candles.append({
+                                    "time": b["time"],
+                                    "open": round(b["open"] + basis_offset, 2),
+                                    "high": round(b["high"] + basis_offset, 2),
+                                    "low": round(b["low"] + basis_offset, 2),
+                                    "close": round(b["close"] + basis_offset, 2),
+                                    "volume": b.get("volume", 100)
+                                })
+                        else:
+                            # MT5 Spot scale (default)
+                            candles = bars[-count:]
                 except Exception:
                     pass
 
             payload = json.dumps({
                 "symbol": symbol,
                 "tf": tf,
+                "mode": mode,
+                "basis_offset": basis_offset,
                 "count": len(candles),
                 "candles": candles,
-                "source": "REAL_MT5_SPOT_ALIGNED"
+                "source": "RAW_CME_FUTURES" if mode == "cme" else "REAL_MT5_SPOT_ALIGNED"
             }).encode("utf-8")
             
             self.send_response(200)

@@ -203,6 +203,7 @@ export class ChartWindow {
 
         <!-- Right Window Actions -->
         <div class="win-right-controls">
+          <button class="win-act-btn btn-scale-mode" title="Switch Mode: [🟢 MT5 SPOT Scale] <--> [🟡 RAW CME GC Scale]" style="background: rgba(0, 230, 118, 0.18); border: 1px solid #00e676; color: #00e676; font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; letter-spacing: 0.5px;">🟢 MT5 SPOT</button>
           <button class="win-act-btn btn-autoscale active" title="Auto-Scale Price Axis (A)">A</button>
           <button class="win-act-btn btn-log-scale" title="Log Scale (L)">Log</button>
           <button class="win-act-btn btn-jump-latest" title="Jump to Latest Candle">⏭</button>
@@ -244,6 +245,28 @@ export class ChartWindow {
   }
 
   bindDOMEvents() {
+    // --- Scale Mode Toggle Button (MT5 Spot <--> Raw CME GC) ---
+    const btnScale = this.el.querySelector(".btn-scale-mode");
+    if (btnScale) {
+      btnScale.addEventListener("click", () => {
+        this.scaleMode = (this.scaleMode === "mt5") ? "cme" : "mt5";
+        if (this.scaleMode === "cme") {
+          btnScale.textContent = "🟡 RAW CME GC";
+          btnScale.style.background = "rgba(255, 199, 69, 0.18)";
+          btnScale.style.borderColor = "#ffc745";
+          btnScale.style.color = "#ffc745";
+          if (window.showToast) window.showToast("🏛️ Switch: Mode RAW CME Futures Scale (Bookmap Asli)");
+        } else {
+          btnScale.textContent = "🟢 MT5 SPOT";
+          btnScale.style.background = "rgba(0, 230, 118, 0.18)";
+          btnScale.style.borderColor = "#00e676";
+          btnScale.style.color = "#00e676";
+          if (window.showToast) window.showToast("🟢 Switch: Mode MT5 Spot Aligned Scale (Broker MT5)");
+        }
+        this.loadHistory(true);
+      });
+    }
+
     // --- Symbol Search Input (TradingView style) ---
     const symInput = this.el.querySelector(".sym-search-input");
     const symDropdown = this.el.querySelector(".sym-search-dropdown");
@@ -1334,9 +1357,9 @@ export class ChartWindow {
     if (this.isLoading) return;
     this.isLoading = true;
     try {
-      const res = await fetch(`${CHART_ENGINE_BASE}/api/chart/history?symbol=${this.symbol}&tf=${this.timeframe}&count=500`);
+      const res = await fetch(`${CHART_ENGINE_BASE}/api/chart/history?symbol=${this.symbol}&tf=${this.timeframe}&count=500&mode=${this.scaleMode || 'mt5'}`);
       const data = await res.json();
-      const newCandles = data.candles || [];
+      const newCandles = Array.isArray(data) ? data : (data.candles || []);
 
       if (newCandles.length === 0) return;
 
