@@ -3240,3 +3240,80 @@ canvas {
     text-align: center;
   }
 }
+
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRECISE SMARTPHONE & TOUCHSCREEN RESPONSIVE ARCHITECTURE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 900px) {
+  /* Left toolbar hidden on mobile to give 100% width to chart */
+  .left-drawing-toolbar {
+    display: none !important;
+  }
+
+  /* Main workspace & chart wrapper takes 100% screen */
+  .main-workspace {
+    flex-direction: column !important;
+    width: 100vw !important;
+    height: calc(100vh - 44px) !important;
+    overflow: hidden !important;
+    position: relative !important;
+    display: flex !important;
+  }
+
+  .chart-viewport-wrapper {
+    width: 100vw !important;
+    height: 100% !important;
+    flex: 1 1 auto !important;
+    display: flex !important;
+    position: relative !important;
+    overflow: hidden !important;
+  }
+
+  .chart-grid-container {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* Cockpit Sidebar is an off-screen slide-over drawer on mobile */
+  .sidebar-cockpit,
+  #sidebar-cockpit {
+    position: fixed !important;
+    top: 44px !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 330px !important;
+    max-width: 88vw !important;
+    height: calc(100vh - 44px) !important;
+    z-index: 99999 !important;
+    background: rgba(11, 14, 23, 0.98) !important;
+    backdrop-filter: blur(24px) !important;
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.9) !important;
+    transform: translateX(100%) !important; /* HIDDEN OFFSCREEN BY DEFAULT */
+    transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1) !important;
+    flex: none !important;
+    margin: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .sidebar-cockpit.mobile-open,
+  #sidebar-cockpit.mobile-open {
+    transform: translateX(0) !important; /* ONLY VISIBLE WHEN USER CLICKS [ Cockpit ] */
+  }
+
+  .cockpit-toggle-tab,
+  #btn-cockpit-tab,
+  .cockpit-resizer,
+  #cockpit-resizer {
+    display: none !important;
+  }
+
+  #btn-close-cockpit-mobile {
+    display: block !important;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+}

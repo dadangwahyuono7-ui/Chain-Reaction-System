@@ -5,7 +5,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { WindowManager } from '../charts/WindowManager.js?v=20260829_11';
+import { WindowManager } from '../charts/WindowManager.js?v=20260829_15';
 
 try {
   console.log("App.js Initializing...");
@@ -180,6 +180,8 @@ try {
     const isMobile = window.innerWidth <= 900;
     if (isMobile) {
       sidebarCockpit.classList.toggle("mobile-open");
+      const isOpen = sidebarCockpit.classList.contains("mobile-open");
+      if (btnToggleSidebar) btnToggleSidebar.classList.toggle("active", isOpen);
       const isOpen = sidebarCockpit.classList.contains("mobile-open");
       if (btnToggleSidebar) btnToggleSidebar.classList.toggle("active", isOpen);
       if (window.showToast) window.showToast(isOpen ? "📊 Cockpit Dibuka" : "📊 Cockpit Ditutup");
