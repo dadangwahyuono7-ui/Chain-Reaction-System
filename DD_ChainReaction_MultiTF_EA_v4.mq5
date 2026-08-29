@@ -4597,6 +4597,10 @@ bool FetchBookmapDataWebRequest()
    g_bookmapAgeMs = 0.0;
    g_fetchSuccessCount++;
    
+   UpdateCvdEma();
+   ComputeConviction();
+   ComputeBookmapNarrative();
+   
    UpdateReloadLevels(price);
    SamplePocIfNewMinute();
    UpdateLiveWallLabelsOnTick();
