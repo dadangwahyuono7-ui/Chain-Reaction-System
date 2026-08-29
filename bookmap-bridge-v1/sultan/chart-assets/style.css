@@ -2998,3 +2998,175 @@ canvas {
     font-size: 18px !important;
   }
 }
+
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SMARTPHONE & TOUCHSCREEN RESPONSIVE ARCHITECTURE (MOBILE / TABLET / TOUCH)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.window-chart-container, canvas {
+  touch-action: none !important; /* Passes pinch & drag gestures directly to chart canvas */
+}
+
+@media (max-width: 900px) {
+  /* 1. Header Navigation Bar */
+  .top-header {
+    height: auto !important;
+    min-height: 44px;
+    padding: 6px 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    scrollbar-width: none;
+  }
+  
+  .top-header::-webkit-scrollbar {
+    display: none;
+  }
+
+  .brand-author {
+    display: none !important;
+  }
+
+  .brand-badge {
+    font-size: 11px !important;
+    padding: 3px 6px !important;
+  }
+
+  .header-center-tools {
+    gap: 3px;
+  }
+
+  .layout-btn {
+    font-size: 11px !important;
+    padding: 4px 6px !important;
+    min-width: 28px !important;
+  }
+
+  #btn-link-crosshair {
+    display: none !important;
+  }
+
+  .header-right-actions {
+    gap: 4px;
+  }
+
+  .header-action-btn {
+    font-size: 10.5px !important;
+    padding: 4px 8px !important;
+    white-space: nowrap;
+  }
+
+  /* 2. Workspace & Sidebar */
+  .main-workspace {
+    flex-direction: column !important;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .left-drawing-toolbar {
+    display: none !important; /* Hide left drawing bar on mobile to give 100% width to chart */
+  }
+
+  .chart-grid-container {
+    width: 100% !important;
+    height: 100% !important;
+    flex: 1 1 auto;
+  }
+
+  /* Quad layout on vertical mobile: full height scroll or stacked */
+  .chart-grid-container.layout-quad {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: repeat(4, 320px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chart-grid-container.layout-single {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr !important;
+  }
+
+  /* Mobile Slide-Over Cockpit Drawer */
+  .right-sidebar {
+    position: fixed !important;
+    top: 44px;
+    right: 0;
+    bottom: 0;
+    width: 320px !important;
+    max-width: 90vw !important;
+    z-index: 99999 !important;
+    background: rgba(11, 14, 23, 0.98) !important;
+    backdrop-filter: blur(24px) !important;
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.9) !important;
+    transform: translateX(100%) !important;
+    transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1) !important;
+    display: flex !important;
+  }
+
+  .right-sidebar:not(.collapsed) {
+    transform: translateX(0) !important;
+  }
+
+  #btn-cockpit-tab {
+    display: none !important;
+  }
+
+  #cockpit-resizer {
+    display: none !important;
+  }
+
+  /* 3. Window Header & Touch Targets */
+  .window-header {
+    height: 38px !important;
+    padding: 2px 6px !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 4px;
+    scrollbar-width: none;
+  }
+
+  .window-header::-webkit-scrollbar {
+    display: none;
+  }
+
+  .win-tf-btn {
+    padding: 4px 6px !important;
+    font-size: 11px !important;
+    min-width: 28px !important;
+    min-height: 26px !important;
+  }
+
+  .win-act-btn {
+    min-width: 28px !important;
+    min-height: 26px !important;
+  }
+
+  .btn-scale-mode {
+    font-size: 10px !important;
+    padding: 3px 6px !important;
+  }
+
+  .win-ohlc-legend {
+    font-size: 8.5px !important;
+    gap: 4px !important;
+  }
+
+  .on-chart-radar-banner {
+    font-size: 11px !important;
+    padding: 4px 10px !important;
+    top: 42px !important;
+  }
+
+  .on-chart-sd-pill {
+    font-size: 9.5px !important;
+    padding: 2px 8px !important;
+  }
+}

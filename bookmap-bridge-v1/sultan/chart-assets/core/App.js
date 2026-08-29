@@ -5,7 +5,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { WindowManager } from '../charts/WindowManager.js?v=20260829_07';
+import { WindowManager } from '../charts/WindowManager.js?v=20260829_09';
 
 try {
   console.log("App.js Initializing...");
@@ -145,6 +145,26 @@ try {
   const btnToggleSidebar = document.getElementById("btn-toggle-sidebar");
   const btnCockpitTab = document.getElementById("btn-cockpit-tab");
   const sidebarCockpit = document.getElementById("sidebar-cockpit");
+  // Mobile Auto-Collapse Sidebar & Default View
+  const isMobileScreen = window.innerWidth <= 900;
+  if (isMobileScreen && sidebarCockpit) {
+    sidebarCockpit.classList.add("collapsed");
+    if (btnToggleSidebar) btnToggleSidebar.classList.remove("active");
+  }
+
+  window.addEventListener("resize", () => {
+    if (window.windowManager && window.windowManager.windows) {
+      window.windowManager.windows.forEach(w => w.resize());
+    }
+  });
+  window.addEventListener("orientationchange", () => {
+    setTimeout(() => {
+      if (window.windowManager && window.windowManager.windows) {
+        window.windowManager.windows.forEach(w => w.resize());
+      }
+    }, 200);
+  });
+
 
   function toggleCockpit() {
     if (!sidebarCockpit) return;
