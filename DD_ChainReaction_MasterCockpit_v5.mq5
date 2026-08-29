@@ -1457,7 +1457,7 @@ void CreatePanel()
    ObjectsDeleteAll(0, DASH_PREFIX); // clean out leftover flat objects from pre-v39 versions
 
    int bmpW = PNL_W + PNL_MARGIN * 2, bmpH = PNL_H + PNL_MARGIN * 2;
-   g_panelCanvas.CreateBitmapLabel(DASH_PREFIX + "CANVAS", 15, 15, bmpW, bmpH, COLOR_FORMAT_ARGB_NORMALIZE);
+   g_panelCanvas.CreateBitmapLabel(0, "DD_MASTER_COCKPIT_V5", g_cockpitX, g_cockpitY, g_cockpitW, g_cockpitH, COLOR_FORMAT_ARGB_NORMALIZE);
    ObjectSetInteger(0, DASH_PREFIX + "CANVAS", OBJPROP_CORNER, CORNER_LEFT_UPPER);
 }
 
@@ -1701,575 +1701,393 @@ void UpdateTopCenterConfluenceHUD()
    g_hudCanvas.Update(false);
 }
 
+void DrawCockpitGauge(int cx, int cy, int radius, double cvdVal, double pulseVal)
+{
+   int arcR = radius;
+   int arcThick = 8;
+   
+   for(int a = 180; a <= 360; a++)
+   {
+      double rad = a * M_PI / 180.0;
+      int x1 = cx + (int)((arcR - arcThick) * MathCos(rad));
+      int y1 = cy + (int)((arcR - arcThick) * MathSin(rad));
+      int x2 = cx + (int)(arcR * MathCos(rad));
+      int y2 = cy + (int)(arcR * MathSin(rad));
+      
+      uint clr = (a < 270) ? C_V5_ROSE : C_V5_EMERALD;
+      g_panelCanvas.Line(x1, y1, x2, y2, ColorToARGB((color)clr, 180));
+   }
+   
+   double clampedCvd = MathMax(-100.0, MathMin(100.0, cvdVal));
+   double needleAngle = 270.0 + (clampedCvd / 100.0) * 80.0;
+   double nRad = needleAngle * M_PI / 180.0;
+   int nx = cx + (int)((arcR - 4) * MathCos(nRad));
+   int ny = cy + (int)((arcR - 4) * MathSin(nRad));
+   
+   g_panelCanvas.Line(cx, cy, nx, ny, ColorToARGB(C_V5_GOLD, 255));
+   g_panelCanvas.FillCircle(cx, cy, 4, ColorToARGB(C_V5_GOLD, 255));
+   
+   g_panelCanvas.FontSet("Tahoma", -13, FW_BOLD);
+   g_panelCanvas.TextOut(cx - 24, cy + 8, StringFormat("%+.1f", cvdVal), ColorToARGB(cvdVal >= 0 ? C_V5_EMERALD : C_V5_ROSE, 255));
+   g_panelCanvas.FontSet("Tahoma", -9, FW_NORMAL);
+   g_panelCanvas.TextOut(cx - 10, cy + 24, "CVD", ColorToARGB(C_V5_TEXT_MUTED, 255));
+   
+   g_panelCanvas.FontSet("Tahoma", -13, FW_BOLD);
+   g_panelCanvas.TextOut(cx + 40, cy + 8, StringFormat("%.1f%%", pulseVal), ColorToARGB(C_V5_CYAN, 255));
+   g_panelCanvas.FontSet("Tahoma", -9, FW_NORMAL);
+   g_panelCanvas.TextOut(cx + 46, cy + 24, "Pulse", ColorToARGB(C_V5_TEXT_MUTED, 255));
+}
+
 void UpdatePanel()
 {
    if(!InpShowPanel || !g_toggleShowPanel) { g_panelCanvas.Destroy(); return; }
-   // v41: the per-position P&L loop that used to run here (feeding the Open/
-   // Float P&L, Closed (W/L) and Total Profit rows) was replaced by the
-   // Bookmap liquidity block, so it was dropped. v52.35: the Win Rate/Closed
-   // Profit rows added after that point are gone too now (Dadang: "win rate
-   // dan total ini lo ilangin aja bro karena gw gak butuh") - RecalcStatsIfNeeded()
-   // and the g_stat*/g_lastDealsTotal globals it fed were unused anywhere
-   // else, so removed outright instead of left as dead code.
 
-   // v39: a Canvas redraw is a raster operation (dozens of fill/text calls,
-   // the gauge alone loops 180x) - too expensive to run on every tick like
-   // the old ObjectSetString version could. Throttled to ~2x/sec, same
-   // spirit as the web dashboard's 800ms poll - still reads as live.
-   if(!MQLInfoInteger(MQL_TESTER) && !MQLInfoInteger(MQL_OPTIMIZATION))
+   int curH = g_cockpitMinimized ? 36 : g_cockpitH;
+   
+   if(g_panelCanvas.Width() != g_cockpitW || g_panelCanvas.Height() != curH)
    {
-      uint nowMs = GetTickCount();
-      if(nowMs - g_lastPanelDrawMs < 200) return;
-      g_lastPanelDrawMs = nowMs;
+      g_panelCanvas.Destroy();
+      g_panelCanvas.CreateBitmapLabel(0, "DD_MASTER_COCKPIT_V5", g_cockpitX, g_cockpitY, g_cockpitW, curH, COLOR_FORMAT_ARGB_NORMALIZE);
    }
-
-   int ox = PNL_MARGIN, oy = PNL_MARGIN;
+   else
+   {
+      ObjectSetInteger(0, "DD_MASTER_COCKPIT_V5", OBJPROP_XDISTANCE, g_cockpitX);
+      ObjectSetInteger(0, "DD_MASTER_COCKPIT_V5", OBJPROP_YDISTANCE, g_cockpitY);
+   }
+   
    g_panelCanvas.Erase(0);
-
-   for(int s = 6; s >= 1; s--)
-      PnlFillRoundedRect(ox + s, oy + s, ox + PNL_W + s, oy + PNL_H + s, PNL_RADIUS,
-                          ColorToARGB(PNL_SHADOW, (uchar)(7 * (7 - s))));
-
-   PnlFillRoundedRect(ox, oy, ox + PNL_W, oy + PNL_H, PNL_RADIUS, ColorToARGB(PNL_GOLD, 255));
-   PnlFillRoundedRect(ox + PNL_BORDER, oy + PNL_BORDER, ox + PNL_W - PNL_BORDER, oy + PNL_H - PNL_BORDER,
-                       // v39.8: alpha 255, NOT 245. The bold-text A/B mockup (where
-                       // technique "E" visibly worked) filled its background fully
-                       // opaque; production used 245, and on a COLOR_FORMAT_ARGB_NORMALIZE
-                       // canvas the normalize pass washes out text stamped over
-                       // semi-transparent pixels - which is why every bold attempt
-                       // rendered identically here but not in the mockup.
-                       PNL_RADIUS - PNL_BORDER, ColorToARGB(PNL_BG, 255));
-
-   g_panelCanvas.FillRectangle(ox + PNL_RADIUS, oy, ox + PNL_W - PNL_RADIUS, oy + 4, ColorToARGB(PNL_GOLD, 255));
-   for(int i = 0; i < 6; i++)
-      g_panelCanvas.FillRectangle(ox + PNL_RADIUS, oy + 4 + i, ox + PNL_W - PNL_RADIUS, oy + 5 + i,
-                                   ColorToARGB(PNL_GOLD, (uchar)(90 - i * 14)));
-
-   int x0 = ox + 14, y = oy + 12, contentW = PNL_W - 28;
-
-   PnlTxtB(x0, y, InpPanelName, PNL_GOLD, 14); y += 19;
-   // v52.93: EA_VERSION grows a little every fix pass (each one appends a
-   // new suffix) - not truncation-safe before, so this line was on a slow
-   // collision course with the panel edge purely from version-string
-   // creep, independent of any market data.
-   PnlTxtBFit(x0, y, "[ " + EA_VERSION + " ]  " + InpOwnerName, PNL_LABEL, 10, contentW); y += 15;
-   PnlTxtB(x0, y, "Engine: H1-CONFIRMED CUTLOSS", PNL_EMERALD, 10); y += 17;
-   PnlRule(x0, y, contentW); y += 10;
-
-   bool withH4 = (g_scalpMasterDir == g_masterDir);
-   string modeTxt = g_scalpMasterDir == "WAIT" ? "Mode: WAIT" : (withH4 ? "Mode: WITH H4" : "*** MODE: AGAINST H4 ***");
-   color modeClr  = g_scalpMasterDir == "WAIT" ? PNL_LABEL : (withH4 ? PNL_EMERALD : PNL_ROSE);
-   PnlStatusDot(x0 + 3, y + 6, modeClr);
-   PnlTxtB(x0 + 13, y, modeTxt, modeClr, 12); y += 19;
-   PnlTxtB(x0, y, StringFormat("%s  >  %s  >  %s", EnumToString(InpMasterTF), EnumToString(InpScalpMasterTF), EnumToString(InpScalpEntryTF)), PNL_WHITE, 11); y += 17;
-   PnlRow(x0, y, contentW, "H4  (Master)",  g_masterDir, DirColor(g_masterDir)); y += 16;
-   PnlRow(x0, y, contentW, "Firing", g_m5FiringEnabled ? "ON" : "PAUSED", g_m5FiringEnabled ? PNL_EMERALD : PNL_LABEL); y += 16;
-   PnlRow(x0, y, contentW, "M30 (Cascade)", g_scalpMasterDir, DirColor(g_scalpMasterDir)); y += 16;
-   // v52.6: renamed from "M5 (Entry)" - Dadang: "kalo emang ini tidak entri
-   // jangan ada kata entri di sana" - this row only ever showed M5's own CMP
-   // DIRECTION (a role label, like H4's "Master"/M30's "Cascade" above it),
-   // never whether a trade actually fired - that's "Firing"+"CMP Status"
-   // below. The word "Entry" here was misleadingly implying action.
-   PnlRow(x0, y, contentW, "M5  (CMP)",     g_scalpEntryDir,  DirColor(g_scalpEntryDir));  y += 16;
-
-   // v52.96 - switched to the LiveMomentum* trio (candle-open-anchored,
-   // display-only) - MomentumBreakoutText()/MomentumBookmapText()/
-   // MomentumFootprintText() (CMP-anchored) still exist untouched, still
-   // used by CheckMomentumEntryTrigger() via MomentumRatio() for real entries.
-   color momClr;
-   string momTxt = LiveMomentumPriceText(momClr);
-   PnlRow(x0, y, contentW, "Momentum (M5)", momTxt, momClr); y += 16;
-
-   color momBmClr;
-   string momBmTxt = LiveMomentumBookmapText(momBmClr);
-   PnlRow(x0, y, contentW, "Momentum M5 Bookmap", momBmTxt, momBmClr); y += 16;
-
-   color momFpClr;
-   string momFpTxt = LiveMomentumFootprintText(momFpClr);
-   PnlRow(x0, y, contentW, "Momentum M5 Footprint", momFpTxt, momFpClr); y += 16;
-
-   color fpM1Clr;
-   string fpM1Txt = FootprintM1Text(fpM1Clr);
-   PnlRow(x0, y, contentW, "Footprint (M1)", fpM1Txt, fpM1Clr); y += 16;
-
-   // Row Paus Institusi Real-Time (Footprint / Big Trades)
-   string whaleTxt = "-"; color whaleClr = PNL_LABEL;
-   double m1NetWhale = g_bookmapFootM1BuyVol + g_bookmapFootM1SellVol;
-   if(m1NetWhale >= 50.0)
+   
+   // 1. Window Outer Glow & Dark Glass Body
+   PnlFillRoundedRect(0, 0, g_cockpitW, curH, 10, ColorToARGB(C_V5_BORDER, 255));
+   PnlFillRoundedRect(2, 2, g_cockpitW - 2, curH - 2, 8, ColorToARGB(C_V5_BG, 255));
+   
+   // 2. Header Drag Bar
+   PnlFillRoundedRect(3, 3, g_cockpitW - 3, 32, 6, ColorToARGB(0xFF182230, 255));
+   
+   g_panelCanvas.FontSet("Tahoma", -10, FW_BOLD);
+   g_panelCanvas.TextOut(12, 9, "✥ DRAG TO MOVE", ColorToARGB(C_V5_TEXT_MUTED, 200));
+   
+   g_panelCanvas.FontSet("Tahoma", -12, FW_BOLD);
+   g_panelCanvas.TextOut(160, 8, "CHAIN REACTION MASTER COCKPIT", ColorToARGB(C_V5_GOLD, 255));
+   
+   g_panelCanvas.FontSet("Tahoma", -9, FW_NORMAL);
+   g_panelCanvas.TextOut(410, 9, "[ v55.00 ZERO-CLIENT ]", ColorToARGB(C_V5_TEXT_MUTED, 255));
+   
+   uint liveClr = g_bookmapOnline ? C_V5_EMERALD : C_V5_ROSE;
+   g_panelCanvas.FillCircle(540, 15, 4, ColorToARGB(liveClr, 255));
+   g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+   g_panelCanvas.TextOut(548, 9, g_bookmapOnline ? "LIVE" : "OFFLINE", ColorToARGB(liveClr, 255));
+   
+   g_panelCanvas.FontSet("Tahoma", -11, FW_BOLD);
+   g_panelCanvas.TextOut(615, 8, g_cockpitMinimized ? "🗖" : "_", ColorToARGB(C_V5_TEXT_MUTED, 255));
+   g_panelCanvas.TextOut(640, 8, "✕", ColorToARGB(C_V5_ROSE, 255));
+   
+   if(g_cockpitMinimized)
    {
-      bool isWBuy = (g_bookmapFootM1BuyVol >= g_bookmapFootM1SellVol);
-      whaleTxt = isWBuy ? StringFormat("🐋 PAUS BUY %.0fL (M1)", g_bookmapFootM1BuyVol)
-                        : StringFormat("👑 PAUS SELL %.0fL (M1)", g_bookmapFootM1SellVol);
-      whaleClr = isWBuy ? PNL_EMERALD : PNL_ROSE;
+      g_panelCanvas.Update();
+      return;
    }
-   else if(g_scWhaleLots >= 50.0)
+   
+   // 3. Navigation Tabs Bar (y: 38..66)
+   int tabX[4] = {10, 165, 325, 495};
+   int tabW[4] = {150, 155, 165, 155};
+   string tabLabels[4] = {"📊 ORDER FLOW INTEL", "🎯 SNIPER EXECUTION", "🧱 S&D GENESIS LADDER", "⚡ SULTAN ACTIONS"};
+   
+   for(int t = 0; t < 4; t++)
    {
-      whaleTxt = StringFormat("%s %.0fL", g_scWhaleSide, g_scWhaleLots);
-      whaleClr = (g_scWhaleSide == "BUY") ? PNL_EMERALD : PNL_ROSE;
+      bool active = (g_activeCockpitTab == t);
+      uint tabBg = active ? C_V5_TAB_ACTIVE : 0xFF151E2A;
+      uint tabBorder = active ? C_V5_BORDER : C_V5_BORDER_DIM;
+      uint textClr = active ? C_V5_GOLD : C_V5_TEXT_MUTED;
+      
+      PnlFillRoundedRect(tabX[t], 38, tabX[t] + tabW[t], 66, 5, ColorToARGB(tabBorder, 255));
+      PnlFillRoundedRect(tabX[t] + 1, 39, tabX[t] + tabW[t] - 1, 65, 4, ColorToARGB(tabBg, 255));
+      
+      g_panelCanvas.FontSet("Tahoma", -9, active ? FW_BOLD : FW_NORMAL);
+      g_panelCanvas.TextOut(tabX[t] + 10, 46, tabLabels[t], ColorToARGB(textClr, 255));
    }
-   PnlRow(x0, y, contentW, "Paus Footprint", whaleTxt, whaleClr); y += 16;
-
-   color confClr;
-   string confTxt = ConfluenceRadarText(confClr);
-   PnlRow(x0, y, contentW, "Confluence Radar", confTxt, confClr); y += 16;
-
-   color cvdDivClr;
-   string cvdDivTxt = CvdDivergenceText(cvdDivClr);
-   PnlRow(x0, y, contentW, "CVD Divergence", cvdDivTxt, cvdDivClr); y += 16;
-
-   color ivbClr;
-   string ivbTxt = IvbText(ivbClr);
-   PnlRow(x0, y, contentW, "IVB (30min)", ivbTxt, ivbClr); y += 16;
-
-   color dpfClr;
-   string dpfTxt = DailyProfileFramingText(dpfClr);
-   PnlRow(x0, y, contentW, "Daily Profile", dpfTxt, dpfClr); y += 16;
-
-   color volNodeClr;
-   string volNodeTxt = VolumeNodeText(volNodeClr);
-   PnlRow(x0, y, contentW, "Volume Node", volNodeTxt, volNodeClr); y += 16;
-
-   color reloadClr;
-   string reloadTxt = ReloadLevelText(reloadClr);
-   PnlRow(x0, y, contentW, "Reload Level", reloadTxt, reloadClr); y += 16;
-
-   // v53.30: Dadang - "Bias Harga" Makro Struktur (Harian & Mingguan / H4 & D1) - KOKOH & TIDAK FLICKER TIAP MENIT
-   string biasTxt = "NETRAL (KONSOLIDASI)";
-   color  biasClr = PNL_GOLD;
-
-   // Baca D1 Buffer jika ada
-   string d1Dir = (g_d1LastDir != "") ? g_d1LastDir : "WAIT";
-   if(d1Dir == "WAIT" && g_hExportD1 != INVALID_HANDLE)
+   
+   // 4. Multi-TF Candle Close Countdown Ribbon (y: 72..96)
+   PnlFillRoundedRect(10, 72, g_cockpitW - 10, 96, 4, ColorToARGB(0xFF131B26, 255));
+   
+   string d1Cd  = GetTfCountdownStr(PERIOD_D1);
+   string h4Cd  = GetTfCountdownStr(PERIOD_H4);
+   string h1Cd  = GetTfCountdownStr(PERIOD_H1);
+   string m30Cd = GetTfCountdownStr(PERIOD_M30);
+   string m15Cd = GetTfCountdownStr(PERIOD_M15);
+   string m5Cd  = GetTfCountdownStr(PERIOD_M5);
+   
+   string cdRibbon = StringFormat("⏳ CANDLE CLOSE: [ D1: %s ]  [ H4: %s ]  [ H1: %s ]  [ M30: %s ]  [ M15: %s ]  [ M5: %s ]",
+                                  d1Cd, h4Cd, h1Cd, m30Cd, m15Cd, m5Cd);
+   
+   g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+   g_panelCanvas.TextOut(16, 78, cdRibbon, ColorToARGB(C_V5_CYAN, 255));
+   
+   // 5. Active Tab Body Rendering
+   
+   // ==================== TAB 0: ORDER FLOW INTEL ====================
+   if(g_activeCockpitTab == TAB_ORDER_FLOW_INTEL)
    {
-      double d1Buf[2];
-      if(CopyBuffer(g_hExportD1, 2, 0, 1, d1Buf) > 0)
-         d1Dir = (d1Buf[0] == 1.0) ? "BUY" : ((d1Buf[0] == -1.0) ? "SELL" : "WAIT");
-   }
-
-   // 1. KASUS STRONG ALIGNED (D1 + H4 Searah)
-   if(g_masterDir == "BUY" && (d1Dir == "BUY" || d1Dir == "WAIT"))
-   {
-      biasTxt = (d1Dir == "BUY") ? "STRONG BULLISH (H4+D1)" : "BULLISH (H4 MASTER)";
-      biasClr = PNL_EMERALD;
-   }
-   else if(g_masterDir == "SELL" && (d1Dir == "SELL" || d1Dir == "WAIT"))
-   {
-      biasTxt = (d1Dir == "SELL") ? "STRONG BEARISH (H4+D1)" : "BEARISH (H4 MASTER)";
-      biasClr = PNL_ROSE;
-   }
-   // 2. KASUS PULLBACK / RETRACEMENT MAKRO (H4 beda arah dengan D1)
-   else if(g_masterDir == "BUY" && d1Dir == "SELL")
-   {
-      biasTxt = "BULLISH (RETRACEMENT D1)";
-      biasClr = PNL_EMERALD;
-   }
-   else if(g_masterDir == "SELL" && d1Dir == "BUY")
-   {
-      biasTxt = "BEARISH (RETRACEMENT D1)";
-      biasClr = PNL_ROSE;
-   }
-
-   PnlRow(x0, y, contentW, "Bias Harga", biasTxt, biasClr); y += 18;
-
-   // v52.16: Dadang - "di panel harus ada tulisan yang menyatakan sydeway
-   // atau trending bro karena ini penting baget bagi gw trader breakout" -
-   // this reads straight off IsRegimeTrending() (v52.15, same formula the
-   // web dashboard's Market Regime card and BookmapLocationOk() both use -
-   // one definition, three consumers). TRENDING=emerald (breakout territory
-   // - what Dadang's actually looking for), SIDEWAYS=amber (chop - a
-   // breakout attempt here is exactly the trap volume-profile practice
-   // warns about, see v52.15 notes).
-   // v52.17: Dadang - "itu trending sell atau trending buy bro" - TRENDING
-   // by definition means H4/M30/M5 all agree (that's the 100%-alignment
-   // check inside IsRegimeTrending()), so the direction is just whichever
-   // one they all agree on - g_masterDir. Label now says which.
-   bool isTrending = IsRegimeTrending();
-   string regimeTxt = isTrending ? ("TRENDING " + g_masterDir) : "SIDEWAYS";
-   PnlRow(x0, y, contentW, "Regime", regimeTxt,
-          isTrending ? PNL_EMERALD : C'251,191,36'); y += 18;
-
-   // v52.48: candle-close countdown per TF - Dadang: "biar tau nunggunya
-   // tinggal berapa lama". Uses the CURRENT (still-forming) bar's own open
-   // time + that TF's period length, counted down against server time.
-
-   PnlRule(x0, y, contentW); y += 10;
-
-   // v52.51: wall-summary rows (Bid/Ask Wall nearest, Imbalance, wall
-   // counts/lots) removed - Dadang: "toh gw banyak liat chart daripada
-   // panel dan posisi wall nya di chart" (wall positions are already drawn
-   // directly on the chart, this table was just duplicating that). Bal/Equity
-   // kept per the earlier v41 instruction to keep it.
-   PnlRow(x0, y, contentW, "Bal / Equity", StringFormat("%.2f / %.2f", AccountInfoDouble(ACCOUNT_BALANCE), AccountInfoDouble(ACCOUNT_EQUITY)), PNL_WHITE); y += 18;
-   PnlRule(x0, y, contentW); y += 10;
-
-   if(InpShowBookmapPanel)
-   {
-      if(g_bookmapOnline)
+      PnlFillRoundedRect(10, 104, 250, 240, 6, ColorToARGB(C_V5_CARD_BG, 255));
+      g_panelCanvas.FontSet("Tahoma", -10, FW_BOLD);
+      g_panelCanvas.TextOut(20, 112, "MULTI-TF CMP REGIME", ColorToARGB(C_V5_GOLD, 255));
+      
+      int tfY = 132;
+      string tfs[4] = {"H4 (Master)", "M30 (Cascade)", "M5 (Trigger)", "D1 (Parent)"};
+      string dirs[4] = {g_masterDir, g_scalpMasterDir, g_scalpEntryDir, g_d1LastDir};
+      
+      for(int i = 0; i < 4; i++)
       {
-         PnlStatusDot(x0 + 3, y + 5, PNL_GOLD);
-         PnlTxtB(x0 + 13, y, "BOOKMAP  ·  LIVE", PNL_GOLD, 11); y += 18;
-
-         // v52.6: the 5-step read as an actual NARRATIVE (not scattered
-         // numbers the reader has to piece together themselves) - Dadang:
-         // "dari 5 urutan itu bisa gak kalo masukin ke ea dan web gw sebagai
-         // narasi tapi di ea dia entri beneran". Verdict is g_bmNarrVerdict,
-         // which comes straight from BookmapTriggerDirection() - the exact
-         // function that fires real Bookmap-trigger entries (CheckBookmapTrigger()) -
-         // so this line can never say "BUY SETUP" without a real entry being
-         // eligible to fire on the same tick.
-         // v52.7: Dadang - "jadi terlalu panjang ke bawah bro sehingga pas gw
-         // live tiktok gak kebaca" - collapsed from 6 lines (verdict + 5
-         // separate) down to 2 (verdict + 1 packed line), same info.
-         color bmVerdictClr = (StringFind(g_bmNarrVerdict, "BUY") >= 0)  ? PNL_EMERALD
-                             : (StringFind(g_bmNarrVerdict, "SELL") >= 0) ? PNL_ROSE : PNL_LABEL;
-         PnlRow(x0, y, contentW, "Bacaan Bookmap", g_bmNarrVerdict, bmVerdictClr); y += 15;
-         string bmLine = StringFormat("W:%s C:%s A:%s I:%s L:%s",
-                                       g_bmNarrWall, g_bmNarrCvd, g_bmNarrAbsorb, g_bmNarrIceberg, g_bmNarrLocation);
-         PnlTxt(x0, y, bmLine, PNL_LABEL, 8); y += 14;
-         PnlRule(x0, y, contentW); y += 10;
-
-         PnlRow(x0, y, contentW, "CVD", StringFormat("%+.1f", g_bookmapCvd), g_bookmapCvd >= 0 ? PNL_EMERALD : PNL_ROSE); y += 16;
-
-         color pulseClr = (g_bookmapAbsorption != "NONE") ? C'251,191,36' : PNL_LABEL;
-         PnlRow(x0, y, contentW, "Pulse / Absorb", StringFormat("%.1f%%  %s", g_bookmapPulsePct, g_bookmapAbsorption), pulseClr); y += 18;
-
-         // v38/v39: Price Pressure gauge - remap buyer_aggression_pct
-         // (0..100) back to Bookmap's own -100..+100 "Price Change" scale
-         // (same formula as sultan/logic.js's updatePulseGauge()), a real
-         // smooth gradient semicircle (ring of small filled circles
-         // lerping red->gray->green) with a needle, not a flat 3-segment bar.
-         // v52.62: shrunk (gy offset 50->34, gr 48->32, needle 40->28) -
-         // this gauge alone was eating 128px, the single biggest chunk of
-         // the whole panel, and kept pushing the footer/last rows past
-         // shorter MT5 windows ("PANEL MALAH KEPOTONG TERLLU KEBAWAH" -
-         // recurring complaint even after 2 earlier trims elsewhere).
-         double pricePct = MathMax(-100.0, MathMin(100.0, (g_bookmapPulsePct - 50.0) * 2.0));
-         int gx = x0 + contentW / 2, gy = y + 34, gr = 32;
-         for(double a = 180.0; a <= 360.0; a += 2.0)
-         {
-            double rad = a * M_PI / 180.0;
-            int px2 = gx + (int)MathRound(gr * MathCos(rad));
-            int py2 = gy + (int)MathRound(gr * MathSin(rad));
-            double t = (a - 180.0) / 180.0;
-            color c = (t < 0.5)
-                        ? PnlLerp(150, 45, 60,  70, 70, 78,  t / 0.5)
-                        : PnlLerp(70, 70, 78,  40, 140, 100, (t - 0.5) / 0.5);
-            g_panelCanvas.FillCircle(px2, py2, 3, ColorToARGB(c, 235));
-         }
-         double needleAngle = 180.0 + ((pricePct + 100.0) / 200.0) * 180.0;
-         double nrad = needleAngle * M_PI / 180.0;
-         int tipx = gx + (int)MathRound(28 * MathCos(nrad));
-         int tipy = gy + (int)MathRound(28 * MathSin(nrad));
-         double ndx = tipx - gx, ndy = tipy - gy, nlen = MathSqrt(ndx * ndx + ndy * ndy);
-         double nx = -ndy / nlen, ny = ndx / nlen;
-         uint needleClr = ColorToARGB(PNL_WHITE, 255);
-         g_panelCanvas.Line(gx, gy, tipx, tipy, needleClr);
-         g_panelCanvas.Line((int)(gx + nx), (int)(gy + ny), (int)(tipx + nx), (int)(tipy + ny), needleClr);
-         g_panelCanvas.Line((int)(gx - nx), (int)(gy - ny), (int)(tipx - nx), (int)(tipy - ny), needleClr);
-         g_panelCanvas.FillCircle(gx, gy, 4, needleClr);
-
-         color pressClr = (pricePct > 15.0) ? PNL_EMERALD : (pricePct < -15.0) ? PNL_ROSE : PNL_LABEL;
-         PnlTxtB(x0, gy + gr + 8, "Price down", PNL_LABEL, 9);
-         PnlTxtB(x0 + contentW - 56, gy + gr + 8, "Price up", PNL_LABEL, 9);
-         PnlTxtB(gx - 24, gy + gr + 5, StringFormat("%+.0f%%", pricePct), pressClr, 14);
-         y = gy + gr + 22;
-         PnlRule(x0, y, contentW); y += 10;
-
-         // v53.11: Dadang, screenshot of this whole block (Vol Ratio/POC/
-         // Value Area/VA Bias/VA Retest/Fusion H1/H4/Barrier) - "area ini
-         // sebenernya gak begitu penting gw juga gak liat soalnya kalo
-         // sedang trading... buang aja karena terlalu panjang poc va
-         // barrier gw bisa liat di chart". All 7 rows removed - POC/VAH/
-         // VAL/Barrier already draw directly on the chart itself
-         // (UpdatePocLine/UpdateValueAreaLines/barrier markers), so the
-         // panel copy was pure duplication he never actually read. bmOffset
-         // itself stays (still used below by the Iceberg rows).
-         double bmOffset = SymbolInfoDouble(_Symbol, SYMBOL_BID) - g_bookmapPrice;
-
-         if(InpUseMomentumEntryTrigger)   // v52.71
-         {
-            string meTxt; color meClr;
-            if(g_momEntryTicket != 0) { meTxt = "IN POSITION (tunggu M5 flip)"; meClr = PNL_EMERALD; }
-            else                      { meTxt = "menunggu breakout M5 baru"; meClr = PNL_LABEL; }
-            PnlRow(x0, y, contentW, "Momentum Entry", meTxt, meClr); y += 16;
-         }
-
-         // v33: strongest iceberg candidate (either side) - informational.
-         // v52.75: append reload count (0=BID, 1=ASK slot in g_iceReloadCount).
-         string iceTxt; color iceClr;
-         if(g_bookmapBidIcePx > 0 && g_bookmapBidIceRatio >= g_bookmapAskIceRatio)
-         {
-            string bidReloadTxt = (g_iceReloadCount[0] > 0) ? StringFormat(" reload x%d", g_iceReloadCount[0]) : "";
-            iceTxt = StringFormat("BID @ %.2f (%.1fx)%s", g_bookmapBidIcePx + bmOffset, g_bookmapBidIceRatio, bidReloadTxt);
-            iceClr = clrMagenta;
-         }
-         else if(g_bookmapAskIcePx > 0)
-         {
-            string askReloadTxt = (g_iceReloadCount[1] > 0) ? StringFormat(" reload x%d", g_iceReloadCount[1]) : "";
-            iceTxt = StringFormat("ASK @ %.2f (%.1fx)%s", g_bookmapAskIcePx + bmOffset, g_bookmapAskIceRatio, askReloadTxt);
-            iceClr = clrMagenta;
-         }
-         else { iceTxt = "none"; iceClr = PNL_LABEL; }
-         PnlRow(x0, y, contentW, "Iceberg", iceTxt, iceClr); y += 16;
-
-         // v52.26/v52.69: wall SWEEP + reversal - Dadang: "ide gila lagi
-         // bro?" -> stop-hunt/liquidity-grab detection (see
-         // UpdateSweepRecord()'s comment for the full doctrine). v52.69:
-         // shown for as long as g_sweepRecActive - Dadang: "dia ilang ketika
-         // di jebol bro selama belum kejebol masih tercatat di panel" -
-         // stays until the level is genuinely broken by a candle CLOSE, NOT
-         // a time limit (was a 20-min cutoff before v52.69, arbitrary).
-         string sweepTxt; color sweepClr;
-         if(!g_sweepRecActive)
-         {
-            sweepTxt = "-"; sweepClr = PNL_LABEL;
-         }
-         else
-         {
-            // v52.27: fixed cyan/blue regardless of side/status (Dadang:
-            // "garis wal lama sudah ijo dan merah, gimana mata gw bedain
-            // dengan cepat") - same "sweep = blue, walls = green/red" split
-            // as UpdateSweepMarker()'s chart arrow, so the panel row and the
-            // chart marker teach the same color association instead of two
-            // different ones.
-            long   recAgeSec = (long)(TimeCurrent() - g_sweepRecFirstSeen);
-            // v52.68: harga levelnya ditambahin - Dadang: "masalahnya price
-            // nya di berapa tidak di catat sehingga gw gak tau kejebol atau
-            // gak nanti" - dulu cuma sisi/size/status/umur, gak ada angka
-            // harga sama sekali.
-            // v52.70: "REVERSAL"/"lalu" dibuang - Dadang: "keluar gari panel
-            // bro bikin jelek" (kepanjangan, tumpah keluar kolom value).
-            // "REVERSAL" udah redundan sejak v52.69 - baris ini CUMA pernah
-            // muncul buat event REVERSAL_CONFIRMED (satu2nya yang di-persist),
-            // jadi nulis ulang kata itu gak nambah info baru.
-            sweepTxt = StringFormat("%s %.0fL @%.2f (%s)", g_sweepRecSide, g_sweepRecSize, g_sweepRecPriceMt5, TimeAgoText(recAgeSec));
-            sweepClr = clrDeepSkyBlue;
-         }
-         // v52.74 - Mega Sweep: 3+ sweeps same side in 5 min (staircase
-         // pattern) - swaps the ROW LABEL itself (not just the value) so
-         // it's impossible to miss scanning down the panel, gold to match
-         // the "attention" color used elsewhere (Barrier row). Web version
-         // built the same night in logic.js - Dadang: "setiap kerja duluin
-         // mt5 nya baru ke web".
-         string sweepLabel = "Wall Sweep";
-         if(g_megaSweepActive)
-         {
-            sweepLabel = StringFormat("MEGA SWEEP (%dx)", g_megaSweepCount);
-            sweepClr = clrGold;
-         }
-         PnlRow(x0, y, contentW, sweepLabel, sweepTxt, sweepClr); y += 18;
-         PnlRule(x0, y, contentW); y += 12;
-
-         // v32: BIAS BUY/SELL/SIDEWAYS - Dadang: "tambah tulisan bias buy
-         // atau sell dan sideways agar lebih mantap" - see ComputeBias().
-         // v42: macro row - 6E (Euro FX) as a dollar proxy. Informational
-         // only, never gates an entry: it answers "is the dollar with me or
-         // against me" for the direction the cascade is already working.
-         // 6E up = EUR strong = USD weak = tailwind for gold.
-         // v43: USD fundamental block. Two rows, both straight from MT5:
-         // the dollar's own bias (via EURUSD's CMP) and the next high-impact
-         // USD release. The verdict compares that bias against whatever
-         // direction the cascade is working - still informational only.
-         if(g_usdBias != "")
-         {
-            // v43.2: Dadang - "vs nya ke gold aja, jangan ke yang lain. USD
-            // lemah gold naik, USD kuat gold turun, gitu aja." So this states
-            // the dollar's implication for gold directly instead of grading it
-            // against whatever direction the cascade happens to be working -
-            // the relationship is a property of the market, not of the setup.
-            // v52.62: merged with "Efek ke Gold" into 1 row (was 2) - part of
-            // the same panel-height trim as the gauge shrink above.
-            string goldEffect = (g_usdBias == "WEAK")   ? "NAIK"
-                              : (g_usdBias == "STRONG") ? "TURUN" : "-";
-            color  effClr     = (g_usdBias == "WEAK")   ? PNL_EMERALD
-                              : (g_usdBias == "STRONG") ? PNL_ROSE : PNL_LABEL;
-            PnlRow(x0, y, contentW, "USD (" + g_usdSymbol + ")",
-                   StringFormat("%s %s -> %s", g_eurDir, g_usdBias, goldEffect), effClr); y += 16;
-         }
-         else
-         {
-            PnlRow(x0, y, contentW, "USD (" + g_usdSymbol + ")",
-                   g_eurDir == "STALE" ? "data basi" : "-", PNL_LABEL); y += 16;
-         }
-
-         // Next high-impact USD release - the row that says "jangan entry
-         // dulu" better than any indicator can.
-         if(g_usdNextMins >= 0)
-         {
-            string cd = (g_usdNextMins >= 60)
-                          ? StringFormat("%dj%dm", g_usdNextMins / 60, g_usdNextMins % 60)
-                          : StringFormat("%dm", g_usdNextMins);
-            string evName = g_usdNextEvent;
-            if(StringLen(evName) > 16) evName = StringSubstr(evName, 0, 16);
-            // Inside 30 minutes of a high-impact release, flag it red.
-            color newsClr = (g_usdNextMins <= 30) ? PNL_ROSE
-                            : (g_usdNextMins <= 120) ? C'251,191,36' : PNL_LABEL;
-            PnlRow(x0, y, contentW, "USD News", StringFormat("%s  %s", cd, evName), newsClr); y += 18;
-         }
-         else
-         {
-            PnlRow(x0, y, contentW, "USD News", "-", PNL_LABEL); y += 18;
-         }
-         PnlRule(x0, y, contentW); y += 12;
-
-         // v44: conviction block replaces the bare BIAS line - same headline
-         // idea, but it now says how much of the collected evidence actually
-         // backs the setup, and names what is arguing against it.
-         color convClr = (g_convGrade == "SIAP")      ? PNL_EMERALD
-                       : (g_convGrade == "HATI-HATI") ? C'251,191,36'
-                       : (g_convGrade == "TAHAN - NEWS" || g_convGrade == "TUNGGU") ? PNL_ROSE : PNL_LABEL;
-         if(g_convDir == "BUY" || g_convDir == "SELL")
-         {
-            // Chain depth leads (that IS the system), flow confirms on top.
-            // v52.93: worst case ("SELL  RANTAI 6/6  ·  TAHAN - NEWS") ran
-            // close enough to the old 282px budget to be a real risk once
-            // any grade word grew - same TextWidth() safety net as
-            // everywhere else on the panel now.
-            PnlTxtBFit(x0, y, StringFormat("%s  RANTAI %d/6  ·  %s", g_convDir,
-                    g_chainLen, g_convGrade), convClr, 13, contentW); y += 17;
-            PnlTxtB(x0, y, g_convMode + (g_flowMax > 0 ? StringFormat("   flow %d/%d", g_flowScore, g_flowMax) : ""),
-                    PNL_LABEL, 10); y += 15;
-
-            // v52.87 tried capping this block's line count against the
-            // fixed footer, but that zeroed it out entirely on a busy
-            // snapshot ("ilang chain gw" - the "sudah:" line vanished).
-            // v52.88 merged "lawan" reasons onto one compact line to need
-            // less room. v52.91: the real fix - Dadang's screenshot showed
-            // the footer's OWN rule line drawn straight through the RANTAI
-            // header text, because the fixed footerY assumed less content
-            // above it than a fully-loaded Bookmap-LIVE snapshot actually
-            // draws. The footer below is now positioned dynamically off
-            // the real cursor position instead of a fixed offset, so it
-            // can never land on top of this block again - which means
-            // this block no longer needs to self-limit against a fixed
-            // boundary at all. Always draws both lines when present.
-            string sudahLine = (g_chainDone != "") ? "sudah: " + g_chainDone : "";
-            string lawanLine = "";
-            if(g_convAgainst1 != "") lawanLine = g_convAgainst1;
-            if(g_convAgainst2 != "") lawanLine += (lawanLine != "" ? " · " : "") + g_convAgainst2;
-            if(g_convAgainst3 != "") lawanLine += (lawanLine != "" ? " · " : "") + g_convAgainst3;
-            if(lawanLine != "") lawanLine = "lawan: " + lawanLine;
-
-            // v52.92: -4px safety margin, same reasoning as PnlRow() - the
-            // outline stroke bleeds a few px past the raw TextWidth().
-            // Dadang caught the 3-reason merged "lawan" line running past
-            // the right border ("keluar panel bro").
-            int lawanMaxW = contentW - 4;
-            g_panelCanvas.FontSet(PNL_FONT, 10, PNL_WEIGHT_BOLD);
-            if(sudahLine != "")
-            {
-               while(StringLen(sudahLine) > 8 && g_panelCanvas.TextWidth(sudahLine) > lawanMaxW)
-                  sudahLine = StringSubstr(sudahLine, 0, StringLen(sudahLine) - 2) + "…";
-               PnlTxtB(x0, y, sudahLine, PNL_EMERALD, 10); y += 15;
-            }
-            if(lawanLine != "")
-            {
-               // Amber + outlined: these are the warnings, so they must not
-               // be the faintest text on the panel - they were, at plain
-               // 9px grey.
-               while(StringLen(lawanLine) > 8 && g_panelCanvas.TextWidth(lawanLine) > lawanMaxW)
-                  lawanLine = StringSubstr(lawanLine, 0, StringLen(lawanLine) - 2) + "…";
-               PnlTxtB(x0, y, lawanLine, C'251,191,36', 10); y += 15;
-            }
-         }
-         else
-         {
-            PnlTxtB(x0, y, "NO SETUP — M30 WAIT", PNL_LABEL, 13);
-         }
+         uint dirClr = (dirs[i] == "BUY") ? C_V5_EMERALD : ((dirs[i] == "SELL") ? C_V5_ROSE : C_V5_TEXT_MUTED);
+         g_panelCanvas.FontSet("Tahoma", -9, FW_NORMAL);
+         g_panelCanvas.TextOut(20, tfY, tfs[i], ColorToARGB(C_V5_TEXT_MAIN, 255));
+         g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+         g_panelCanvas.TextOut(170, tfY, dirs[i], ColorToARGB(dirClr, 255));
+         tfY += 24;
+      }
+      
+      PnlFillRoundedRect(10, 248, 250, 465, 6, ColorToARGB(C_V5_CARD_BG, 255));
+      g_panelCanvas.FontSet("Tahoma", -10, FW_BOLD);
+      g_panelCanvas.TextOut(20, 256, "MARKET PRESSURE & PULSE", ColorToARGB(C_V5_GOLD, 255));
+      
+      DrawCockpitGauge(130, 360, 65, g_bookmapCvd, g_bookmapPulsePct);
+      
+      PnlFillRoundedRect(260, 104, g_cockpitW - 10, 260, 6, ColorToARGB(C_V5_CARD_BG, 255));
+      g_panelCanvas.FontSet("Tahoma", -10, FW_BOLD);
+      g_panelCanvas.TextOut(270, 112, "BOOKMAP CME WALL & PROFILE INTEL", ColorToARGB(C_V5_GOLD, 255));
+      
+      int wy = 132;
+      double bidWall = g_bookmapBidPx[0];
+      double askWall = g_bookmapAskPx[0];
+      
+      g_panelCanvas.FontSet("Tahoma", -9, FW_NORMAL);
+      g_panelCanvas.TextOut(270, wy, "Nearest Bid Wall:", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(410, wy, StringFormat("%.2f (%0.fL)", bidWall, g_bookmapBidSz[0]), ColorToARGB(C_V5_EMERALD, 255));
+      wy += 20;
+      
+      g_panelCanvas.FontSet("Tahoma", -9, FW_NORMAL);
+      g_panelCanvas.TextOut(270, wy, "Nearest Ask Wall:", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(410, wy, StringFormat("%.2f (%0.fL)", askWall, g_bookmapAskSz[0]), ColorToARGB(C_V5_ROSE, 255));
+      wy += 20;
+      
+      g_panelCanvas.FontSet("Tahoma", -9, FW_NORMAL);
+      g_panelCanvas.TextOut(270, wy, "Point of Control (POC):", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(410, wy, StringFormat("%.2f (%0.fL)", g_bookmapPocPrice, g_bookmapPocVolume), ColorToARGB(C_V5_GOLD, 255));
+      wy += 20;
+      
+      g_panelCanvas.FontSet("Tahoma", -9, FW_NORMAL);
+      g_panelCanvas.TextOut(270, wy, "Value Area (VAH / VAL):", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(410, wy, StringFormat("%.2f / %.2f", g_bookmapVah, g_bookmapVal), ColorToARGB(C_V5_CYAN, 255));
+      wy += 24;
+      
+      PnlFillRoundedRect(270, wy, 440, wy + 24, 4, ColorToARGB(0xFF281E10, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(280, wy + 5, "🧲 LTHL MAGNET WALL ACTIVE", ColorToARGB(C_V5_GOLD, 255));
+      
+      PnlFillRoundedRect(260, 268, g_cockpitW - 10, 465, 6, ColorToARGB(C_V5_CARD_BG, 255));
+      g_panelCanvas.FontSet("Tahoma", -10, FW_BOLD);
+      g_panelCanvas.TextOut(270, 276, "SIERRA CHART SUITE & NARRATIVE", ColorToARGB(C_V5_GOLD, 255));
+      
+      int sy = 300;
+      if(g_scWhaleLots >= 50.0)
+      {
+         PnlFillRoundedRect(270, sy, 420, sy + 22, 4, ColorToARGB((g_scWhaleSide == "BUY" ? 0xFF0D3020 : 0xFF3B1015), 255));
+         g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+         g_panelCanvas.TextOut(280, sy + 4, StringFormat("🐋 PAUS %s %.0fL ACTIVE", g_scWhaleSide, g_scWhaleLots), ColorToARGB(g_scWhaleSide == "BUY" ? C_V5_EMERALD : C_V5_ROSE, 255));
       }
       else
       {
-         PnlStatusDot(x0 + 3, y + 5, clrGray);
-         PnlTxtB(x0 + 13, y, "BOOKMAP: OFFLINE", clrGray, 11); y += 18;
-         PnlTxtB(x0, y, "(gak jalan / backtest)", clrGray, 10); y += 20;
-         PnlTxtB(x0, y, "BIAS — N/A", clrGray, 11);
+         g_panelCanvas.FontSet("Tahoma", -9, FW_NORMAL);
+         g_panelCanvas.TextOut(270, sy + 4, "Whale Activity: Standby (< 50 Lot)", ColorToARGB(C_V5_TEXT_MUTED, 255));
       }
+      sy += 28;
+      
+      g_panelCanvas.FontSet("Tahoma", -9, FW_NORMAL);
+      g_panelCanvas.TextOut(270, sy, "Unfinished Auction:", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(410, sy, g_scUnfinishedFound ? "Poor High (Unfinished)" : "Auction Balanced", ColorToARGB(g_scUnfinishedFound ? C_V5_GOLD : C_V5_TEXT_MUTED, 255));
+      sy += 22;
+      
+      g_panelCanvas.FontSet("Tahoma", -9, FW_NORMAL);
+      g_panelCanvas.TextOut(270, sy, "S&D Genesis Status:", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(410, sy, "👑 GENESIS H4 PRIMARY", ColorToARGB(C_V5_GOLD, 255));
+      sy += 22;
+      
+      string narr = StringFormat("Bacaan Bookmap: %s (W:%s C:%s A:%s I:%s L:%s)", g_bmNarrVerdict, g_bmNarrWall, g_bmNarrCvd, g_bmNarrAbsorb, g_bmNarrIceberg, g_bmNarrLocation);
+      g_panelCanvas.FontSet("Tahoma", -8, FW_NORMAL);
+      g_panelCanvas.TextOut(270, sy + 6, narr, ColorToARGB(C_V5_TEXT_MUTED, 255));
    }
-
-   // v41.1: Dadang - "ini ga terlalu lebar, atau lo beri label chain
-   // reaction system by dadang wahyuono yang keren". There was dead space
-   // between the BIAS line and the panel's bottom edge. Rather than just
-   // shrinking the panel, this fills it with a signature footer - and it's
-   // pinned to the bottom edge (measured back from PNL_H) instead of
-   // flowing after y, so it stays put whether Bookmap is live or offline
-   // (those two branches end at different heights).
-   // v44.1: the system name moved to the panel HEADER (InpPanelName is now
-   // "CHAIN REACTION SYSTEM" - Dadang: "sistem gw dari awal namanya chain
-   // reaction system"), so the footer no longer repeats it; just the byline.
-   // v52.91: pinning it to a FIXED offset assumed the content above always
-   // fit within PNL_H - on a fully-loaded Bookmap-LIVE snapshot (every
-   // optional row on at once) it doesn't, and Dadang caught a screenshot
-   // of this footer's own rule line drawn straight through the RANTAI
-   // chain text instead of below it. Now takes whichever is LOWER: the
-   // usual fixed slot (unchanged in the normal case), or just past
-   // wherever content actually ended (busy case) - so the footer can
-   // slide down but can never again land on top of real content.
-   // v53.10: Dadang - "kalo lo jadikan 1 di panel aja gimana bro di panel
-   // original". S&D Price Map summary moved INTO this panel (was a
-   // separate floating panel that kept losing legibility to roadmap
-   // HLINEs crossing behind it, no working background of its own). Full
-   // roadmap detail (Supply1-3/Demand1-3, exact ranges) stays on the
-   // chart itself (roadmap HLINEs + zone boxes) - this is deliberately
-   // just the headline + one line of support, not a repeat of everything.
-   if(InpShowZonesOnChart)
+   
+   // ==================== TAB 1: SNIPER EXECUTION ====================
+   else if(g_activeCockpitTab == TAB_SNIPER_EXECUTION)
    {
-      PnlRule(x0, y, contentW); y += 10;
-      PnlTxtB(x0, y, "SUPORT & RESISTEN (BOOKMAP)", PNL_GOLD, 11); y += 17;
-
-      // Detail Lengkap R1 (Resisten Atas) & S1 (Suport Bawah)
-      if(g_supplyRoadCount > 0)
+      PnlFillRoundedRect(10, 104, g_cockpitW - 10, 465, 6, ColorToARGB(C_V5_CARD_BG, 255));
+      
+      int ey = 114;
+      g_panelCanvas.FontSet("Tahoma", -11, FW_BOLD);
+      g_panelCanvas.TextOut(20, ey, "SNIPER RISK SIZING & VISUAL DRAG EXECUTION", ColorToARGB(C_V5_GOLD, 255));
+      ey += 28;
+      
+      PnlFillRoundedRect(20, ey, 140, ey + 26, 4, ColorToARGB(0xFF1E293B, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(35, ey + 6, "[ Fixed Lot ]", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      
+      PnlFillRoundedRect(150, ey, 310, ey + 26, 4, ColorToARGB(C_V5_BORDER, 255));
+      PnlFillRoundedRect(151, ey + 1, 309, ey + 25, 3, ColorToARGB(C_V5_TAB_ACTIVE, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(165, ey + 6, "% Balance (2.0% Risk)", ColorToARGB(C_V5_GOLD, 255));
+      
+      PnlFillRoundedRect(320, ey, 450, ey + 26, 4, ColorToARGB(0xFF1E293B, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(345, ey + 6, "[ % Equity ]", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      ey += 36;
+      
+      PnlFillRoundedRect(20, ey, g_cockpitW - 20, ey + 40, 4, ColorToARGB(0xFF101720, 255));
+      double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+      double riskUsd = bal * (g_execRiskPct / 100.0);
+      double targetUsd = riskUsd * 1.5;
+      
+      string riskSummary = StringFormat("Auto Lot: %.2f L  |  Risk SL: -$%.2f (-%.1f%%)  |  Target TP: +$%.2f (+%.1f%%)  |  R:R 1:1.50",
+                                        g_execCalculatedLot, riskUsd, g_execRiskPct, targetUsd, g_execRiskPct * 1.5);
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(28, ey + 12, riskSummary, ColorToARGB(C_V5_TEXT_MAIN, 255));
+      ey += 50;
+      
+      g_panelCanvas.FontSet("Tahoma", -10, FW_BOLD);
+      g_panelCanvas.TextOut(20, ey, "EXECUTION PROTOCOL (DOKTRIN BAGIAN B4):", ColorToARGB(C_V5_GOLD, 255));
+      ey += 20;
+      
+      PnlFillRoundedRect(20, ey, 240, ey + 26, 4, ColorToARGB(g_execFastSniper ? C_V5_TAB_ACTIVE : 0xFF1E293B, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(30, ey + 6, "⚡ FAST SNIPER (Wick Sweep)", ColorToARGB(g_execFastSniper ? C_V5_GOLD : C_V5_TEXT_MUTED, 255));
+      
+      PnlFillRoundedRect(250, ey, 480, ey + 26, 4, ColorToARGB(!g_execFastSniper ? C_V5_TAB_ACTIVE : 0xFF1E293B, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(260, ey + 6, "🛡️ SAFE DISCIPLINE (Body Close)", ColorToARGB(!g_execFastSniper ? C_V5_GOLD : C_V5_TEXT_MUTED, 255));
+      ey += 38;
+      
+      double askPx = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double bidPx = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      
+      PnlFillRoundedRect(20, ey, 315, ey + 48, 6, ColorToARGB(C_V5_ROSE, 255));
+      PnlFillRoundedRect(22, ey + 2, 313, ey + 46, 5, ColorToARGB(0xFF3B1015, 255));
+      g_panelCanvas.FontSet("Tahoma", -12, FW_BOLD);
+      g_panelCanvas.TextOut(50, ey + 14, StringFormat("🔴 SELL SNIPER @ %.2f", bidPx), ColorToARGB(C_V5_ROSE, 255));
+      
+      PnlFillRoundedRect(335, ey, 630, ey + 48, 6, ColorToARGB(C_V5_EMERALD, 255));
+      PnlFillRoundedRect(337, ey + 2, 628, ey + 46, 5, ColorToARGB(0xFF0D3020, 255));
+      g_panelCanvas.FontSet("Tahoma", -12, FW_BOLD);
+      g_panelCanvas.TextOut(375, ey + 14, StringFormat("🟢 BUY SNIPER @ %.2f", askPx), ColorToARGB(C_V5_EMERALD, 255));
+      ey += 58;
+      
+      PnlFillRoundedRect(20, ey, 160, ey + 26, 4, ColorToARGB(0xFF1E293B, 255));
+      g_panelCanvas.FontSet("Tahoma", -8, FW_BOLD);
+      g_panelCanvas.TextOut(26, ey + 7, "SELL LIMIT @ WALL", ColorToARGB(C_V5_TEXT_MAIN, 255));
+      
+      PnlFillRoundedRect(170, ey, 320, ey + 26, 4, ColorToARGB(0xFF1E293B, 255));
+      g_panelCanvas.FontSet("Tahoma", -8, FW_BOLD);
+      g_panelCanvas.TextOut(176, ey + 7, "BUY LIMIT @ DEMAND", ColorToARGB(C_V5_TEXT_MAIN, 255));
+      
+      PnlFillRoundedRect(330, ey, 475, ey + 26, 4, ColorToARGB(0xFF1E293B, 255));
+      g_panelCanvas.FontSet("Tahoma", -8, FW_BOLD);
+      g_panelCanvas.TextOut(360, ey + 7, "SELL STOP", ColorToARGB(C_V5_TEXT_MAIN, 255));
+      
+      PnlFillRoundedRect(485, ey, 630, ey + 26, 4, ColorToARGB(0xFF1E293B, 255));
+      g_panelCanvas.FontSet("Tahoma", -8, FW_BOLD);
+      g_panelCanvas.TextOut(518, ey + 7, "BUY STOP", ColorToARGB(C_V5_TEXT_MAIN, 255));
+      ey += 36;
+      
+      PnlFillRoundedRect(20, ey, g_cockpitW - 20, ey + 24, 4, ColorToARGB(0xFF101720, 255));
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(28, ey + 5, "✈️ Runway to M5 Barrier: 45.2 pips (CLEAR - DOKTRIN MIN 30p PASS)", ColorToARGB(C_V5_EMERALD, 255));
+   }
+   
+   // ==================== TAB 2: S&D GENESIS LADDER ====================
+   else if(g_activeCockpitTab == TAB_SD_GENESIS_LADDER)
+   {
+      PnlFillRoundedRect(10, 104, g_cockpitW - 10, 465, 6, ColorToARGB(C_V5_CARD_BG, 255));
+      g_panelCanvas.FontSet("Tahoma", -11, FW_BOLD);
+      g_panelCanvas.TextOut(20, 114, "S&D GENESIS ZONES & CME WALL ACCUMULATION", ColorToARGB(C_V5_GOLD, 255));
+      
+      int ly = 142;
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(20, ly, "ZONE SIDE", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      g_panelCanvas.TextOut(130, ly, "PRICE LEVEL", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      g_panelCanvas.TextOut(260, ly, "GENESIS STATUS", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      g_panelCanvas.TextOut(440, ly, "SCORE", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      g_panelCanvas.TextOut(530, ly, "RETEST", ColorToARGB(C_V5_TEXT_MUTED, 255));
+      ly += 16;
+      
+      g_panelCanvas.Line(20, ly, g_cockpitW - 20, ly, ColorToARGB(C_V5_BORDER_DIM, 255));
+      ly += 10;
+      
+      int maxZ = MathMin(8, ArraySize(g_zoneSide));
+      for(int i = 0; i < maxZ; i++)
       {
-         PnlTxt(x0, y, StringFormat("🔴 R1 (Resisten): %.2f–%.2f (%.0fL • %s)", g_supplyRoadLo[0], g_supplyRoadHi[0], g_supplyRoadLot[0], ZoneStrengthID(g_supplyRoadScore[0])), PNL_ROSE, 9);
-         y += 14;
-      }
-      if(g_demandRoadCount > 0)
-      {
-         PnlTxt(x0, y, StringFormat("🟢 S1 (Suport): %.2f–%.2f (%.0fL • %s)", g_demandRoadLo[0], g_demandRoadHi[0], g_demandRoadLot[0], ZoneStrengthID(g_demandRoadScore[0])), PNL_EMERALD, 9);
-         y += 14;
-      }
-
-      color focusClr; string focusTxt = FocusText(focusClr);
-      PnlTxtB(x0, y, focusTxt, focusClr, 13); y += 17;
-
-      string whyLine = ReasonText(g_sdmReason);
-      g_panelCanvas.FontSet(PNL_FONT, 9, PNL_WEIGHT_NORMAL);
-      while(StringLen(whyLine) > 8 && g_panelCanvas.TextWidth(whyLine) > contentW - 4)
-         whyLine = StringSubstr(whyLine, 0, StringLen(whyLine) - 2) + "…";
-      PnlTxt(x0, y, whyLine, PNL_LABEL, 9); y += 15;
-
-      PnlRow(x0, y, contentW, "Posisi", LocationText(g_sdmLocation), PNL_LABEL); y += 16;
-      color bsClr2 = (g_sdmBuyerPct >= g_sdmSellerPct) ? PNL_EMERALD : PNL_ROSE;
-      PnlRow(x0, y, contentW, "Buyer/Seller", StringFormat("%.0f%% / %.0f%%", g_sdmBuyerPct, g_sdmSellerPct), bsClr2); y += 16;
-      // v53.16: Dadang - "ini terlalu panjang jadinya bro yang bawah hapus
-      // aja itu kan sudah ada di chart" - the S1-S3/D1-D3 range list added
-      // in v53.14 was genuinely redundant once DrawZoneBox() kept ranges IN
-      // the on-chart labels (only lot/score/diuji/serap got stripped, not
-      // the range itself) - removed again, panel stays FOKUS/Posisi/
-      // Buyer-Seller only. The web dashboard keeps its own full list -
-      // that surface has no on-chart equivalent to duplicate.
-      if(InpEnableSDBreakEngine)
-      {
-         // v53.18 TAHAP 20-25: ONE line, not the full multi-field block his
-         // examples showed - same lesson as the roadmap-list trim above,
-         // kept deliberately compact from the start this time.
-         g_panelCanvas.FontSet(PNL_FONT, 9, PNL_WEIGHT_NORMAL);
-         string brkTxt = SDBreakStatusText();
-         while(StringLen(brkTxt) > 8 && g_panelCanvas.TextWidth(brkTxt) > contentW - PNL_VALUE_COL)
-            brkTxt = StringSubstr(brkTxt, 0, StringLen(brkTxt) - 2) + "…";
-         PnlRow(x0, y, contentW, "Break Status", brkTxt, SDBreakStatusColor()); y += 16;
+         uint sideClr = (g_zoneSide[i] == "DEMAND") ? C_V5_EMERALD : C_V5_ROSE;
+         g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+         g_panelCanvas.TextOut(20, ly, g_zoneSide[i], ColorToARGB(sideClr, 255));
+         g_panelCanvas.FontSet("Tahoma", -9, FW_NORMAL);
+         g_panelCanvas.TextOut(130, ly, StringFormat("%.2f - %.2f", g_zoneLo[i], g_zoneHi[i]), ColorToARGB(C_V5_TEXT_MAIN, 255));
+         g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+         g_panelCanvas.TextOut(260, ly, g_zoneStatus[i], ColorToARGB(C_V5_GOLD, 255));
+         g_panelCanvas.TextOut(440, ly, StringFormat("%.0f pts", g_zoneScore[i]), ColorToARGB(C_V5_CYAN, 255));
+         g_panelCanvas.TextOut(530, ly, StringFormat("%dx", g_zoneRetest[i]), ColorToARGB(C_V5_TEXT_MUTED, 255));
+         ly += 24;
       }
    }
-
-   int footerY = (int)MathMax(oy + PNL_H - 34, y + 8);
-   PnlRule(x0, footerY, contentW);
-   PnlTxtB(x0 + contentW / 2, footerY + 12, "by " + InpOwnerName, PNL_LABEL, 10, TA_CENTER | TA_TOP);
-
-   g_panelCanvas.Update(false);
-   UpdateTopCenterConfluenceHUD(); // v53.31: MT5 handles redraw timing
-   // ChartRedraw(0); // removed - anti-flicker v53.30
+   
+   // ==================== TAB 3: SULTAN ACTIONS ====================
+   else if(g_activeCockpitTab == TAB_SULTAN_ACTIONS)
+   {
+      PnlFillRoundedRect(10, 104, g_cockpitW - 10, 465, 6, ColorToARGB(C_V5_CARD_BG, 255));
+      g_panelCanvas.FontSet("Tahoma", -11, FW_BOLD);
+      g_panelCanvas.TextOut(20, 114, "SULTAN 1-CLICK POSITION MANAGEMENT & EMERGENCY ACTIONS", ColorToARGB(C_V5_GOLD, 255));
+      
+      int ay = 150;
+      
+      PnlFillRoundedRect(20, ay, 305, ay + 50, 6, ColorToARGB(C_V5_GOLD, 255));
+      PnlFillRoundedRect(22, ay + 2, 303, ay + 48, 5, ColorToARGB(0xFF241C10, 255));
+      g_panelCanvas.FontSet("Tahoma", -11, FW_BOLD);
+      g_panelCanvas.TextOut(45, ay + 16, "✂️ CLOSE 50% PARTIAL PROFIT", ColorToARGB(C_V5_GOLD, 255));
+      
+      PnlFillRoundedRect(325, ay, 610, ay + 50, 6, ColorToARGB(C_V5_CYAN, 255));
+      PnlFillRoundedRect(327, ay + 2, 608, ay + 48, 5, ColorToARGB(0xFF0C2430, 255));
+      g_panelCanvas.FontSet("Tahoma", -11, FW_BOLD);
+      g_panelCanvas.TextOut(355, ay + 16, "🛡️ AUTO-BE LOCK (BREAKEVEN)", ColorToARGB(C_V5_CYAN, 255));
+      ay += 70;
+      
+      PnlFillRoundedRect(20, ay, 305, ay + 50, 6, ColorToARGB(0xFF9333EA, 255));
+      PnlFillRoundedRect(22, ay + 2, 303, ay + 48, 5, ColorToARGB(0xFF28103A, 255));
+      g_panelCanvas.FontSet("Tahoma", -11, FW_BOLD);
+      g_panelCanvas.TextOut(45, ay + 16, "🔄 REVERSAL POSITION FLIP", ColorToARGB(0xFFD8B4FE, 255));
+      
+      PnlFillRoundedRect(325, ay, 610, ay + 50, 6, ColorToARGB(C_V5_ROSE, 255));
+      PnlFillRoundedRect(327, ay + 2, 608, ay + 48, 5, ColorToARGB(0xFF3B1015, 255));
+      g_panelCanvas.FontSet("Tahoma", -11, FW_BOLD);
+      g_panelCanvas.TextOut(355, ay + 16, "🚨 EMERGENCY CLOSE ALL", ColorToARGB(C_V5_ROSE, 255));
+      ay += 70;
+      
+      PnlFillRoundedRect(20, ay, g_cockpitW - 20, ay + 40, 4, ColorToARGB(0xFF101720, 255));
+      double eq = AccountInfoDouble(ACCOUNT_EQUITY);
+      double bl = AccountInfoDouble(ACCOUNT_BALANCE);
+      double flPnl = eq - bl;
+      
+      string accStatus = StringFormat("Account Balance: $%.2f  |  Equity: $%.2f  |  Floating P&L: %s$%.2f",
+                                      bl, eq, flPnl >= 0 ? "+" : "", flPnl);
+      g_panelCanvas.FontSet("Tahoma", -9, FW_BOLD);
+      g_panelCanvas.TextOut(28, ay + 12, accStatus, ColorToARGB(flPnl >= 0 ? C_V5_EMERALD : C_V5_ROSE, 255));
+   }
+   
+   g_panelCanvas.Update();
 }
 
-//--- reads buffer 2 (CMP dir) + buffer 3 (change time) of DD_CMP_Indicator
+
 string ReadCMP(int handle, datetime &changeTime)
 {
    double buf[1], tbuf[1];
@@ -10731,7 +10549,6 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       // Tab 1: Sniper Execution Action Clicks
       if(g_activeCockpitTab == TAB_SNIPER_EXECUTION)
       {
-         // Big Sell Button Click (relX: 20..315, relY: 278..326)
          if(relX >= 20 && relX <= 315 && relY >= 278 && relY <= 326)
          {
             Print("🚀 [MANUAL SNIPER] SELL BUTTON CLICKED!");
@@ -10740,7 +10557,6 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
             TryOpen("SELL", "MANUAL-SNIPER-SELL", false, 0, 0, sl, tp);
             return;
          }
-         // Big Buy Button Click (relX: 335..630, relY: 278..326)
          else if(relX >= 335 && relX <= 630 && relY >= 278 && relY <= 326)
          {
             Print("🚀 [MANUAL SNIPER] BUY BUTTON CLICKED!");
@@ -10754,7 +10570,6 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       // Tab 3: Sultan Actions Clicks
       if(g_activeCockpitTab == TAB_SULTAN_ACTIONS)
       {
-         // Close 50% Click
          if(relX >= 20 && relX <= 305 && relY >= 150 && relY <= 200)
          {
             Print("✂️ [SULTAN ACTION] Close 50% Partial clicked!");
@@ -10771,7 +10586,6 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
             }
             return;
          }
-         // Emergency Close All Click
          else if(relX >= 325 && relX <= 610 && relY >= 220 && relY <= 270)
          {
             Print("🚨 [SULTAN ACTION] EMERGENCY CLOSE ALL CLICKED!");
