@@ -1440,7 +1440,7 @@ void CreatePanel()
    ObjectsDeleteAll(0, DASH_PREFIX); // clean out leftover flat objects from pre-v39 versions
 
    int bmpW = PNL_W + PNL_MARGIN * 2, bmpH = PNL_H + PNL_MARGIN * 2;
-   g_panelCanvas.CreateBitmapLabel(0, "SULTAN_MASTER_COCKPIT_V5", g_cockpitX, g_cockpitY, g_cockpitW, g_cockpitH, COLOR_FORMAT_ARGB_NORMALIZE);
+   g_panelCanvas.CreateBitmapLabel("SULTAN_MASTER_COCKPIT_V5", g_cockpitX, g_cockpitY, g_cockpitW, g_cockpitH, COLOR_FORMAT_ARGB_NORMALIZE);
    ObjectSetInteger(0, DASH_PREFIX + "CANVAS", OBJPROP_CORNER, CORNER_LEFT_UPPER);
 }
 
@@ -1740,7 +1740,7 @@ void UpdatePanel()
    if(ObjectFind(0, "SULTAN_MASTER_COCKPIT_V5") < 0 || g_panelCanvas.Width() != g_cockpitW || g_panelCanvas.Height() != curH)
    {
       g_panelCanvas.Destroy();
-      g_panelCanvas.CreateBitmapLabel(0, "SULTAN_MASTER_COCKPIT_V5", g_cockpitX, g_cockpitY, g_cockpitW, curH, COLOR_FORMAT_ARGB_NORMALIZE);
+      g_panelCanvas.CreateBitmapLabel("SULTAN_MASTER_COCKPIT_V5", g_cockpitX, g_cockpitY, g_cockpitW, curH, COLOR_FORMAT_ARGB_NORMALIZE);
    }
    
    ObjectSetInteger(0, "SULTAN_MASTER_COCKPIT_V5", OBJPROP_XDISTANCE, g_cockpitX);
