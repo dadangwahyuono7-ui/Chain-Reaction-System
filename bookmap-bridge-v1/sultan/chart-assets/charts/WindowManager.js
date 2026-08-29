@@ -129,6 +129,10 @@ export class ChartWindow {
   }
 
   createDOM() {
+      const savedMode = localStorage.getItem("dd_scale_mode") || "mt5";
+      const isCme = savedMode === "cme";
+      const btnScaleStyle = isCme ? "background: rgba(255, 199, 69, 0.18); border: 1px solid #ffc745; color: #ffc745;" : "background: rgba(0, 230, 118, 0.18); border: 1px solid #00e676; color: #00e676;";
+      const btnScaleText = isCme ? "🟡 RAW CME GC" : "🟢 MT5 SPOT";
     this.el = document.createElement("div");
     this.el.className = "chart-window";
     this.el.id = `chart-window-${this.id}`;
@@ -203,7 +207,7 @@ export class ChartWindow {
 
         <!-- Right Window Actions -->
         <div class="win-right-controls">
-          <button class="win-act-btn btn-scale-mode" title="Switch Mode: [🟢 MT5 SPOT Scale] <--> [🟡 RAW CME GC Scale]" style="background: rgba(0, 230, 118, 0.18); border: 1px solid #00e676; color: #00e676; font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; letter-spacing: 0.5px;">🟢 MT5 SPOT</button>
+          <button class="win-act-btn btn-scale-mode" title="Klik untuk switch: [🟢 MT5 SPOT Scale] <--> [🟡 RAW CME GC Scale]" style="${btnScaleStyle} font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; letter-spacing: 0.5px;">${btnScaleText}</button>
           <button class="win-act-btn btn-autoscale active" title="Auto-Scale Price Axis (A)">A</button>
           <button class="win-act-btn btn-log-scale" title="Log Scale (L)">Log</button>
           <button class="win-act-btn btn-jump-latest" title="Jump to Latest Candle">⏭</button>
@@ -245,7 +249,31 @@ export class ChartWindow {
   }
 
   bindDOMEvents() {
-    // --- Scale Mode Toggle Button (MT5 Spot <--> Raw CME GC) ---
+        // --- Scale Mode Toggle Button (Persistent MT5 Spot <--> Raw CME GC) ---
+    const btnScale = this.el.querySelector(".btn-scale-mode");
+    if (btnScale) {
+      btnScale.addEventListener("click", () => {
+        this.scaleMode = (this.scaleMode === "mt5") ? "cme" : "mt5";
+        localStorage.setItem("dd_scale_mode", this.scaleMode);
+        
+        if (this.scaleMode === "cme") {
+          btnScale.textContent = "🟡 RAW CME GC";
+          btnScale.style.background = "rgba(255, 199, 69, 0.18)";
+          btnScale.style.borderColor = "#ffc745";
+          btnScale.style.color = "#ffc745";
+          if (window.showToast) window.showToast("🏛️ Mode: RAW CME Futures Scale (Bookmap 4506.xx)");
+        } else {
+          btnScale.textContent = "🟢 MT5 SPOT";
+          btnScale.style.background = "rgba(0, 230, 118, 0.18)";
+          btnScale.style.borderColor = "#00e676";
+          btnScale.style.color = "#00e676";
+          if (window.showToast) window.showToast("🟢 Mode: MT5 Spot Scale Aligned (Broker 4454.xx)");
+        }
+        this.candles = null;
+        this.loadHistory(true);
+      });
+    }
+
     const btnScale = this.el.querySelector(".btn-scale-mode");
     if (btnScale) {
       btnScale.addEventListener("click", () => {
@@ -1554,6 +1582,12 @@ export class ChartWindow {
     const price = Number(tick.last || tick.price || tick.close);
     if (!price || isNaN(price)) return;
 
+        // Basis offset normalization for live ticks
+    if (this.scaleMode === "mt5" && price > 4490) {
+      price = price - this.basisOffset;
+    } else if (this.scaleMode === "cme" && price < 4480) {
+      price = price + this.basisOffset;
+    }
     this.currentPrice = price;
     const isCur = (this.symbol.includes("USD") && !this.symbol.includes("XAU") && !this.symbol.includes("BTC"));
     const p = isCur ? 4 : 2;
