@@ -1180,6 +1180,7 @@ void OnTimer()
 
 void OnDeinit(const int reason)
 {
+   g_gaugeCanvas.Destroy();
    CkpDestroyAll();
    ObjectDelete(0, "DD_BTN_POC_VA"); ObjectDelete(0, "DD_BTN_PANEL");
    // PEMBERSIHAN MUTLAK KOTAK & GARIS OTOMATIS (ULTRA CLEAN CHART)
@@ -1249,6 +1250,8 @@ void OnDeinit(const int reason)
 color DirColor(string d) { return (d == "BUY") ? clrLime : (d == "SELL" ? clrTomato : clrSilver); }
 
 CCanvas g_panelCanvas;
+CCanvas           g_gaugeCanvas;
+bool              g_gaugeCreated = false;
 CCanvas g_hudCanvas;
 bool    g_hudCanvasCreated = false;
 uint    g_lastPanelDrawMs = 0;
@@ -1743,6 +1746,7 @@ void CkpCreateLabel(string id, int x, int y, string txt, color txtClr, int fontS
 
 void CkpDestroyAll()
 {
+   g_gaugeCanvas.Destroy();
    ObjectsDeleteAll(0, CKP_PREFIX);
 }
 
@@ -1763,6 +1767,80 @@ string GetTfCountdownStr(ENUM_TIMEFRAMES tf)
 //+------------------------------------------------------------------+
 //| 👑 UPDATE PANEL (NATIVE OBJECTS RENDERING)                       |
 //+------------------------------------------------------------------+
+void DrawSpeedometerCanvas(int x, int y, double cvdVal, double pulseVal)
+{
+   int gw = 230, gh = 150;
+   string gName = CKP_PREFIX + "GAUGE_BMP";
+
+   if(ObjectFind(0, gName) < 0 || g_gaugeCanvas.Width() != gw || g_gaugeCanvas.Height() != gh)
+   {
+      g_gaugeCanvas.Destroy();
+      g_gaugeCanvas.CreateBitmapLabel(gName, x, y, gw, gh, COLOR_FORMAT_ARGB_NORMALIZE);
+      ObjectSetInteger(0, gName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, gName, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, gName, OBJPROP_HIDDEN, true);
+      ObjectSetInteger(0, gName, OBJPROP_ZORDER, 3);
+   }
+   else
+   {
+      ObjectSetInteger(0, gName, OBJPROP_XDISTANCE, x);
+      ObjectSetInteger(0, gName, OBJPROP_YDISTANCE, y);
+   }
+
+   g_gaugeCanvas.Erase(0x00000000);
+
+   // Gauge Center and Radius
+   int cx = gw / 2;
+   int cy = 95;
+   int gr = 58;
+
+   // 1. Semicircle Arc Beads with Smooth Gradient (Rose -> Amber -> Emerald)
+   for(double a = 180.0; a <= 360.0; a += 3.0)
+   {
+      double rad = a * M_PI / 180.0;
+      int px = cx + (int)MathRound(gr * MathCos(rad));
+      int py = cy + (int)MathRound(gr * MathSin(rad));
+      
+      double t = (a - 180.0) / 180.0;
+      color c = (t < 0.5) 
+         ? PnlLerp(255, 72, 98,  255, 199, 69, t / 0.5) 
+         : PnlLerp(255, 199, 69, 0, 255, 140, (t - 0.5) / 0.5);
+      
+      g_gaugeCanvas.FillCircle(px, py, 3, ColorToARGB(c, 240));
+   }
+
+   // 2. Rotating Needle (mapped from CVD & Pulse)
+   double clampedCvd = MathMax(-100.0, MathMin(100.0, cvdVal));
+   double needleAngle = 180.0 + ((clampedCvd + 100.0) / 200.0) * 180.0;
+   double nrad = needleAngle * M_PI / 180.0;
+   int tipx = cx + (int)MathRound(50 * MathCos(nrad));
+   int tipy = cy + (int)MathRound(50 * MathSin(nrad));
+
+   double ndx = tipx - cx, ndy = tipy - cy, nlen = MathSqrt(ndx * ndx + ndy * ndy);
+   double nx = -ndy / nlen, ny = ndx / nlen;
+   uint needleClr = ColorToARGB(C'255,199,69', 255);
+
+   g_gaugeCanvas.Line(cx, cy, tipx, tipy, needleClr);
+   g_gaugeCanvas.Line((int)(cx + nx), (int)(cy + ny), (int)(tipx + nx), (int)(tipy + ny), needleClr);
+   g_gaugeCanvas.Line((int)(cx - nx), (int)(cy - ny), (int)(tipx - nx), (int)(tipy - ny), needleClr);
+   g_gaugeCanvas.FillCircle(cx, cy, 6, needleClr);
+   g_gaugeCanvas.FillCircle(cx, cy, 3, ColorToARGB(C'14,19,26', 255));
+
+   // 3. Values under Gauge
+   color cvdClr = (cvdVal >= 0) ? C'0,255,140' : C'255,72,98';
+   g_gaugeCanvas.FontSet("Tahoma", 13, 700);
+   g_gaugeCanvas.TextOut(cx - 50, cy + 12, StringFormat("%+.1f", cvdVal), ColorToARGB(cvdClr, 255), TA_CENTER | TA_TOP);
+   g_gaugeCanvas.FontSet("Tahoma", 9, 400);
+   g_gaugeCanvas.TextOut(cx - 50, cy + 30, "CVD", ColorToARGB(C'142,158,181', 255), TA_CENTER | TA_TOP);
+
+   g_gaugeCanvas.FontSet("Tahoma", 13, 700);
+   g_gaugeCanvas.TextOut(cx + 50, cy + 12, StringFormat("%.1f%%", pulseVal), ColorToARGB(C'0,229,255', 255), TA_CENTER | TA_TOP);
+   g_gaugeCanvas.FontSet("Tahoma", 9, 400);
+   g_gaugeCanvas.TextOut(cx + 50, cy + 30, "Pulse", ColorToARGB(C'142,158,181', 255), TA_CENTER | TA_TOP);
+
+   g_gaugeCanvas.Update();
+}
+
 void UpdatePanel()
 {
    if(!InpShowPanel || !g_toggleShowPanel)
@@ -1847,19 +1925,14 @@ void UpdatePanel()
          tfY += 24;
       }
 
-      // Card 2: Market Pressure & Pulse Gauge (Left Bottom)
+      // Card 2: Market Pressure & Pulse Speedometer Gauge (Left Bottom - EXACT MOCKUP)
       CkpCreateRect("T0_CARD2", ox + 10, oy + 248, 245, 222, C'21,29,40', C'42,54,72', 2);
       CkpCreateLabel("T0_C2_TIT", ox + 20, oy + 256, "MARKET PRESSURE & PULSE", C'255,199,69', 9, true);
       
-      string cvdStr = StringFormat("CVD: %+.1f", g_bookmapCvd);
-      color cvdClr = (g_bookmapCvd >= 0) ? C'0,255,140' : C'255,72,98';
-      CkpCreateLabel("T0_CVD", ox + 35, oy + 310, cvdStr, cvdClr, 14, true);
-      
-      string pulseStr = StringFormat("Pulse: %.1f%%", g_bookmapPulsePct);
-      CkpCreateLabel("T0_PULSE", ox + 35, oy + 345, pulseStr, C'0,229,255', 12, true);
+      DrawSpeedometerCanvas(ox + 18, oy + 285, g_bookmapCvd, g_bookmapPulsePct);
       
       string narrVerdict = StringFormat("Verdict: %s", g_bmNarrVerdict);
-      CkpCreateLabel("T0_VERDICT", ox + 20, oy + 395, narrVerdict, C'255,199,69', 9, true);
+      CkpCreateLabel("T0_VERDICT", ox + 20, oy + 440, narrVerdict, C'255,199,69', 8, true);
 
       // Card 3: CME Wall Intelligence (Right Top)
       CkpCreateRect("T0_CARD3", ox + 262, oy + 102, g_cockpitW - 272, 160, C'21,29,40', C'42,54,72', 2);
