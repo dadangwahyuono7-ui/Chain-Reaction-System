@@ -5,7 +5,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { WindowManager } from '../charts/WindowManager.js?v=20260828_01';
+import { WindowManager } from '../charts/WindowManager.js?v=20260829_05';
 
 try {
   console.log("App.js Initializing...");
