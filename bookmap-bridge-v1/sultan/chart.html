@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sultan — Chart Terminal</title>
+  
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- TradingView Lightweight Charts v4.2.0 -->
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+  
+  <!-- Custom Engine Stylesheet -->
+  <link rel="stylesheet" href="chart-assets/style.css?v=20260830_01">
+
+    <script>
+    // Global Safe Error Logging (Anti-DOM Destruction)
+    function isBenignError(msg) {
+      return typeof msg === 'string' && (msg.indexOf('ResizeObserver loop') !== -1 || msg.indexOf('Script error') !== -1);
+    }
+    window.onerror = function(message, source, lineno, colno, error) {
+      if (isBenignError(message)) return;
+      console.warn("[Safe Log] Error caught:", message, source, lineno);
+    };
+    window.addEventListener('unhandledrejection', function(event) {
+      if (isBenignError(String(event.reason))) return;
+      console.warn("[Safe Log] Unhandled rejection:", event.reason);
+    });
+  </script>
+</head>
+<body>
+
+  <!-- ─────────────────────────────────────────────────────────────
+       TOP NAVIGATION BAR
+  ───────────────────────────────────────────────────────────── -->
+  <header class="top-header">
+    <div class="brand-section">
+      <div class="brand-badge-container">
+        <div class="brand-badge">
+          <span>CHAIN REACTION</span> PRO
+        </div>
+        <div class="brand-author">Dadang Wahyuono</div>
+      </div>
+      <div id="status-pill" class="status-pill">
+        <span class="pulse-dot"></span> CONNECTING...
+      </div>
+    </div>
+
+          <!-- Center Layout & Synchronization Toolbar -->
+      <div class="header-center-tools">
+      <!-- Layout Mode Selectors -->
+      <div class="layout-selector" title="Window Layout Mode">
+        <button class="layout-btn" data-layout="SINGLE" title="Single Chart (1)">[ 1 ]</button>
+        <button class="layout-btn" data-layout="DUAL_VERT" title="Dual Vertical (2)">[ ║ ]</button>
+        <button class="layout-btn" data-layout="DUAL_HORIZ" title="Dual Horizontal (2)">[ ═ ]</button>
+        <button class="layout-btn active" data-layout="QUAD" title="Quad Grid 2x2 (4)">[ ⊞ ]</button>
+      </div>
+
+      <div class="header-divider"></div>
+
+      <!-- Link Crosshair Toggle -->
+      <button id="btn-link-crosshair" class="header-toggle-btn" title="Synchronize crosshairs across all windows by timestamp">
+        ⛓ LINK CROSSHAIR: OFF
+      </button>
+    </div>
+
+    <!-- Header Right Actions -->
+    <div class="header-right-actions">
+      <button id="btn-open-indicators" class="header-action-btn" title="Open Indicators Dialog (EMA, SMA, etc.)">ƒx Indicators</button>
+      <button id="btn-open-chart-settings" class="header-action-btn" title="Chart Settings (Simbol, Candle, Skala, Hitungan Mundur)">⚙ Settings</button>
+      <button id="btn-goto-time" class="header-action-btn" title="Go to specific timestamp/date">📅 Go To Time</button>
+      <button id="btn-open-replay" class="header-action-btn" title="Replay/Backtest — putar ulang histori DNA Vault">⏮ Replay</button>
+      <button id="btn-reset-all" class="header-action-btn" title="Reset View & Auto-fit all charts">↺ Reset View</button>
+      <button id="btn-toggle-sidebar" class="header-action-btn active" title="Toggle Right Cockpit Sidebar">📊 Cockpit</button>
+      <button id="btn-alert-bell" class="header-alert-btn" title="Alerts (coming next phase)">🔔<span class="alert-badge" style="display:none">0</span></button>
+      <button id="btn-fullscreen" class="header-action-btn icon-only" title="Toggle Fullscreen (F11)">⛶</button>
+    </div>
+
+  </header>
+
+
+
+  <!-- ─────────────────────────────────────────────────────────────
+       MAIN WORKSPACE: LEFT DRAWING TOOLBAR + MULTI-WINDOW GRID + COCKPIT
+  ───────────────────────────────────────────────────────────── -->
+  <main class="main-workspace">
+    
+    <!-- LEFT DRAWING TOOLBAR (Exact 1:1 TradingView Match) -->
+    <aside class="left-drawing-toolbar">
+      
+      <!-- 1. Cursor / Crosshairs Group -->
+      <div class="tool-group">
+        <button class="draw-tool-btn active has-sub" data-tool="cursor" title="Kursor & Crosshair (Esc)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7 18 3-7 7-3L3 3z"/></svg>
+        </button>
+        <div class="tool-flyout">
+          <div class="flyout-header">Cursors</div>
+          <div class="flyout-item active" data-tool="cursor">✛ Crosshair</div>
+          <div class="flyout-item" data-tool="dot">● Dot</div>
+          <div class="flyout-item" data-tool="arrow_cursor">↗ Arrow Pointer</div>
+          <div class="flyout-item" data-tool="eraser">🧹 Eraser</div>
+        </div>
+      </div>
+
+      <!-- 2. Trend Line Tools Group -->
+      <div class="tool-group">
+        <button class="draw-tool-btn has-sub" data-tool="trendline" title="Lines & Trends">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/><line x1="6.5" y1="17.5" x2="17.5" y2="6.5"/></svg>
+        </button>
+        <div class="tool-flyout">
+          <div class="flyout-header">Lines & Trends</div>
+          <div class="flyout-item" data-tool="trendline">📈 Trend Line</div>
+          <div class="flyout-item" data-tool="ray">↗ Ray Line</div>
+          <div class="flyout-item" data-tool="infoline">ℹ️ Info Line</div>
+          <div class="flyout-item" data-tool="extended_line">↔ Extended Line</div>
+          <div class="flyout-item" data-tool="trend_angle">📐 Trend Angle</div>
+          <div class="flyout-item" data-tool="hline">➖ Horizontal Line</div>
+          <div class="flyout-item" data-tool="hray">➔ Horizontal Ray</div>
+          <div class="flyout-item" data-tool="vline">│ Vertical Line</div>
+          <div class="flyout-item" data-tool="crossline">┼ Cross Line</div>
+          <div class="flyout-item" data-tool="channel">═ Parallel Channel</div>
+        </div>
+      </div>
+
+      <!-- 3. Gann and Fibonacci Tools Group -->
+      <div class="tool-group">
+        <button class="draw-tool-btn has-sub" data-tool="fib_retrace" title="Gann and Fibonacci Tools">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="5" x2="21" y2="5"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="3" y1="19" x2="21" y2="19"/><circle cx="7" cy="10" r="1.5" fill="currentColor"/><circle cx="17" cy="15" r="1.5" fill="currentColor"/></svg>
+        </button>
+        <div class="tool-flyout">
+          <div class="flyout-header">Fibonacci & Gann</div>
+          <div class="flyout-item" data-tool="fib_retrace">🎯 Fib Retracement</div>
+          <div class="flyout-item" data-tool="fib_ext">📊 Fib Extension</div>
+          <div class="flyout-item" data-tool="fib_channel">📈 Fib Channel</div>
+          <div class="flyout-item" data-tool="fib_time">⏳ Fib Time Zone</div>
+          <div class="flyout-item" data-tool="gann_box">🔲 Gann Box</div>
+        </div>
+      </div>
+
+      <!-- 4. Geometric Shapes Group -->
+      <div class="tool-group">
+        <button class="draw-tool-btn has-sub" data-tool="rectangle" title="Geometric Shapes">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/></svg>
+        </button>
+        <div class="tool-flyout">
+          <div class="flyout-header">Geometric Shapes</div>
+          <div class="flyout-item" data-tool="brush">🖌️ Brush (Freehand)</div>
+          <div class="flyout-item" data-tool="highlighter">🖍️ Highlighter</div>
+          <div class="flyout-item" data-tool="rectangle">📦 Rectangle / Zone</div>
+          <div class="flyout-item" data-tool="circle">⭕ Circle / Ellipse</div>
+          <div class="flyout-item" data-tool="triangle">🔺 Triangle</div>
+        </div>
+      </div>
+
+      <!-- 5. Annotation Tools Group -->
+      <div class="tool-group">
+        <button class="draw-tool-btn has-sub" data-tool="text" title="Annotation Tools">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/></svg>
+        </button>
+        <div class="tool-flyout">
+          <div class="flyout-header">Text & Notes</div>
+          <div class="flyout-item" data-tool="text">✍️ Text</div>
+          <div class="flyout-item" data-tool="anchored_text">⚓ Anchored Text</div>
+          <div class="flyout-item" data-tool="note">📝 Sticky Note</div>
+          <div class="flyout-item" data-tool="callout">💬 Callout Bubble</div>
+          <div class="flyout-item" data-tool="price_label">🏷️ Price Label</div>
+          <div class="flyout-item" data-tool="arrow_up">⬆ Arrow Marker Up</div>
+          <div class="flyout-item" data-tool="arrow_down">⬇ Arrow Marker Down</div>
+        </div>
+      </div>
+
+      <!-- 6. Prediction and Measurement Group -->
+      <div class="tool-group">
+        <button class="draw-tool-btn has-sub" data-tool="long_pos" title="Prediction and Measurement">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="18" x2="20" y2="18"/><line x1="12" y1="6" x2="12" y2="18"/><text x="5" y="14" font-size="8" font-weight="bold" fill="currentColor">RR</text></svg>
+        </button>
+        <div class="tool-flyout">
+          <div class="flyout-header">Positions & Ranges</div>
+          <div class="flyout-item" data-tool="long_pos">🟢 Long Position (Buy TP/SL)</div>
+          <div class="flyout-item" data-tool="short_pos">🔴 Short Position (Sell TP/SL)</div>
+          <div class="flyout-item" data-tool="measure">📏 Measure / Ruler</div>
+        </div>
+      </div>
+
+      <!-- 7. Icons & Stickers -->
+      <div class="tool-group">
+        <button class="draw-tool-btn has-sub" data-tool="icon_bull" title="Icons & Stickers">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        </button>
+        <div class="tool-flyout">
+          <div class="flyout-header">Stickers & Badges</div>
+          <div class="flyout-item" data-tool="icon_bull">🚀 Bullish Rocket</div>
+          <div class="flyout-item" data-tool="icon_bear">🔻 Bearish Dump</div>
+          <div class="flyout-item" data-tool="icon_target">🎯 Sniper Target</div>
+          <div class="flyout-item" data-tool="icon_fire">🔥 High Volatility</div>
+          <div class="flyout-item" data-tool="icon_warning">⚠️ Reversal Warning</div>
+        </div>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- 8. Measure / Ruler -->
+      <button class="draw-tool-btn" data-tool="measure" title="Measure / Penggaris (Pips, Time, Bars)">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.3 8.7l-6-6a2 2 0 0 0-2.8 0L3 12.2a2 2 0 0 0 0 2.8l6 6a2 2 0 0 0 2.8 0L21.3 11.5a2 2 0 0 0 0-2.8z"/><line x1="7.5" y1="10.5" x2="9" y2="12"/><line x1="10.5" y1="7.5" x2="12" y2="9"/><line x1="13.5" y1="4.5" x2="15" y2="6"/></svg>
+      </button>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- 9. Magnet Mode (Snap to OHLC) -->
+      <button id="btn-magnet" class="draw-tool-btn" title="Magnet Mode (Snap ke High/Low/Open/Close)">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v7a6 6 0 0 0 12 0V3"/><line x1="4" y1="3" x2="8" y2="3"/><line x1="16" y1="3" x2="20" y2="3"/></svg>
+      </button>
+
+      <!-- 10. Stay in Drawing Mode -->
+      <button id="btn-stay-draw" class="draw-tool-btn" title="Stay in Drawing Mode (Kunci Alat Gambar Aktif)">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/><rect x="15" y="16" width="6" height="5" rx="1"/></svg>
+      </button>
+
+      <!-- 11. Lock All Drawings -->
+      <button id="btn-lock-drawings" class="draw-tool-btn" title="Kunci Semua Gambar (Lock All Drawings)">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </button>
+
+      <!-- 12. Hide / Show Drawings -->
+      <button id="btn-hide-drawings" class="draw-tool-btn" title="Sembunyikan / Tampilkan Semua Gambar">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+
+      <!-- 13. Trash / Clear All Drawings -->
+      <button id="btn-trash-drawings" class="draw-tool-btn" title="Hapus Semua Gambar">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+
+    </aside>
+
+    <!-- Multi-Window Grid Viewport Container -->
+    <section class="chart-viewport-wrapper">
+      <div id="chart-grid-container" class="chart-grid-container layout-quad">
+        <!-- Dynamically populated with ChartWindow instances -->
+      </div>
+    </section>
+
+        <!-- Right Sidebar Cockpit Panel (Collapsible) -->
+        <!-- Right Sidebar Cockpit Panel (Collapsible) -->
+        <!-- Right Sidebar Cockpit Panel (Resizable + Larger Fonts for 24-inch Screen) -->
+    <aside id="sidebar-cockpit" class="sidebar-cockpit">
+      <!-- Left Edge Drag Resizer Handle -->
+      <div id="cockpit-resizer" class="cockpit-resizer" title="Tarik untuk melebarkan/mengecilkan panel"></div>
+
+      <!-- Edge Collapse Button -->
+      <button id="btn-cockpit-tab" class="cockpit-toggle-tab" title="Toggle Cockpit Panel">▶</button>
+
+      <!-- 👑 CARD 1: MASTER CHAIN REACTION SYSTEM -->
+      <div class="cockpit-card master-ea-card">
+        <!-- EA Header -->
+        <div class="ea-card-header">
+          <div class="ea-title-wrap">
+            <span class="ea-crown">👑</span>
+            <div class="ea-title-text">
+              <span class="ea-title">CHAIN REACTION SYSTEM</span>
+              <span class="ea-sub" id="ea-version-tag">v53.56-V3 • Dadang Wahyuono</span>
+            </div>
+          </div>
+          <div class="ea-radar-pill" id="ea-radar-pill">
+            <span class="radar-dot"></span>
+            <span id="ea-radar-text">83% HATI-HATI</span>
+          </div>
+        </div>
+
+        <!-- Action Hero Banner -->
+        <div class="ea-action-hero" id="ea-action-hero">
+          <div class="hero-top">
+            <span class="hero-action-badge" id="ea-hero-badge">⏳ WAIT OBSERVE</span>
+            <span class="hero-regime-badge" id="ea-hero-regime">SIDEWAYS</span>
+          </div>
+          <div class="hero-reason-text" id="ea-hero-reason">
+            D1 belum flip • CVD +6 lawan • Menunggu breakout searah master
+          </div>
+        </div>
+
+        <!-- Multi-Timeframe Matrix (Grid 2x3) -->
+        <div class="ea-section-label">● TIMEFRAME REGIME MATRIX</div>
+        <div class="ea-tf-grid">
+          <div class="tf-cell" id="ea-tf-d1"><span class="tf-name">D1</span><span class="tf-val buy">BUY</span><span class="tf-tag">[vs]</span></div>
+          <div class="tf-cell" id="ea-tf-h4"><span class="tf-name">H4</span><span class="tf-val sell">SELL</span><span class="tf-tag">[M]</span></div>
+          <div class="tf-cell" id="ea-tf-h1"><span class="tf-name">H1</span><span class="tf-val sell">SELL</span><span class="tf-tag">[CF]</span></div>
+          <div class="tf-cell" id="ea-tf-m30"><span class="tf-name">M30</span><span class="tf-val sell">SELL</span><span class="tf-tag">[CF]</span></div>
+          <div class="tf-cell" id="ea-tf-m15"><span class="tf-name">M15</span><span class="tf-val sell">SELL</span><span class="tf-tag">[CF]</span></div>
+          <div class="tf-cell" id="ea-tf-m5"><span class="tf-name">M5</span><span class="tf-val sell">SELL</span><span class="tf-tag">[CMP]</span></div>
+        </div>
+
+        <!-- Momentum Triad Section -->
+        <div class="ea-section-label">● MOMENTUM TRIAD & SIGNALS</div>
+        <div class="ea-metric-list">
+          <div class="ea-metric-row">
+            <span class="m-lbl">⚡ M5 Core EA</span>
+            <span class="m-val" id="ea-mom-m5">SELL WEAK 0.1x (46s)</span>
+          </div>
+          <div class="ea-metric-row">
+            <span class="m-lbl">📊 Bookmap M5</span>
+            <span class="m-val" id="ea-mom-bm">SELL WEAK 0.1x (46s)</span>
+          </div>
+          <div class="ea-metric-row">
+            <span class="m-lbl">👣 Footprint M5</span>
+            <span class="m-val" id="ea-mom-fp">SELL (46s)</span>
+          </div>
+          <div class="ea-metric-row">
+            <span class="m-lbl">🎯 Chain Next</span>
+            <span class="m-val highlight-gold" id="ea-chain-next">D1 (Tunggu Breakout)</span>
+          </div>
+          <div class="ea-metric-row">
+            <span class="m-lbl">📐 Profile Shape</span>
+            <span class="m-val" id="ea-profile-shape">b-SHAPE (BEAR DUMP)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 🌊 CARD 2: ORDER FLOW & BOOKMAP LIVE -->
+      <div class="cockpit-card">
+        <div class="card-header">
+          <span>● ORDER FLOW & BOOKMAP</span>
+          <span class="badge" style="color:var(--neon-cyan)">LIVE</span>
+        </div>
+        <div class="of-grid-stats">
+          <div class="of-stat-box">
+            <span class="of-lbl">CVD</span>
+            <span class="of-val buy" id="of-cvd">+75</span>
+          </div>
+          <div class="of-stat-box">
+            <span class="of-lbl">Pulse %</span>
+            <span class="of-val" id="of-pulse">54.5%</span>
+          </div>
+          <div class="of-stat-box">
+            <span class="of-lbl">Absorption</span>
+            <span class="of-val" id="of-absorb">NONE</span>
+          </div>
+          <div class="of-stat-box">
+            <span class="of-lbl">USD Bias</span>
+            <span class="of-val" id="of-usd">BUY STRONG</span>
+          </div>
+        </div>
+        <div class="ea-metric-list" style="margin-top:8px;">
+          <div class="ea-metric-row">
+            <span class="m-lbl">🚨 Wall Sweep</span>
+            <span class="m-val" id="of-sweep">-</span>
+          </div>
+          <div class="ea-metric-row">
+            <span class="m-lbl">📰 Catalyst / News</span>
+            <span class="m-val" id="of-news">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 🎯 CARD 3: S&D DECISION, POWER CONTROL & LIVE WALLS -->
+      <div class="cockpit-card">
+        <div class="card-header">
+          <span>● S&D DECISION & LIVE WALLS</span>
+          <span class="badge" id="sd-decision-badge" style="color:var(--neon-gold)">TUNGGU</span>
+        </div>
+
+        <!-- Buyer vs Seller Power Bar -->
+        <div class="power-bar-wrap">
+          <div class="power-labels">
+            <span class="p-buy">Buyer: <b id="power-buyer-pct">50%</b></span>
+            <span class="p-sell">Seller: <b id="power-seller-pct">50%</b></span>
+          </div>
+          <div class="power-track">
+            <div class="power-fill-buyer" id="power-fill-buyer" style="width: 50%;"></div>
+            <div class="power-fill-seller" id="power-fill-seller" style="width: 50%;"></div>
+          </div>
+        </div>
+
+        <div class="ea-metric-list" style="margin-top:8px;">
+          <div class="ea-metric-row">
+            <span class="m-lbl">📍 Posisi Harga</span>
+            <span class="m-val highlight-gold" id="sd-location-text">DEKAT ZONA SUPPLY</span>
+          </div>
+          <div class="ea-metric-row">
+            <span class="m-lbl">⚡ Break Status</span>
+            <span class="m-val" id="sd-break-text">NONE</span>
+          </div>
+          <div class="ea-metric-row">
+            <span class="m-lbl">🔴 Supply S1 Wall</span>
+            <span class="m-val sell" id="sd-wall-ask">Ask Live: 10L (Tot: 186L)</span>
+          </div>
+          <div class="ea-metric-row">
+            <span class="m-lbl">🟢 Demand D1 Wall</span>
+            <span class="m-val buy" id="sd-wall-bid">Bid Live: 53L (Tot: 229L)</span>
+          </div>
+          <div class="ea-metric-row">
+            <span class="m-lbl">⚖️ Wall Imbalance</span>
+            <span class="m-val" id="sd-wall-imb">0.19 (Ask Dominated)</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ─────────────────────────────────────────────────────────────
+       BOTTOM STATUS BAR (Global)
+  ───────────────────────────────────────────────────────────── -->
+  <footer class="global-status-bar">
+    <div class="status-left">
+      <span id="global-connection-status" class="status-item connection-live"><span class="pulse-dot"></span> MT5 LIVE</span>
+      <span class="status-divider"></span>
+      <span id="global-time" class="status-item">--:--:-- UTC</span>
+    </div>
+    <div class="status-right">
+      <span class="status-item brand-credit">Commander Dadang Engine v1.0</span>
+    </div>
+  </footer>
+
+
+  <!-- ─────────────────────────────────────────────────────────────
+       REPLAY / BACKTEST MODAL — pilih tanggal histori DNA Vault
+       (Dadang: "semua data history harus ke save biar bisa buat
+       bactes n replay")
+  ───────────────────────────────────────────────────────────── -->
+  <div id="replay-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>⏮ Replay / Backtest</span>
+        </div>
+        <button id="btn-close-replay-modal" class="modal-close-btn">✖</button>
+      </div>
+      <div style="padding:14px;color:var(--text-secondary,#94a3b8);font-size:12px;">
+        Pilih tanggal — candle asli MT5 + histori penuh EA (S&D zone, Sierra Chart, confluence, wall, dll) dari DNA Vault diputar ulang persis kayak waktu itu.
+      </div>
+      <div id="replay-date-list" style="display:flex;flex-direction:column;gap:6px;padding:0 14px 14px;max-height:320px;overflow-y:auto;">
+        <div style="color:var(--text-secondary,#94a3b8);font-size:12px;padding:10px;">Memuat daftar tanggal...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────
+       REPLAY CONTROL BAR — muncul di bawah layar pas replay aktif
+  ───────────────────────────────────────────────────────────── -->
+  <div id="replay-bar" style="display:none;">
+    <button id="replay-step-back-btn" class="replay-btn" title="Mundur 1 snapshot">⏪</button>
+    <button id="replay-play-btn" class="replay-btn replay-play" title="Play/Pause">▶</button>
+    <button id="replay-step-fwd-btn" class="replay-btn" title="Maju 1 snapshot">⏩</button>
+    <input type="range" id="replay-slider" min="0" max="100" value="0" />
+    <span id="replay-time-label" class="replay-label">--:--:-- UTC</span>
+    <select id="replay-speed-select" class="replay-speed-select" title="Kecepatan Replay">
+      <option value="800">0.5x</option>
+      <option value="400" selected>1x</option>
+      <option value="150">3x</option>
+      <option value="50">8x</option>
+    </select>
+    <button id="btn-exit-replay" class="replay-btn replay-exit" title="Keluar dari Replay, kembali LIVE">⏹ Keluar Replay</button>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────
+       INDICATORS DIALOG MODAL (TradingView Style)
+  ───────────────────────────────────────────────────────────── -->
+  <div id="indicators-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>ƒx Indicators & Moving Averages</span>
+        </div>
+        <button id="btn-close-ind-modal" class="modal-close-btn">✖</button>
+      </div>
+
+      <!-- Custom Configurable Moving Average Form -->
+      <div class="custom-ma-config-box">
+        <div class="config-header">⚙ Custom Moving Average (SMA / EMA)</div>
+        <div class="config-row">
+          <div class="config-field">
+            <label>Type</label>
+            <select id="custom-ma-type" class="config-input select">
+              <option value="SMA" selected>SMA (Simple)</option>
+              <option value="EMA">EMA (Exponential)</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <label>Length / Period</label>
+            <input type="number" id="custom-ma-period" class="config-input number" value="20" min="1" max="500" />
+          </div>
+          <div class="config-field">
+            <label>Color</label>
+            <input type="color" id="custom-ma-color" class="config-color" value="#ffb703" />
+          </div>
+          <button id="btn-add-custom-ma" class="ind-add-btn primary">+ Add MA</button>
+        </div>
+      </div>
+
+      <div class="modal-search-wrap">
+        <input type="text" id="ind-search-input" class="modal-search" placeholder="Search presets (e.g. EMA 9, SMA 50)..." />
+      </div>
+
+      <div class="indicators-list">
+        <div class="ind-list-item" data-type="SMA" data-period="20" data-color="#ffb703">
+          <div class="ind-info">
+            <span class="ind-name"><b style="color:#ffb703">SMA 20</b> — Simple Moving Average</span>
+            <span class="ind-sub">Standard Baseline Average</span>
+          </div>
+          <button class="ind-add-btn">+ Add</button>
+        </div>
+        <div class="ind-list-item" data-type="SMA" data-period="50" data-color="#38bdf8">
+          <div class="ind-info">
+            <span class="ind-name"><b style="color:#38bdf8">SMA 50</b> — Simple Moving Average</span>
+            <span class="ind-sub">Intermediate Baseline Trend</span>
+          </div>
+          <button class="ind-add-btn">+ Add</button>
+        </div>
+        <div class="ind-list-item" data-type="SMA" data-period="200" data-color="#ec4899">
+          <div class="ind-info">
+            <span class="ind-name"><b style="color:#ec4899">SMA 200</b> — Simple Moving Average</span>
+            <span class="ind-sub">Institutional Macro Baseline</span>
+          </div>
+          <button class="ind-add-btn">+ Add</button>
+        </div>
+        <div class="ind-list-item" data-type="EMA" data-period="9" data-color="#00f0ff">
+          <div class="ind-info">
+            <span class="ind-name"><b style="color:#00f0ff">EMA 9</b> — Exponential Moving Average</span>
+            <span class="ind-sub">Fast Momentum & Scalp Filter</span>
+          </div>
+          <button class="ind-add-btn">+ Add</button>
+        </div>
+        <div class="ind-list-item" data-type="EMA" data-period="21" data-color="#00e676">
+          <div class="ind-info">
+            <span class="ind-name"><b style="color:#00e676">EMA 21</b> — Exponential Moving Average</span>
+            <span class="ind-sub">Primary Dynamic Support / Resistance</span>
+          </div>
+          <button class="ind-add-btn">+ Add</button>
+        </div>
+        <div class="ind-list-item" data-type="EMA" data-period="50" data-color="#a855f7">
+          <div class="ind-info">
+            <span class="ind-name"><b style="color:#a855f7">EMA 50</b> — Exponential Moving Average</span>
+            <span class="ind-sub">Intermediate Trend Pullback Barrier</span>
+          </div>
+          <button class="ind-add-btn">+ Add</button>
+        </div>
+        <div class="ind-list-item" data-type="EMA" data-period="200" data-color="#ff7849">
+          <div class="ind-info">
+            <span class="ind-name"><b style="color:#ff7849">EMA 200</b> — Exponential Moving Average</span>
+            <span class="ind-sub">Macro Regime Barrier</span>
+          </div>
+          <button class="ind-add-btn">+ Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────
+       INDICATOR SETTINGS MODAL (Edit Active Indicator)
+  ───────────────────────────────────────────────────────────── -->
+  <div id="indicator-settings-modal" class="modal-overlay">
+    <div class="modal-card mini">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>⚙ Indicator Settings</span>
+        </div>
+        <button id="btn-close-ind-settings" class="modal-close-btn">✖</button>
+      </div>
+      <div class="settings-body" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+        <input type="hidden" id="edit-ind-id" />
+        <div class="config-field">
+          <label style="font-size: 11px; font-weight: 700; color: var(--text-dim);">Type</label>
+          <select id="edit-ind-type" class="config-input select" style="width: 100%;">
+            <option value="SMA">SMA (Simple)</option>
+            <option value="EMA">EMA (Exponential)</option>
+          </select>
+        </div>
+        <div class="config-field">
+          <label style="font-size: 11px; font-weight: 700; color: var(--text-dim);">Length / Period</label>
+          <input type="number" id="edit-ind-period" class="config-input number" style="width: 100%;" min="1" max="500" />
+        </div>
+        <div class="config-field">
+          <label style="font-size: 11px; font-weight: 700; color: var(--text-dim);">Line Color</label>
+          <input type="color" id="edit-ind-color" class="config-color" style="width: 100%; height: 32px;" />
+        </div>
+        <button id="btn-save-ind-settings" class="ind-add-btn primary" style="width: 100%; padding: 8px; margin-top: 4px;">Save & Apply</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ─────────────────────────────────────────────────────────────
+       FULL TRADINGVIEW CHART SETTINGS MODAL
+  ───────────────────────────────────────────────────────────── -->
+  <div id="chart-settings-modal" class="modal-overlay">
+    <div class="modal-card tv-settings">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>⚙ Chart Settings</span>
+        </div>
+        <button id="btn-close-chart-settings" class="modal-close-btn">✖</button>
+      </div>
+
+      <div class="settings-dialog-layout">
+        <!-- Left Tab Navigation -->
+        <div class="settings-tabs-sidebar">
+          <button class="settings-tab-btn active" data-tab="symbol">🕯️ Symbol</button>
+          <button class="settings-tab-btn" data-tab="scales">📏 Scales & Lines</button>
+          <button class="settings-tab-btn" data-tab="appearance">🎨 Appearance</button>
+        </div>
+
+        <!-- Right Tab Content Panels -->
+        <div class="settings-tab-content">
+          
+          <!-- Tab 1: Symbol / Candle Colors -->
+          <div class="tab-pane active" id="tab-symbol">
+            <div class="settings-group-title">Candle Body Colors</div>
+            <div class="setting-row">
+              <span class="setting-label">Body Up (Bullish)</span>
+              <input type="color" id="cfg-candle-up" class="config-color" value="#00e676" />
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Body Down (Bearish)</span>
+              <input type="color" id="cfg-candle-down" class="config-color" value="#ff334b" />
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Wick Up Color</span>
+              <input type="color" id="cfg-wick-up" class="config-color" value="#00e676" />
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Wick Down Color</span>
+              <input type="color" id="cfg-wick-down" class="config-color" value="#ff334b" />
+            </div>
+          </div>
+
+          <!-- Tab 2: Scales & Countdown -->
+          <div class="tab-pane" id="tab-scales">
+            <div class="settings-group-title">Price Scale & Timers</div>
+            <div class="setting-row checkbox-row">
+              <label class="checkbox-label">
+                <input type="checkbox" id="cfg-countdown-toggle" checked />
+                <span>Countdown To Bar Close (Hitungan Mundur pada Sumbu Harga)</span>
+              </label>
+            </div>
+            <div class="setting-row checkbox-row">
+              <label class="checkbox-label">
+                <input type="checkbox" id="cfg-last-price-label" checked />
+                <span>Symbol Last Price Label (Label Harga Terakhir)</span>
+              </label>
+            </div>
+            <div class="setting-row checkbox-row">
+              <label class="checkbox-label">
+                <input type="checkbox" id="cfg-ohlc-legend-toggle" checked />
+                <span>OHLC Bar Values (Legenda Bar di Header)</span>
+              </label>
+            </div>
+            <div class="setting-row checkbox-row">
+              <label class="checkbox-label">
+                <input type="checkbox" id="cfg-volume-toggle" checked />
+                <span>Volume Histogram (Volume Series di Bawah)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Tab 3: Appearance & Grids -->
+          <div class="tab-pane" id="tab-appearance">
+            <div class="settings-group-title">Background & Grids</div>
+            <div class="setting-row">
+              <span class="setting-label">Chart Background</span>
+              <input type="color" id="cfg-chart-bg" class="config-color" value="#07090e" />
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Grid Lines Color</span>
+              <input type="color" id="cfg-grid-color" class="config-color" value="#161c28" />
+            </div>
+            <div class="setting-row checkbox-row">
+              <label class="checkbox-label">
+                <input type="checkbox" id="cfg-grid-toggle" checked />
+                <span>Show Grid Lines (Tampilkan Garis Grid)</span>
+              </label>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Crosshair Style</span>
+              <select id="cfg-crosshair-style" class="config-input select">
+                <option value="dashed" selected>Dashed</option>
+                <option value="dotted">Dotted</option>
+                <option value="solid">Solid</option>
+              </select>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-reset-chart-settings" class="modal-btn secondary">Reset Defaults</button>
+        <button id="btn-save-chart-settings" class="modal-btn primary">Apply & Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Popup -->
+  <div id="toast" class="toast-msg"></div>
+
+
+
+  <!-- Application Modular Scripts -->
+  <script type="module" src="chart-assets/core/App.js?v=20260830_02"></script>
+
+  <!-- Global Status Bootstrapper -->
+  <script type="module">
+    function updateGlobalClock() {
+      const now = new Date();
+      const timeStr = now.toISOString().substr(11, 8) + ' UTC';
+      const timeEl = document.getElementById('global-time');
+      if (timeEl) timeEl.textContent = timeStr;
+    }
+    setInterval(updateGlobalClock, 1000);
+    updateGlobalClock();
+  </script>
+</body>
+</html>

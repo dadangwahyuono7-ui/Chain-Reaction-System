@@ -1,0 +1,128 @@
+/* CONTOH DHASBOARD1.png Exact 100% Styling Replica */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+    --bg-darker: #06090e;
+    --bg-dark: #0b0e14;
+    --bg-panel: #0f141d;
+    --bg-card: #131926;
+    --border-dark: #1a2333;
+    --border-light: #26334a;
+    
+    --neon-green: #00e676;
+    --neon-red: #ff1744;
+    --electric-blue: #29b6f6;
+    --gold: #ffd700;
+    --orange: #ff6b00;
+    --gray-text: #8a99b5;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    background-color: var(--bg-darker);
+    color: #e2e8f0;
+    font-family: 'Inter', sans-serif;
+    letter-spacing: -0.01em;
+    user-select: none;
+}
+
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: var(--bg-dark); }
+::-webkit-scrollbar-thumb { background: var(--border-dark); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+.panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-dark);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.panel-header {
+    background: var(--bg-dark);
+    border-bottom: 1px solid var(--border-dark);
+    padding: 4px 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--gray-text);
+    text-transform: uppercase;
+    shrink: 0;
+    white-space: nowrap;
+}
+
+.terminal-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9.5px;
+    font-family: 'Space Grotesk', monospace;
+}
+
+.terminal-table th {
+    position: sticky;
+    top: 0;
+    background-color: var(--bg-dark);
+    color: var(--gray-text);
+    font-weight: 600;
+    font-size: 8.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: left;
+    padding: 3px 4px;
+    border-bottom: 1px solid var(--border-dark);
+    z-index: 10;
+    white-space: nowrap;
+}
+
+.terminal-table td {
+    padding: 2.5px 4px;
+    border-bottom: 1px solid rgba(26, 35, 51, 0.4);
+    white-space: nowrap;
+}
+
+.terminal-table tr:hover td {
+    background-color: rgba(255, 215, 0, 0.04);
+}
+
+.badge-status {
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    display: inline-block;
+}
+
+.badge-active { background: rgba(0, 230, 118, 0.15); color: var(--neon-green); border: 1px solid rgba(0, 230, 118, 0.3); }
+.badge-reinforced { background: rgba(41, 182, 246, 0.15); color: var(--electric-blue); border: 1px solid rgba(41, 182, 246, 0.3); }
+.badge-absorbing { background: rgba(255, 107, 0, 0.15); color: var(--orange); border: 1px solid rgba(255, 107, 0, 0.3); }
+.badge-removed { background: rgba(138, 153, 181, 0.15); color: var(--gray-text); border: 1px solid rgba(138, 153, 181, 0.3); }
+
+.terminal-input {
+    background: var(--bg-dark);
+    border: 1px solid var(--border-dark);
+    color: #ffffff;
+    font-family: 'Space Grotesk', monospace;
+    font-size: 9px;
+    padding: 1px 4px;
+    border-radius: 2px;
+    outline: none;
+}
+
+.switch-toggle-green {
+    background-color: var(--neon-green);
+    color: #000;
+    font-weight: 800;
+    font-size: 8.5px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+}

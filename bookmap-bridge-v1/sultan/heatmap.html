@@ -1,0 +1,5092 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chain Reaction Pro | Order Flow Heatmap Terminal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #050811;
+      --bg-panel: #090d18;
+      --bg-card: #0d1322;
+      --border-subtle: #141b2e;
+      --border-accent: #1e293b;
+      --accent-cyan: #00e5ff;
+      --accent-blue: #38bdf8;
+      --accent-green: #00e676;
+      --accent-red: #ff2a4b;
+      --accent-gold: #ffd700;
+      --text-main: #f8fafc;
+      --text-muted: #64748b;
+      --text-sub: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    html, body {
+      width: 100vw;
+      max-width: 100vw;
+      height: 100vh;
+      max-height: 100vh;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ══════════ TOP INSTITUTIONAL HEADER ══════════ */
+    header {
+      height: 42px;
+      min-height: 42px;
+      width: 100vw;
+      max-width: 100vw;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      z-index: 20;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      overflow-x: auto;
+      overflow-y: hidden;
+      white-space: nowrap;
+      scrollbar-width: none;
+    }
+    header::-webkit-scrollbar {
+      display: none;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(135deg, rgba(0, 229, 255, 0.15), rgba(56, 189, 248, 0.05));
+      border: 1px solid rgba(0, 229, 255, 0.4);
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+
+    .brand-title {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 900;
+      font-size: 13px;
+      letter-spacing: 0.6px;
+      background: linear-gradient(135deg, #00e5ff 0%, #38bdf8 50%, #ffffff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .badge-v2 {
+      background: #00e5ff;
+      color: #06080f;
+      font-size: 9px;
+      font-weight: 900;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* PRICE & TELEMETRY PILLS */
+    .telemetry-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .symbol-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-accent);
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+
+    .symbol-name {
+      font-weight: 800;
+      font-size: 11px;
+      color: #f8fafc;
+    }
+
+    .live-spot-price {
+      font-size: 14px;
+      font-weight: 900;
+      color: var(--accent-green);
+      text-shadow: 0 0 10px rgba(0, 230, 118, 0.4);
+      letter-spacing: 0.5px;
+    }
+
+    .stat-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(13, 19, 34, 0.7);
+      border: 1px solid var(--border-subtle);
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 10px;
+    }
+
+    .stat-pill .label {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .stat-pill .val {
+      font-weight: 800;
+      color: #38bdf8;
+    }
+
+    /* OHLC HOVER READOUT */
+    .ohlc-readout {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      color: var(--text-sub);
+    }
+
+    .ohlc-readout span b {
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    /* RIGHT CONTROLS */
+    .controls-section {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* TIMEFRAME DROPDOWN SELECTOR */
+    .tf-dropdown-wrapper {
+      display: flex;
+      align-items: center;
+    }
+
+    .tf-select-pill {
+      background: #060913;
+      border: 1px solid var(--border-accent);
+      color: #00e5ff;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 800;
+      font-size: 11px;
+      padding: 4px 8px;
+      padding-right: 22px;
+      border-radius: 6px;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.2s ease;
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.15);
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2300e5ff' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 7px center;
+    }
+
+    .tf-select-pill:hover, .tf-select-pill:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
+    }
+
+    .tf-select-pill option {
+      background: #090e1c;
+      color: #f8fafc;
+      font-weight: 700;
+      padding: 6px 10px;
+    }
+
+    /* 2026-09-03: Dadang - "buat dropdown aja biar gak ilang ktika layar
+       gw besarin" - was a permanent inline row that could get squeezed out
+       of the flex header at some window sizes. Now a single trigger button
+       + an absolutely-positioned panel, so it never competes for header
+       width and can't disappear regardless of viewport size. */
+    .layer-toggles-wrapper {
+      position: relative;
+    }
+
+    .layer-toggles {
+      display: none;
+      flex-wrap: wrap;
+      gap: 5px;
+      /* position: fixed (not absolute) - header has overflow-y:hidden for
+         its own horizontal-scroll behavior, which would clip an absolutely
+         positioned descendant trying to extend below the header's box.
+         fixed escapes that; exact top/right set via JS from the trigger's
+         real position when opened. */
+      position: fixed;
+      width: 268px;
+      /* 2026-09-03: real bug, not caching - on a short/mobile viewport
+         this panel (no height cap before) extended past the bottom of
+         the screen, so the last few buttons (Screenshot, Kalibrasi MT5)
+         were rendered off-screen with no way to reach them. Cap height
+         to the viewport and scroll internally instead. */
+      max-height: calc(100vh - 60px);
+      overflow-y: auto;
+      background: #060913;
+      border: 1px solid var(--border-accent);
+      border-radius: 8px;
+      padding: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+      z-index: 200;
+    }
+
+    .layer-toggles.open {
+      display: flex;
+    }
+
+    .layers-menu-trigger.open {
+      background: rgba(0, 229, 255, 0.12);
+      border-color: #00e5ff;
+      color: #00e5ff;
+    }
+
+    .toggle-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-accent);
+      color: var(--text-sub);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .toggle-btn:hover {
+      border-color: #38bdf8;
+      color: #ffffff;
+    }
+
+    .toggle-btn.active {
+      background: rgba(0, 229, 255, 0.12);
+      border-color: #00e5ff;
+      color: #00e5ff;
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
+    }
+
+    .toggle-btn.active.doktrin-btn {
+      background: rgba(255, 215, 0, 0.12);
+      border-color: #ffd700;
+      color: #ffd700;
+      box-shadow: 0 0 12px rgba(255, 215, 0, 0.25);
+    }
+
+    .toggle-btn.active.npoc-btn {
+      background: rgba(255, 214, 0, 0.14);
+      border-color: #ffd600;
+      color: #ffd600;
+      box-shadow: 0 0 12px rgba(255, 214, 0, 0.28);
+    }
+
+    .toggle-btn.active.cvd-btn {
+      background: rgba(0, 229, 255, 0.14);
+      border-color: #00e5ff;
+      color: #00e5ff;
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.28);
+    }
+
+    .toggle-btn.active.runway-btn {
+      background: rgba(16, 185, 129, 0.14);
+      border-color: #10b981;
+      color: #10b981;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.28);
+    }
+
+    .toggle-btn.active.trap-btn {
+      background: rgba(239, 68, 68, 0.14);
+      border-color: #ef4444;
+      color: #ef4444;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.28);
+    }
+
+    /* ══════════ MAIN WORKSPACE & CANVAS ══════════ */
+    #chart-workspace {
+      width: 100vw;
+      max-width: 100vw;
+      flex: 1;
+      position: relative;
+      background: var(--bg-base);
+      overflow: hidden;
+    }
+
+    canvas#main-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      user-select: none;
+    }
+
+    .brand-title-short {
+      display: none;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 900;
+      font-size: 11px;
+      color: #00e5ff;
+    }
+
+    /* 🐋 WHALE INFLOW NOTIFICATION TOAST */
+    .whale-toast {
+      position: absolute;
+      top: 14px;
+      right: 230px;
+      background: rgba(6, 11, 24, 0.94);
+      backdrop-filter: blur(10px);
+      border-radius: 7px;
+      padding: 6px 12px;
+      font-size: 10.5px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
+      z-index: 50;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      transform: translateY(-20px);
+      opacity: 0;
+      pointer-events: none;
+    }
+    .whale-toast.active {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    .whale-toast.buy-alert {
+      border: 1px solid #00e676;
+      color: #00e676;
+      box-shadow: 0 0 16px rgba(0, 230, 118, 0.4);
+    }
+    .whale-toast.sell-alert {
+      border: 1px solid #ff2a4b;
+      color: #ff2a4b;
+      box-shadow: 0 0 16px rgba(255, 42, 75, 0.4);
+    }
+    @media (max-width: 900px) {
+      .whale-toast {
+        right: 120px;
+        top: 6px;
+        padding: 4px 8px;
+        font-size: 8.5px;
+      }
+    }
+
+    /* ══════════ BOTTOM FOOTER ══════════ */
+    footer {
+      height: 24px;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      font-size: 9.5px;
+      color: var(--text-muted);
+      z-index: 20;
+    }
+
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .footer-status-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #00e676;
+      box-shadow: 0 0 8px #00e676;
+      animation: pulseAnim 1.8s infinite;
+    }
+
+    @keyframes pulseAnim {
+      0% { transform: scale(0.9); opacity: 0.7; }
+      50% { transform: scale(1.3); opacity: 1; }
+      100% { transform: scale(0.9); opacity: 0.7; }
+    }
+
+    /* ══════════ MOBILE & TABLET RESPONSIVE OVERRIDES (FINAL CASCADE) ══════════ */
+    @media (max-width: 1024px) {
+      header {
+        height: 36px !important;
+        min-height: 36px !important;
+        padding: 0 4px !important;
+        gap: 4px !important;
+      }
+      .brand-title-full {
+        display: none !important;
+      }
+      .brand-title-short {
+        display: inline-block !important;
+      }
+      .symbol-name {
+        display: none !important;
+      }
+      .live-spot-price {
+        font-size: 11px !important;
+      }
+      .stat-pill {
+        padding: 2px 4px !important;
+        font-size: 8px !important;
+      }
+      .stat-pill.pill-pulse {
+        display: none !important;
+      }
+      .ohlc-readout {
+        display: none !important;
+      }
+      .tf-select-pill {
+        font-size: 9px !important;
+        padding: 2px 5px !important;
+        padding-right: 16px !important;
+      }
+      .toggle-btn {
+        padding: 2px 5px !important;
+        font-size: 8px !important;
+        gap: 0 !important;
+      }
+      .toggle-btn span.btn-label {
+        display: none !important;
+      }
+      .toggle-btn span.btn-icon {
+        font-size: 11px !important;
+      }
+      .whale-toast {
+        right: 120px !important;
+        top: 6px !important;
+        padding: 4px 8px !important;
+        font-size: 8.5px !important;
+      }
+      .user-session-bar {
+        padding: 2px 4px !important;
+        gap: 3px !important;
+        right: 2px !important;
+      }
+      #btn-quick-logout {
+        padding: 3px 7px !important;
+        font-size: 10px !important;
+      }
+      #user-display-badge {
+        font-size: 9px !important;
+        padding: 2px 5px !important;
+      }
+      footer .footer-hints {
+        display: none !important;
+      }
+      footer .footer-sig {
+        display: none !important;
+      }
+    }
+
+    /* 🚪 USER SESSION & LOGOUT BAR (STICKY TOP RIGHT) */
+    .user-session-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+      flex-shrink: 0;
+      position: sticky;
+      right: 6px;
+      z-index: 35;
+      background: rgba(11, 15, 25, 0.95);
+      padding: 3px 6px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: -4px 0 12px rgba(0, 0, 0, 0.6);
+    }
+    #user-display-badge {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 5px;
+      background: rgba(0, 229, 255, 0.1);
+      border: 1px solid rgba(0, 229, 255, 0.35);
+      color: #00e5ff;
+      white-space: nowrap;
+      display: none;
+      align-items: center;
+      gap: 4px;
+    }
+    #btn-quick-logout {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 12px;
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(185, 28, 28, 0.35));
+      border: 1px solid rgba(239, 68, 68, 0.85);
+      border-radius: 6px;
+      color: #fee2e2;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+    }
+    #btn-quick-logout:hover {
+      background: rgba(239, 68, 68, 0.55) !important;
+      color: #ffffff !important;
+      border-color: #ef4444 !important;
+      box-shadow: 0 0 16px rgba(239, 68, 68, 0.7) !important;
+      transform: scale(1.03);
+    }
+    #btn-quick-logout:active {
+      transform: scale(0.97);
+    }
+
+    /* 🔐 COMMANDER LOGIN GATE */
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 999999;
+      background: radial-gradient(circle at center, #0c131d 0%, #05080f 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 420px;
+      background: rgba(12, 19, 28, 0.94);
+      border: 1px solid rgba(0, 229, 255, 0.28);
+      border-radius: 14px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 229, 255, 0.12);
+      padding: 32px 28px;
+      animation: fadeInLogin 0.35s ease-out;
+    }
+
+    @keyframes fadeInLogin {
+      from { opacity: 0; transform: scale(0.96) translateY(8px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .login-badge-top {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 12px;
+    }
+
+    .login-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 2px solid #00e5ff;
+      box-shadow: 0 0 16px rgba(168, 85, 247, 0.4);
+      object-fit: cover;
+    }
+
+    .login-brand-title {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 17px;
+      font-weight: 900;
+      letter-spacing: 0.8px;
+      background: linear-gradient(135deg, #00e5ff 0%, #a855f7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .login-brand-sub {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: #94a3b8;
+      letter-spacing: 0.1em;
+      margin-top: 2px;
+    }
+
+    .login-tagline {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: #fbbf24;
+      letter-spacing: 0.12em;
+      margin-top: 8px;
+      text-transform: uppercase;
+    }
+
+    .login-divider {
+      height: 1px;
+      width: 100%;
+      background: linear-gradient(90deg, rgba(0, 229, 255, 0.4), rgba(168, 85, 247, 0.4), transparent);
+      margin: 18px 0 22px;
+    }
+
+    .login-field {
+      margin-bottom: 18px;
+    }
+
+    .login-field label {
+      display: block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      color: #cbd5e1;
+      letter-spacing: 0.08em;
+      margin-bottom: 7px;
+    }
+
+    .login-field input {
+      width: 100%;
+      background: rgba(6, 10, 18, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 7px;
+      padding: 12px 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #ffffff;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .login-field input:focus {
+      border-color: #00e5ff;
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
+    }
+
+    .login-options {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
+    .login-remember {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+    }
+
+    .login-remember input {
+      accent-color: #00e5ff;
+      cursor: pointer;
+    }
+
+    .login-error {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #f87171;
+      padding: 9px 12px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .login-btn-submit {
+      width: 100%;
+      background: linear-gradient(135deg, #00e5ff 0%, #00b4d8 100%);
+      color: #050811;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      border: none;
+      border-radius: 7px;
+      padding: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform 0.15s, box-shadow 0.2s, filter 0.2s;
+      box-shadow: 0 4px 18px rgba(0, 229, 255, 0.3);
+    }
+
+    .login-btn-submit:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.1);
+      box-shadow: 0 6px 22px rgba(0, 229, 255, 0.45);
+    }
+
+    .login-btn-submit:active {
+      transform: translateY(1px);
+    }
+
+    .login-footer {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      color: #64748b;
+      text-align: center;
+      margin-top: 24px;
+      letter-spacing: 0.06em;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding-top: 14px;
+    }
+
+  
+    /* 🔒 MINI PREVIEW TEASER MODE (READ-ONLY UN-ENLARGEABLE) */
+    html.in-preview, html.in-preview body {
+      overflow: hidden !important;
+      
+      
+    }
+    html.in-preview header, html.in-preview footer, html.in-preview .login-overlay {
+      display: none !important;
+    }
+    html.in-preview #chart-workspace {
+      top: 0 !important;
+      bottom: 0 !important;
+      height: 100vh !important;
+    }
+
+    /* ⚡ FOREXFACTORY NEWS RADAR & VACUUM ALERT MODAL */
+    .news-radar-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 5px;
+      background: rgba(245, 158, 11, 0.14);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #fbbf24;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .news-radar-pill.alert-imminent {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: #ef4444;
+      color: #fca5a5;
+      animation: pulseGlowNews 1.2s infinite;
+    }
+    .pulse-dot-news {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #fbbf24;
+      display: inline-block;
+    }
+    .news-radar-pill.alert-imminent .pulse-dot-news {
+      background: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+    }
+    @keyframes pulseGlowNews {
+      0% { box-shadow: 0 0 4px rgba(239, 68, 68, 0.3); }
+      50% { box-shadow: 0 0 16px rgba(239, 68, 68, 0.7); }
+      100% { box-shadow: 0 0 4px rgba(239, 68, 68, 0.3); }
+    }
+
+    /* 🚨 CYBER VACUUM RADAR FLOATING MODAL */
+    .vacuum-radar-modal {
+      position: absolute;
+      top: 65px;
+      right: 18px;
+      width: 360px;
+      max-width: calc(100vw - 36px);
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(9, 14, 26, 0.98) 100%);
+      border: 2px solid #f59e0b;
+      border-radius: 10px;
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.75), 0 0 25px rgba(245, 158, 11, 0.35);
+      z-index: 250;
+      overflow: hidden;
+      animation: modalSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .vacuum-radar-modal.bias-sell {
+      border-color: #ef4444;
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.75), 0 0 25px rgba(239, 68, 68, 0.4);
+    }
+    .vacuum-radar-modal.bias-buy {
+      border-color: #10b981;
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.75), 0 0 25px rgba(16, 185, 129, 0.4);
+    }
+    @keyframes modalSlideIn {
+      from { transform: translateY(-20px) scale(0.95); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+    .v-modal-header {
+      background: rgba(0, 0, 0, 0.45);
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .v-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 800;
+      color: #fbbf24;
+      letter-spacing: 0.04em;
+    }
+    .bias-sell .v-title { color: #f87171; }
+    .bias-buy .v-title { color: #34d399; }
+    .v-btn-close {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .v-btn-close:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+    .v-body { padding: 12px 14px; }
+    .v-headline {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 10px;
+      line-height: 1.35;
+    }
+    .v-details-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .v-detail-box {
+      background: rgba(5, 8, 15, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 6px;
+      padding: 7px 9px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .v-lbl { font-size: 9px; color: #64748b; margin-bottom: 3px; font-weight: 700; }
+    .v-val { font-size: 12px; font-weight: 800; color: #f8fafc; }
+    .v-sub { font-size: 9px; color: #94a3b8; margin-top: 2px; }
+    .v-ai-box {
+      background: rgba(0, 229, 255, 0.05);
+      border: 1px solid rgba(0, 229, 255, 0.25);
+      border-radius: 6px;
+      padding: 9px 11px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .v-ai-header { font-size: 9.5px; font-weight: 800; color: #00e5ff; margin-bottom: 5px; }
+    .v-ai-text { font-size: 10.5px; color: #cbd5e1; line-height: 1.45; }
+
+  </style>
+  <script>
+    if (window.location.search.indexOf('preview=1') !== -1) {
+      document.write('<style>#login-overlay, header, footer { display: none !important; } html, body { overflow: hidden !important;   } #chart-workspace { top: 0 !important; bottom: 0 !important; height: 100vh !important; }</style>');
+    }
+  </script>
+</head>
+<body>
+
+  <!-- ══════════ TOP INSTITUTIONAL HEADER ══════════ -->
+  <header>
+    <div class="brand-section">
+      <div class="brand-logo-badge">
+        <span style="font-size: 13px;">👑</span>
+        <span class="brand-title brand-title-full">CHAIN REACTION ENGINE</span>
+        <span class="brand-title-short">CR-PRO</span>
+        <span class="badge-v2">v2.0</span>
+      </div>
+
+      <div class="telemetry-row">
+        <div class="symbol-pill">
+          <span class="symbol-name">XAUUSD / GC</span>
+          <span class="live-spot-price" id="top-price">$4328.02</span>
+        </div>
+
+        <div class="stat-pill">
+          <span class="label">CVD:</span>
+          <span class="val" id="top-cvd" style="color: #ff2a4b;">-4.0L</span>
+        </div>
+
+        <div class="stat-pill pill-pulse">
+          <span class="label">PULSE:</span>
+          <span class="val" id="top-pulse" style="color: #ff2a4b;">58.8% SELL</span>
+        </div>
+
+        <!-- Rithmic->MT5-equivalent price mapping freshness (Dadang's spec, 2026-09-04) -->
+        <div class="stat-pill" id="basis-status-pill" title="Reference feed status">
+          <span class="label">Basis:</span>
+          <span class="val" id="top-basis-status" style="color: #999;">--</span>
+        </div>
+
+        <!-- ⚡ FOREXFACTORY HIGH IMPACT NEWS RADAR -->
+        <div class="stat-pill news-radar-pill" id="news-radar-pill" style="display: none;" title="Kalender ForexFactory High Impact">
+          <span class="pulse-dot-news" id="news-pulse-dot"></span>
+          <span id="news-radar-text">NEWS --:--</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- OHLC READOUT -->
+    <div class="ohlc-readout">
+      <span>O: <b id="bar-o">4328.10</b></span>
+      <span>H: <b id="bar-h">4328.70</b></span>
+      <span>L: <b id="bar-l">4326.88</b></span>
+      <span>C: <b id="bar-c">4328.02</b></span>
+      <span>V: <b id="bar-v">349</b></span>
+    </div>
+
+    <!-- TIMEFRAME DROPDOWN & LAYER SWITCHES -->
+    <div class="controls-section">
+      <div class="tf-dropdown-wrapper">
+        <select id="tf-select" class="tf-select-pill">
+          <option value="1S">⚡ 1s (Ultra Fast Test)</option>
+          <option value="S15">⚡ S15</option>
+          <option value="M1">⚡ M1</option>
+          <option value="M5" selected>🔥 M5</option>
+          <option value="M15">📊 M15</option>
+          <option value="M30">📊 M30</option>
+          <option value="H1">🏛️ H1</option>
+          <option value="H4">👑 H4</option>
+        </select>
+      </div>
+
+      <div class="layer-toggles-wrapper">
+      <button class="toggle-btn layers-menu-trigger" id="btn-layers-menu" title="Chart Layers & Tools">
+        <span class="btn-icon">☰</span><span class="btn-label">LAYERS</span>
+      </button>
+      <div class="layer-toggles" id="layer-toggles-panel">
+        <button class="toggle-btn active" id="btn-toggle-candle" title="Candlesticks">
+          <span class="btn-icon">🕯️</span><span class="btn-label">Candles</span>
+        </button>
+        <button class="toggle-btn active" id="btn-toggle-heatmap" title="Order Flow Heatmap">
+          <span class="btn-icon">🔥</span><span class="btn-label">Heatmap</span>
+        </button>
+        <button class="toggle-btn active" id="btn-toggle-bubbles" title="Whale Bubbles">
+          <span class="btn-icon">🐋</span><span class="btn-label">Bubbles</span>
+        </button>
+        <button class="toggle-btn active" id="btn-toggle-profile" title="Volume Profile">
+          <span class="btn-icon">📊</span><span class="btn-label">Profile</span>
+        </button>
+        <button class="toggle-btn active doktrin-btn" id="btn-toggle-cmp" title="Doktrin V4 CMP">
+          <span class="btn-icon">🏛️</span><span class="btn-label">Doktrin</span>
+        </button>
+        <button class="toggle-btn active npoc-btn" id="btn-toggle-npoc" title="Naked POC (NPOC) Magnet Lines">
+          <span class="btn-icon">🧲</span><span class="btn-label">NPOC</span>
+        </button>
+        <button class="toggle-btn active runway-btn" id="btn-toggle-runway" title="Live Runway & Veto S&D HUD">
+          <span class="btn-icon">🛡️</span><span class="btn-label">Runway</span>
+        </button>
+        <button class="toggle-btn active trap-btn" id="btn-toggle-traps" title="Trapped Traders & Absorption Climax">
+          <span class="btn-icon">🪤</span><span class="btn-label">Traps</span>
+        </button>
+        <button class="toggle-btn" id="btn-autofit" title="Auto-Fit Price & Time">
+          <span class="btn-icon">🎯</span><span class="btn-label">FIT</span>
+        </button>
+        <button class="toggle-btn" id="btn-fullscreen" title="Full Screen Immersion">
+          <span class="btn-icon">⛶</span><span class="btn-label">FULL</span>
+        </button>
+
+        <div class="drawing-tools-group" style="display: flex; gap: 4px; border-left: 1px solid rgba(255,255,255,0.12); padding-left: 5px;">
+          <button class="toggle-btn" id="btn-draw-line" title="Draw Trendline [L]">
+            <span class="btn-icon">📐</span><span class="btn-label">Line</span>
+          </button>
+          <button class="toggle-btn" id="btn-draw-box" title="Draw Rectangle Box [B]">
+            <span class="btn-icon">🔲</span><span class="btn-label">Box</span>
+          </button>
+          <button class="toggle-btn" id="btn-draw-undo" title="Hapus Gambar Terakhir [Z]">
+            <span class="btn-icon">↩️</span><span class="btn-label">Undo</span>
+          </button>
+          <button class="toggle-btn" id="btn-draw-clear" title="Hapus Semua Gambar">
+            <span class="btn-icon">🗑️</span>
+          </button>
+          <button class="toggle-btn" id="btn-screenshot" title="Screenshot Chart [S]">
+            <span class="btn-icon">📸</span>
+          </button>
+          <button class="toggle-btn" id="btn-calibrate-offset" title="Kalibrasi harga ke MT5 asli lo">
+            <span class="btn-icon">⚖️</span><span class="btn-label">Kalibrasi MT5</span>
+          </button>
+          <button class="toggle-btn" id="btn-logout" title="Kunci / Logout Terminal" onclick="handleCommanderLogout()" style="border-color: rgba(239, 68, 68, 0.45); color: #fca5a5;">
+            <span class="btn-icon">🚪</span><span class="btn-label">Logout</span>
+          </button>
+          <a href="/admin.html" target="_blank" class="toggle-btn" id="btn-admin-deck" title="Admin Deck · Lisensi User" style="text-decoration: none; color: inherit;">
+            <span class="btn-icon">👑</span><span class="btn-label">Admin</span>
+          </a>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <!-- 🚪 USER SESSION & LOGOUT BUTTON (STICKY PERMANENT TOP-RIGHT) -->
+    <div class="user-session-bar" id="user-session-bar">
+      <span id="user-display-badge">👤 User</span>
+      <button onclick="handleCommanderLogout()" id="btn-quick-logout" title="Keluar / Ganti Akun">
+        <span>🚪</span><span>LOGOUT</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 🔐 COMMANDER LOGIN GATE -->
+  <div id="login-overlay" class="login-overlay">
+    <div class="login-card">
+      <div class="login-badge-top">
+        <img src="/assets/logo.png" alt="Commander Dadang" class="login-avatar" />
+        <div>
+          <div class="login-brand-title">CHAIN REACTION PRO</div>
+          <div class="login-brand-sub">COMMANDER DADANG WAHYUONO</div>
+        </div>
+      </div>
+      
+      <div class="login-tagline">DISCIPLINE. STRATEGY. EXECUTION.</div>
+      <div class="login-divider"></div>
+      
+      <form id="login-form" onsubmit="return handleCommanderLogin(event)">
+        <div class="login-field">
+          <label for="login-username">IDENTITAS OPERATOR (USER)</label>
+          <input type="text" id="login-username" placeholder="Username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required />
+        </div>
+        
+        <div class="login-field">
+          <label for="login-password">KUNCI AKSES (PASSWORD)</label>
+          <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" required />
+        </div>
+        
+        <div class="login-options">
+          <label class="login-remember">
+            <input type="checkbox" id="login-remember" checked />
+            <span>Ingat Saya di Perangkat Ini</span>
+          </label>
+        </div>
+        
+        <div id="login-error" class="login-error" style="display: none;">
+          ⛔ Akses Ditolak: Kredensial tidak valid!
+        </div>
+        
+        <button type="submit" class="login-btn-submit">
+          <span>MASUK KE TERMINAL</span> ➔
+        </button>
+      </form>
+      
+      <div class="login-footer">
+        PROPRIETARY INSTITUTIONAL SYSTEM • CME GC ORDER FLOW
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ MAIN WORKSPACE ══════════ -->
+  <div id="chart-workspace">
+    <canvas id="main-canvas"></canvas>
+
+    <!-- 🐋 WHALE INFLOW NOTIFICATION TOAST -->
+    <div id="whale-toast" class="whale-toast"></div>
+
+    <!-- 🚨 PRE-NEWS LIQUIDITY VACUUM RADAR MODAL -->
+    <div id="vacuum-radar-modal" class="vacuum-radar-modal" style="display: none;">
+      <div class="v-modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="v-title" id="v-modal-title">🚨 PRE-NEWS LIQUIDITY VACUUM RADAR</span>
+        </div>
+        <button onclick="dismissVacuumAlert()" class="v-btn-close" title="Tutup Alert">✕</button>
+      </div>
+      <div class="v-body">
+        <div class="v-headline" id="v-headline" style="color: #ef4444;">LANTAI BID DICABUT PAUS! (RUANG HAMPA DROP)</div>
+        <div class="v-details-grid">
+          <div class="v-detail-box">
+            <div class="v-lbl">KATALIS FOREXFACTORY</div>
+            <div class="v-val" id="v-news-name">Non-Farm Payroll</div>
+            <div class="v-sub" id="v-countdown">⏱️ Rilis dalam: 01:52</div>
+          </div>
+          <div class="v-detail-box">
+            <div class="v-lbl">TEMBOK DICABUT</div>
+            <div class="v-val" id="v-wall-detail" style="color: #ff3366;">34L @ $4470.50</div>
+            <div class="v-sub" id="v-wall-age">Bertahan: 45 Menit</div>
+          </div>
+          <div class="v-detail-box">
+            <div class="v-lbl">REKOMENDASI ARAH</div>
+            <div class="v-val" id="v-action-bias" style="color: #ff3366;">🔴 SELL / SHORT</div>
+            <div class="v-sub">Siapkan 10 Layer + SL</div>
+          </div>
+          <div class="v-detail-box">
+            <div class="v-lbl">TARGET TP MAKSIMAL</div>
+            <div class="v-val" id="v-anchor-tp" style="color: #00e5ff;">🎯 $4380.00</div>
+            <div class="v-sub">Tembok Baja yang Gak Hilang</div>
+          </div>
+        </div>
+        <div class="v-ai-box">
+          <div class="v-ai-header">🧠 GROQ AI TACTICAL BRIEFING (COMMANDER DADANG):</div>
+          <div class="v-ai-text" id="v-ai-text">Memproses analisa taktis pasar...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ BOTTOM FOOTER ══════════ -->
+  <footer>
+    <div class="footer-left">
+      <div class="footer-status-pill">
+        <div class="pulse-dot"></div>
+        <span id="footer-live-status" style="color: #00e676; font-weight: 800; font-size: 10px;">LIVE CONNECTED • 60 FPS</span>
+      </div>
+      <span class="footer-hints">🖱️ Drag: Pan Waktu & Harga | ⚙️ Scroll: Zoom | ↕️ Drag Skala: Vertikal</span>
+    </div>
+    <div class="footer-sig">
+      <span>👑 Dadang Wahyuono Proprietary Order Flow Engine</span>
+    </div>
+  </footer>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // 🔒 TEASER PREVIEW DETECTION
+    const isTeaserPreview = window.location.search.includes('preview=1');
+    if (isTeaserPreview) {
+      document.documentElement.classList.add('in-preview');
+    }
+
+
+    // 🔐 COMMANDER LOGIN & AUTHENTICATION GATE
+    window.handleCommanderLogin = async function(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      const userEl = document.getElementById('login-username');
+      const passEl = document.getElementById('login-password');
+      const errEl = document.getElementById('login-error');
+      const remEl = document.getElementById('login-remember');
+      const submitBtn = document.querySelector('.login-btn-submit');
+
+      // Bersihkan spasi biasa dan spasi ghaib unicode (zero-width & non-breaking space dari copy-paste HP)
+      const cleanInput = (val) => (val || '').replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '').trim();
+      const u = cleanInput(userEl ? userEl.value : '').toLowerCase();
+      const p = cleanInput(passEl ? passEl.value : '');
+
+      if (!u || !p) {
+        if (errEl) {
+          errEl.style.display = 'flex';
+          errEl.innerText = '⚠️ Silakan isi Username dan Password!';
+        }
+        return false;
+      }
+
+      // 1. Kredensial Khusus Commander Dadang (Master Key 278868 / DADANG - Universal Instant Bypass):
+      if (p === '278868' || p.toUpperCase() === 'DADANG' || ((u === 'commander' || u === 'comander') && p === '278868')) {
+        const usernameToSave = u || 'commander';
+        const storage = (remEl && remEl.checked) ? localStorage : sessionStorage;
+        storage.setItem('cr_auth_user', usernameToSave);
+        storage.removeItem('cr_auth_expires');
+        const overlay = document.getElementById('login-overlay');
+        if (overlay) overlay.style.display = 'none';
+        updateUserBadge(usernameToSave);
+        return false;
+      }
+
+      // 2. Verifikasi Server Real-Time dengan Auto-Retry (Mencegah Glitch Sinyal HP / Cloudflare Timeout):
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span>MEMERIKSA AKSES...</span> ⏳';
+      }
+      if (errEl) errEl.style.display = 'none';
+
+      let success = false;
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const r = await fetch('/api/auth/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: u, password: p }),
+            cache: 'no-store'
+          });
+
+          if (r.ok) {
+            const res = await r.json();
+            if (res.valid) {
+              if (res.expired) {
+                if (errEl) {
+                  errEl.style.display = 'flex';
+                  errEl.innerHTML = `⛔ <b>${res.message || 'Sesi Habis: Masa Trial (3 Hari) telah berakhir! Hubungi Commander Dadang.'}</b>`;
+                }
+              } else {
+                const storage = (remEl && remEl.checked) ? localStorage : sessionStorage;
+                storage.setItem('cr_auth_user', u);
+                if (res.expires_at) {
+                  storage.setItem('cr_auth_expires', res.expires_at.toString());
+                } else {
+                  storage.removeItem('cr_auth_expires');
+                }
+                updateUserBadge(u);
+                const overlay = document.getElementById('login-overlay');
+                if (overlay) overlay.style.display = 'none';
+              }
+            } else {
+              if (errEl) {
+                errEl.style.display = 'flex';
+                errEl.innerText = '⛔ Akses Ditolak: Username atau Password salah!';
+              }
+            }
+            success = true;
+            break;
+          } else if (r.status === 502 || r.status === 504 || r.status === 503) {
+            await new Promise(res => setTimeout(res, 350));
+            continue;
+          }
+        } catch (err) {
+          await new Promise(res => setTimeout(res, 350));
+        }
+      }
+
+      // Fallback Darurat jika Cloudflare proxy offline tapi kredensial trial1 resmi aktif
+      if (!success) {
+        if (u === 'trial1' && (p === 'trial1' || p.toLowerCase() === 'trial1')) {
+          const storage = (remEl && remEl.checked) ? localStorage : sessionStorage;
+          storage.setItem('cr_auth_user', 'trial1');
+          storage.setItem('cr_auth_expires', '1788777061');
+          updateUserBadge('trial1');
+          const overlay = document.getElementById('login-overlay');
+          if (overlay) overlay.style.display = 'none';
+          success = true;
+        } else if (errEl) {
+          errEl.style.display = 'flex';
+          errEl.innerHTML = '⛔ <b>Gagal menghubungi server!</b><br><small style="color:var(--ghost);font-size:10px;">Pastikan buka lewat <b>https://trade.dadangchatai.com/heatmap.html</b></small>';
+        }
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span>MASUK KE TERMINAL</span> ➔';
+      }
+      return false;
+    };
+
+    function updateUserBadge(username) {
+      const badge = document.getElementById('user-display-badge');
+      if (badge) {
+        if (!username) {
+          badge.style.display = 'none';
+          return;
+        }
+        badge.style.display = 'inline-flex';
+        const isMaster = (username.toLowerCase() === 'commander' || username.toLowerCase() === 'comander');
+        if (isMaster) {
+          badge.innerHTML = '👑 <b>COMMANDER</b>';
+          badge.style.color = '#fbbf24';
+          badge.style.borderColor = 'rgba(251, 191, 36, 0.5)';
+          badge.style.background = 'rgba(251, 191, 36, 0.15)';
+        } else {
+          badge.innerHTML = `👤 <b>${username.toUpperCase()}</b>`;
+          badge.style.color = '#00e5ff';
+          badge.style.borderColor = 'rgba(0, 229, 255, 0.4)';
+          badge.style.background = 'rgba(0, 229, 255, 0.12)';
+        }
+        sendPresenceHeartbeat();
+      }
+    }
+
+    // 📡 LIVE TESTER PRESENCE HEARTBEAT (15s Periodic)
+    async function sendPresenceHeartbeat() {
+      const u = localStorage.getItem('cr_auth_user') || sessionStorage.getItem('cr_auth_user');
+      if (!u) return;
+      try {
+        await fetch('/api/presence/ping', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u }),
+          keepalive: true
+        });
+      } catch (e) {}
+    }
+    setInterval(sendPresenceHeartbeat, 15000);
+
+    window.handleCommanderLogout = function() {
+      try {
+        localStorage.removeItem('cr_auth_user');
+        sessionStorage.removeItem('cr_auth_user');
+        localStorage.removeItem('cr_auth_expires');
+        sessionStorage.removeItem('cr_auth_expires');
+      } catch (e) {}
+      updateUserBadge('');
+      const overlay = document.getElementById('login-overlay');
+      if (overlay) {
+        overlay.style.display = 'flex';
+        overlay.style.opacity = '1';
+        overlay.style.visibility = 'visible';
+      }
+      const errEl = document.getElementById('login-error');
+      if (errEl) {
+        errEl.style.display = 'none';
+        errEl.innerHTML = '';
+      }
+      const userEl = document.getElementById('login-username');
+      if (userEl) {
+        userEl.value = '';
+        setTimeout(() => userEl.focus(), 150);
+      }
+      const passEl = document.getElementById('login-password');
+      if (passEl) passEl.value = '';
+    };
+
+    function checkInitialAuth() {
+      const savedUser = localStorage.getItem('cr_auth_user') || sessionStorage.getItem('cr_auth_user');
+      if (!savedUser) {
+        updateUserBadge('');
+        return;
+      }
+
+      // Master Commander bypass
+      if (savedUser === 'commander' || savedUser === 'comander') {
+        updateUserBadge(savedUser);
+        const overlay = document.getElementById('login-overlay');
+        if (overlay) overlay.style.display = 'none';
+        return;
+      }
+
+      // Check expiration timestamp if available
+      const expStr = localStorage.getItem('cr_auth_expires') || sessionStorage.getItem('cr_auth_expires');
+      if (expStr) {
+        const expSec = parseInt(expStr);
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (nowSec > expSec) {
+          localStorage.removeItem('cr_auth_user');
+          sessionStorage.removeItem('cr_auth_user');
+          localStorage.removeItem('cr_auth_expires');
+          sessionStorage.removeItem('cr_auth_expires');
+          updateUserBadge('');
+          const overlay = document.getElementById('login-overlay');
+          if (overlay) overlay.style.display = 'flex';
+          const errEl = document.getElementById('login-error');
+          if (errEl) {
+            errEl.style.display = 'flex';
+            errEl.innerHTML = '⛔ <b>Sesi Habis!</b><br>Masa Trial (3 Hari) telah berakhir. Silakan hubungi <b>Commander Dadang</b> untuk aktivasi lisensi VIP!';
+          }
+          return;
+        }
+      }
+
+      // Sesi masih aktif & valid
+      updateUserBadge(savedUser);
+      const overlay = document.getElementById('login-overlay');
+      if (overlay) overlay.style.display = 'none';
+    }
+    checkInitialAuth();
+
+
+    const canvas = document.getElementById('main-canvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const container = document.getElementById('chart-workspace');
+
+    // DOM Header Elements
+    const topPriceEl = document.getElementById('top-price');
+    const topCvdEl = document.getElementById('top-cvd');
+    const topPulseEl = document.getElementById('top-pulse');
+    const topBasisStatusEl = document.getElementById('top-basis-status');
+    const basisStatusPillEl = document.getElementById('basis-status-pill');
+    const barOEl = document.getElementById('bar-o');
+    const barHEl = document.getElementById('bar-h');
+    const barLEl = document.getElementById('bar-l');
+    const barCEl = document.getElementById('bar-c');
+    const barVEl = document.getElementById('bar-v');
+
+    // --- STATE LAYER TOGGLES ---
+    let showCandles = true;
+    let showHeatmap = true;
+    let showBubbles = true;
+    let showProfile = true;
+    let showNpoc = true;      // 🧲 Naked POC (NPOC) Magnet Lines
+    let showRunway = true;    // 🛡️ Live Runway & Veto S&D HUD
+    let showTraps = true;     // 🪤 Trapped Traders & Absorption Climax
+    let showCmp = true;
+    let showSession = true;   // Session Highlighter
+    let showFootprint = true; // Per-Candle Delta Footprint
+    let currentTimeframe = 'M5';
+
+    // Price Alert State
+    let priceAlertLevel = null; // null or number
+    let priceAlertTriggered = false;
+    let priceAlertBeepCtx = null;
+
+    // 👻 RADAR SPOOFING (WALL PULLING) STATE (Commander Dadang Doctrine)
+    // Tahan reload via sessionStorage (auto-prune yang > 75s)
+    let spoofEvents = [];
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('cr_spoof_events') || '[]');
+      const initNow = Date.now() / 1000;
+      spoofEvents = saved.filter(e => (initNow - e.pulledTime) < 75);
+    } catch(e) {}
+
+    function persistSpoofEvents() {
+      try {
+        sessionStorage.setItem('cr_spoof_events', JSON.stringify(spoofEvents));
+      } catch(e) {}
+    }
+
+    // ⚡ PRE-NEWS LIQUIDITY VACUUM RADAR & AUDIO SYNTHESIZER
+    let lastAlertedVacuumId = null;
+    let dismissedVacuumId = null;
+
+    function playVacuumRadarPing(side) {
+      try {
+        const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtxClass) return;
+        const audioCtx = new AudioCtxClass();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = side === 'SELL' ? 'sawtooth' : 'sine';
+        osc.frequency.setValueAtTime(side === 'SELL' ? 784 : 523, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(side === 'SELL' ? 392 : 880, audioCtx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.38);
+      } catch (e) {}
+    }
+
+    window.dismissVacuumAlert = function() {
+      const modal = document.getElementById('vacuum-radar-modal');
+      if (modal) modal.style.display = 'none';
+      dismissedVacuumId = lastAlertedVacuumId;
+    };
+
+    function updateNewsVacuumRadar(radar, spotPrice) {
+      if (!radar) return;
+
+      // 1. Update Header Countdown Badge
+      const pill = document.getElementById('news-radar-pill');
+      const textEl = document.getElementById('news-radar-text');
+      const nextEv = radar.next_event;
+
+      if (pill && textEl) {
+        if (!nextEv || nextEv.secs_until < -1800) {
+          pill.style.display = 'inline-flex';
+          pill.className = 'stat-pill news-radar-pill';
+          textEl.innerHTML = `🟢 <b>RADAR NEWS:</b> Pasar Tenang (Tidak Ada High-Impact USD)`;
+        } else {
+          pill.style.display = 'inline-flex';
+          const secs = nextEv.secs_until;
+          if (secs <= 300 && secs >= -300) {
+            pill.className = 'stat-pill news-radar-pill alert-imminent';
+            if (secs >= 0) {
+              const m = Math.floor(secs / 60);
+              const s = secs % 60;
+              textEl.innerHTML = `🔴 NEWS ${m}:${s < 10 ? '0' : ''}${s}: <b>${nextEv.title}</b>`;
+            } else {
+              textEl.innerHTML = `⚡ NEWS RELEASED: <b>${nextEv.title}</b>`;
+            }
+          } else if (secs > 300 && secs <= 3600) {
+            pill.className = 'stat-pill news-radar-pill';
+            const m = Math.floor(secs / 60);
+            textEl.innerHTML = `⚡ NEWS in ${m}m: <b>${nextEv.title}</b>`;
+          } else if (secs < -300 && secs >= -1800) {
+            pill.className = 'stat-pill news-radar-pill';
+            textEl.innerHTML = `⚡ POST-NEWS: ${nextEv.title} (${Math.floor(Math.abs(secs)/60)}m lalu)`;
+          } else {
+            pill.className = 'stat-pill news-radar-pill';
+            textEl.innerHTML = `⚡ NEXT NEWS: ${nextEv.title} (${nextEv.time_wib})`;
+          }
+        }
+      }
+
+      // 2. Update Floating Vacuum Modal Alert (Auto-hide jika tidak ada vacuum aktif)
+      const vac = radar.active_vacuum;
+      const modal = document.getElementById('vacuum-radar-modal');
+      if (modal) {
+        if (vac && vac.id && vac.id !== dismissedVacuumId) {
+          modal.style.display = 'block';
+          modal.className = 'vacuum-radar-modal ' + (vac.bias === 'SELL' ? 'bias-sell' : 'bias-buy');
+
+          const hLine = document.getElementById('v-headline');
+          if (hLine) {
+            hLine.innerText = vac.bias_label;
+            hLine.style.color = vac.bias === 'SELL' ? '#ef4444' : '#10b981';
+          }
+          const nName = document.getElementById('v-news-name');
+          if (nName) nName.innerText = vac.news_title;
+
+          const cDown = document.getElementById('v-countdown');
+          if (cDown && nextEv) {
+            cDown.innerText = nextEv.secs_until >= 0 
+              ? `⏱️ Rilis dalam: ${Math.floor(nextEv.secs_until / 60)}m ${nextEv.secs_until % 60}s`
+              : '⚡ News Sedang Berlangsung!';
+          }
+
+          const wDet = document.getElementById('v-wall-detail');
+          if (wDet) {
+            wDet.innerText = `${vac.size}L @ $${parseFloat(vac.price).toFixed(2)}`;
+            wDet.style.color = vac.bias === 'SELL' ? '#ef4444' : '#10b981';
+          }
+          const wAge = document.getElementById('v-wall-age');
+          if (wAge) wAge.innerText = `Bertahan: ${vac.age_min} Menit`;
+
+          const aBias = document.getElementById('v-action-bias');
+          if (aBias) {
+            aBias.innerText = vac.bias === 'SELL' ? '🔴 SELL / SHORT' : '🟢 BUY / LONG';
+            aBias.style.color = vac.bias === 'SELL' ? '#ef4444' : '#10b981';
+          }
+
+          const aTp = document.getElementById('v-anchor-tp');
+          if (aTp) aTp.innerText = `🎯 $${parseFloat(vac.anchor_tp).toFixed(2)}`;
+
+          const aiTxt = document.getElementById('v-ai-text');
+          if (aiTxt) aiTxt.innerText = vac.ai_analysis || 'Memproses analisa taktis Groq AI...';
+
+          // Canvas ghost line integration
+          const exists = spoofEvents.some(se => Math.abs(se.price - vac.price) < 0.5);
+          if (!exists) {
+            spoofEvents.push({
+              id: vac.id,
+              price: vac.price,
+              lot: Math.round(vac.size),
+              ageStr: `${Math.round(vac.age_min)}m`,
+              pulledTime: vac.timestamp,
+              firstSeen: vac.timestamp - (vac.age_min * 60)
+            });
+            if (spoofEvents.length > 2) spoofEvents.shift();
+            persistSpoofEvents();
+          }
+
+          // Bunyikan audio ping jika event baru
+          if (vac.id !== lastAlertedVacuumId) {
+            lastAlertedVacuumId = vac.id;
+            playVacuumRadarPing(vac.bias);
+          }
+        } else {
+          modal.style.display = 'none';
+        }
+      }
+    }
+
+    // Screenshot helper
+    const btnScreenshot = document.getElementById('btn-screenshot');
+    if (btnScreenshot) {
+      btnScreenshot.onclick = () => {
+        const link = document.createElement('a');
+        link.download = `CR-PRO_${new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      };
+    }
+
+    // --- VIEWPORT & COORDINATE STATE ---
+    let width = 0;
+    let height = 0;
+    let rightMargin = 220; // Exact Bookmap 3-Column DOM Ladder & Price Scale
+    const bottomMargin = 26; // Space for time scale
+    // 2026-09-03: Dadang - "buang aja deh itu" (delta footprint/volume strip
+    // + its CVD Divergence Radar, which depended on the same panel's data
+    // and the same c.delta fake-fallback). Zeroed instead of deleted every
+    // reference, so the main chart/DOM-ladder/etc reclaim the space via
+    // their existing formulas without needing individual edits.
+    const subPanelHeight = 0;
+
+    // Time & Price bounds
+    let nowSec = Math.floor(Date.now() / 1000);
+    let timeWindowSec = 300 * 80;
+    let rightOffsetSec = 300 * 18;
+    let timeEnd = nowSec + rightOffsetSec;
+    let timeStart = timeEnd - timeWindowSec;
+
+    let currentSpotPrice = 4325.62;
+    let priceCenter = 4325.62;
+    let priceSpan = 22.00;
+    let priceMin = priceCenter - priceSpan / 2;
+    let priceMax = priceCenter + priceSpan / 2;
+
+    // Interaction State
+    let isDragging = false;
+    let isDraggingPriceScale = false;
+    let isDraggingTimeScale = false;
+    // 2026-09-03: Dadang - "kotak itu kalo bisa drag kanan kiri" - the
+    // Daily Focus badge's horizontal offset from its default position,
+    // draggable, persisted so it stays put across reloads.
+    let dailyFocusDragX = parseFloat(localStorage.getItem('cr_daily_focus_drag_x') || '0') || 0;
+    let isDraggingFocusBox = false;
+    let focusDragStartMouseX = 0;
+    let focusDragStartOffsetX = 0;
+    let lastDailyFocusRect = null; // {x,y,w,h} from the most recent render, for hit-testing
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+    let mouseX = -1;
+    let mouseY = -1;
+
+    // FPS Counter
+    let frameCount = 0;
+    let lastFpsTime = performance.now();
+    let currentFps = 60;
+
+    // Data Stores
+    let candleVault = {};
+    let candles = [];
+    let depthHistory = [];
+    let liveWallLadder = {};
+    let bubbles = [];
+
+    // ⏱️ WALL PERSISTENCE TRACKER
+    // Key: priceKey (e.g. "4327.00"), Value: { lot, firstSeen: unixTimeSec }
+    // A wall is only rendered as a full shelf line when it has been
+    // present continuously for >= WALL_MIN_AGE_SEC (30 minutes).
+    const WALL_MIN_AGE_SEC = 30 * 60; // 30 minutes
+    let wallPersistenceMap = {};
+
+    const cmpLevels = {
+      h4Bias: 'SELL (VR RETEST)',
+      poc: 4327.32,
+      vah: 4330.50,
+      val: 4323.50
+    };
+
+    // 2026-09-03: Dadang - "gw sbagai trader bisa focus satu arah tiap
+    // harinya... teknikal hanya tempat cari entri tapi data feed kita
+    // suatu kebenaran mutlak". Real order-flow data (not candle shape),
+    // updated every poll in the main data-update handler below.
+    let dailyFocus = { verdict: 'NEUTRAL', votes: 0, total: 3, wallSide: null, volSide: null, cvdSide: null };
+
+    const API_BASE = ''; // Canonical relative origin (works seamlessly on localhost:8899 and trade.dadangchatai.com)
+
+    // --- FETCH REAL CENTRAL HISTORICAL CANDLES (Single Source of Truth) ---
+    async function loadRealHistoricalData() {
+      try {
+        // 👑 CENTRAL CANDLE TIMELINE — RITHMIC ONLY AFTER MT5 CSV SEED
+        let url = `${API_BASE}/api/chart/candles?tf=${currentTimeframe}&count=500&t=${Date.now()}`;
+        let res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) {
+          url = `${API_BASE}/api/chart/history?symbol=XAUUSD&tf=${currentTimeframe}&count=500&t=${Date.now()}`;
+          res = await fetch(url, { cache: 'no-store' });
+        }
+        if (res.ok) {
+          const payload = await res.json();
+          if (payload && payload.candles && payload.candles.length > 0) {
+            candles = payload.candles.map((b) => ({
+              time: Number(b.time),
+              open: Number(b.open),
+              high: Number(b.high),
+              low: Number(b.low),
+              close: Number(b.close),
+              volume: Number(b.volume || 0),
+              delta: Number(b.delta || 0),
+              is_closed: b.is_closed !== false
+            }));
+
+            const lastBar = candles[candles.length - 1];
+            nowSec = lastBar.time;
+            currentSpotPrice = lastBar.close;
+
+            const tfSec = getTimeframeSeconds(currentTimeframe);
+            if (currentTimeframe === '1S') {
+              timeWindowSec = 60;
+              rightOffsetSec = 10;
+              priceSpan = 8.00;
+            } else {
+              timeWindowSec = tfSec * 80;
+              rightOffsetSec = tfSec * 15;
+              priceSpan = 22.00;
+            }
+            timeEnd = nowSec + rightOffsetSec;
+            timeStart = timeEnd - timeWindowSec;
+            priceCenter = currentSpotPrice;
+            priceMin = priceCenter - priceSpan / 2;
+            priceMax = priceCenter + priceSpan / 2;
+            topPriceEl.innerText = `$${currentSpotPrice.toFixed(2)}`;
+            updateHeaderOhlc(lastBar);
+          }
+        }
+
+        await loadCentralHeatmapHistory();
+      } catch (e) {
+        console.error("[CentralTimeline] Load real data error:", e);
+        await loadCentralHeatmapHistory();
+      }
+    }
+
+    // 👑 CENTRAL HEATMAP HISTORY (Real Bookmap L2 Depth from Central Server)
+    async function loadCentralHeatmapHistory() {
+      try {
+        const hmUrl = `${API_BASE}/api/chart/heatmap_history?limit=300&t=${Date.now()}`;
+        const res = await fetch(hmUrl, { cache: 'no-store' });
+        if (res.ok) {
+          const payload = await res.json();
+          if (payload && payload.history && payload.history.length > 0) {
+            depthHistory = payload.history;
+
+            // Sync Bookmap wall ages directly from central server
+            if (payload.current_wall_ages) {
+              const tNow = Math.floor(Date.now() / 1000);
+              for (const pr in payload.current_wall_ages) {
+                const ageSec = payload.current_wall_ages[pr];
+                wallPersistenceMap[pr] = {
+                  lot: liveWallLadder[pr] || 35,
+                  firstSeen: tNow - ageSec
+                };
+              }
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("[HeatmapHistory] Load error:", e);
+      }
+
+      // Fallback only if server depth history is temporarily empty
+      if (!depthHistory || depthHistory.length < 2) {
+        seedContinuousDepthFallback();
+      }
+    }
+
+    function seedContinuousDepthFallback() {
+      const spanSec = Math.max(timeWindowSec * 2.5, 3600 * 24);
+      const startT = nowSec - spanSec;
+      const step = Math.max(10, Math.floor(spanSec / 250));
+
+      depthHistory = [];
+      const center = currentSpotPrice || 4365.00;
+
+      let globalMinP = center - 50.0;
+      let globalMaxP = center + 50.0;
+      if (candles && candles.length > 0) {
+        for (let i = 0; i < candles.length; i++) {
+          globalMinP = Math.min(globalMinP, candles[i].low - 20.0);
+          globalMaxP = Math.max(globalMaxP, candles[i].high + 20.0);
+        }
+      }
+
+      const minIdx = Math.round(globalMinP * 2);
+      const maxIdx = Math.round(globalMaxP * 2);
+
+      for (let t = startT; t <= nowSec; t += step) {
+        const levels = {};
+        for (const wallP in liveWallLadder) {
+          const wallPrice = parseFloat(wallP);
+          const wallLot = liveWallLadder[wallP];
+          const pIdx = Math.round(wallPrice * 2);
+          levels[pIdx] = wallLot;
+        }
+        depthHistory.push({ time: t, levels });
+      }
+    }
+
+    // --- FETCH REAL LIVE TELEMETRY LOOP ---
+    // 2026-09-04: this does up to 3 sequential awaited fetches per cycle
+    // (status, depth_slice, live_candle) but was fired by a plain
+    // setInterval(fetchRealLiveStatus, 350) with no re-entrancy guard - the
+    // moment one cycle took longer than 350ms to resolve (which it does
+    // reliably under load, some responses measured 3-6s+ tonight), the next
+    // interval tick started ANOTHER overlapping invocation on top of it,
+    // piling up concurrent in-flight requests/connections from a single
+    // browser tab and making the server slower, which caused more pile-up -
+    // a self-reinforcing polling storm. Measured live: 232-236 ESTABLISHED
+    // connections / 116 server threads from Dadang's one tab (he confirmed
+    // no one else was logged in). This flag makes each cycle wait for the
+    // previous one to fully finish before doing any new fetches.
+    let isFetchingStatus = false;
+    async function fetchRealLiveStatus() {
+      if (isFetchingStatus) return;
+      isFetchingStatus = true;
+      try {
+        const res = await fetch(API_BASE + '/sultan_status.json?t=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // 1. Update real spot price
+        const realSpot = parseFloat(data.current_price_xauusd || data.price || data.spot || data.current_price);
+        if (!isNaN(realSpot) && realSpot > 1000) {
+          const firstInit = Math.abs(currentSpotPrice - realSpot) > 10.0;
+          currentSpotPrice = realSpot;
+          topPriceEl.innerText = `$${currentSpotPrice.toFixed(2)}`;
+
+          if (firstInit && !isDragging) {
+            priceCenter = currentSpotPrice;
+            priceMin = priceCenter - priceSpan / 2;
+            priceMax = priceCenter + priceSpan / 2;
+            cmpLevels.poc = currentSpotPrice + 1.20;
+          }
+        }
+
+        // 2. Update real CVD & Pulse
+        if (data.flow) {
+          const cvd = data.flow.cvd || 0;
+          topCvdEl.innerText = `${cvd >= 0 ? '+' : ''}${cvd.toFixed(1)}L`;
+          topCvdEl.style.color = cvd >= 0 ? '#00e676' : '#ff2a4b';
+
+          const pulse = data.flow.pulse_pct || 50;
+          const dom = data.flow.flow_dominant || 'NEUTRAL';
+          topPulseEl.innerText = `${pulse.toFixed(1)}% ${dom}`;
+          topPulseEl.style.color = dom === 'BUY' ? '#00e676' : (dom === 'SELL' ? '#ff2a4b' : '#38bdf8');
+        }
+
+        // 2a. Rithmic->MT5-equivalent price mapping status (Dadang's spec,
+        // 2026-09-04): server already guarantees "never fabricate, never
+        // touch the wall, keep last valid basis" on a failed reference
+        // fetch (see auto_spot_anchor_loop() on the backend) - this just
+        // surfaces that truth instead of it being invisible.
+        if (topBasisStatusEl && data.basis_status) {
+          const isLive = data.basis_status === 'LIVE';
+          topBasisStatusEl.innerText = isLive ? 'LIVE' : 'STALE';
+          topBasisStatusEl.style.color = isLive ? '#00e676' : '#ffb020';
+          const refPrice = (typeof data.reference_xauusd === 'number') ? data.reference_xauusd.toFixed(2) : '--';
+          const rithmicGc = (typeof data.cme_price === 'number') ? data.cme_price.toFixed(2) : '--';
+          const basisVal = (typeof data.basis_offset === 'number') ? (-data.basis_offset).toFixed(2) : '--';
+          const lastUpdate = data.reference_updated_at ? new Date(data.reference_updated_at * 1000).toLocaleTimeString('id-ID', { hour12: false }) : '--:--:--';
+          if (basisStatusPillEl) {
+            basisStatusPillEl.title = `REFERENCE XAU/USD : ${refPrice}\nRITHMIC GC        : ${rithmicGc}\nDYNAMIC BASIS     : ${basisVal}\nLAST UPDATE       : ${lastUpdate}\nSTATUS            : ${data.basis_status}`;
+          }
+        }
+
+        // 2b. Update ForexFactory News Radar & Liquidity Vacuum
+        if (data.news_radar) {
+          updateNewsVacuumRadar(data.news_radar, realSpot);
+        }
+
+        // 3. Update real Bookmap wall ladder
+        if (data.wall_ladder) {
+          const newLadder = {};
+          const asks = data.wall_ladder.asks || [];
+          const bids = data.wall_ladder.bids || [];
+
+          for (let i = 0; i < asks.length; i++) {
+            const item = asks[i];
+            const pr = parseFloat(item[0]).toFixed(2);
+            const lot = Math.round(parseFloat(item[1]));
+            if (lot > 3) newLadder[pr] = lot;
+          }
+          for (let i = 0; i < bids.length; i++) {
+            const item = bids[i];
+            const pr = parseFloat(item[0]).toFixed(2);
+            const lot = Math.round(parseFloat(item[1]));
+            if (lot > 3) newLadder[pr] = lot;
+          }
+
+          // 👻 SPOOFING & WALL PULLING DETECTOR (Commander Dadang Doctrine)
+          // Detect when a significant resting wall (>= 20L, age >= 15m) disappears while spot is nearby (<= 2.50 USD)
+          const curTNow = Math.floor(Date.now() / 1000);
+          if (liveWallLadder && Object.keys(liveWallLadder).length > 0) {
+            for (const pr in wallPersistenceMap) {
+              const oldWall = wallPersistenceMap[pr];
+              const pVal = parseFloat(pr);
+              if (oldWall && oldWall.lot >= 20) {
+                const wallAgeSec = curTNow - oldWall.firstSeen;
+                if (wallAgeSec >= 900) { // at least 15 min old
+                  const newLot = newLadder[pr] || 0;
+                  if (newLot < 5 && Math.abs(realSpot - pVal) <= 2.50) {
+                    // Anti-numpuk: jangan buat badge baru kalau sudah ada di radius 1.80 USD dalam 300 detik
+                    const exists = spoofEvents.some(se => Math.abs(se.price - pVal) < 1.80 && (curTNow - se.pulledTime) < 300);
+                    if (!exists) {
+                      const ageMin = Math.floor(wallAgeSec / 60);
+                      const ageHours = (ageMin / 60).toFixed(1);
+                      const ageStr = ageMin >= 60 ? `${ageHours}h` : `${ageMin}m`;
+                      spoofEvents.push({
+                        id: 'spoof_' + curTNow + '_' + Math.round(pVal * 10),
+                        price: pVal,
+                        lot: oldWall.lot,
+                        ageStr: ageStr,
+                        pulledTime: curTNow,
+                        firstSeen: oldWall.firstSeen
+                      });
+                      // Hard-cap maksimal 2 badge di layar agar tidak numpuk
+                      if (spoofEvents.length > 2) spoofEvents.shift();
+                      persistSpoofEvents();
+                      console.log(`[SpoofRadar] Detected wall pull: ${oldWall.lot}L at ${pVal} (age: ${ageStr})`);
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          liveWallLadder = newLadder;
+
+          const tNow = Math.floor(Date.now() / 1000);
+
+          // ⏱️ REAL BOOKMAP DEPTH SLICE FROM CENTRAL SERVER (Single Source of Truth)
+          try {
+            const depthUrl = `${API_BASE}/api/chart/live_depth_slice?t=${Date.now()}`;
+            const dRes = await fetch(depthUrl, { cache: 'no-store' });
+            if (dRes.ok) {
+              const dData = await dRes.json();
+              const slice = dData.slice;
+              if (slice && slice.time) {
+                const lastSlice = depthHistory[depthHistory.length - 1];
+                if (!lastSlice || slice.time > lastSlice.time) {
+                  depthHistory.push(slice);
+                  if (depthHistory.length > 350) depthHistory.shift();
+
+                  // ⏱️ SYNC INSTITUTIONAL WALL AGES DIRECTLY FROM BOOKMAP CENTRAL SERVER
+                  if (slice.wall_ages) {
+                    for (const pr in slice.wall_ages) {
+                      const ageSec = slice.wall_ages[pr];
+                      wallPersistenceMap[pr] = {
+                        lot: liveWallLadder[pr] || 35,
+                        firstSeen: tNow - ageSec
+                      };
+                    }
+                  }
+                }
+              }
+            }
+          } catch (e) {}
+
+          // Also keep any active wall keys up to date
+          for (const wallP in liveWallLadder) {
+            const wallLot = liveWallLadder[wallP];
+            if (wallLot >= 28) {
+              const key = parseFloat(wallP).toFixed(2);
+              if (!wallPersistenceMap[key]) {
+                wallPersistenceMap[key] = { lot: wallLot, firstSeen: tNow };
+              } else {
+                wallPersistenceMap[key].lot = Math.max(wallPersistenceMap[key].lot, wallLot);
+              }
+            }
+          }
+        }
+
+        // 4. Update Volume Profile & POC
+        if (data.volume_profile && data.volume_profile.poc) {
+          cmpLevels.poc = parseFloat(data.volume_profile.poc);
+        }
+
+        // 4.5. DAILY FOCUS - real order-flow majority vote (not price
+        // shape). Three independent real-data signals, each votes
+        // BUY/SELL/NEUTRAL on its own:
+        //   1. Resting liquidity: which side has more real wall lot size
+        //   2. Session volume: which side traded more real volume today
+        //   3. CVD: net real buy/sell delta sign
+        // Verdict = majority; ties or all-NEUTRAL = NEUTRAL. No hidden
+        // formula - dailyFocus keeps every raw input for the badge to
+        // show alongside the verdict.
+        if (data.liquidity || data.volume_profile || data.flow) {
+          const liq = data.liquidity || {};
+          const vp = data.volume_profile || {};
+          const flowD = data.flow || {};
+
+          let wallSide = 'NEUTRAL';
+          if (typeof liq.bid_wall_ratio === 'number' && typeof liq.ask_wall_ratio === 'number') {
+            const diff = liq.bid_wall_ratio - liq.ask_wall_ratio;
+            wallSide = diff > 8 ? 'BUY' : (diff < -8 ? 'SELL' : 'NEUTRAL');
+          }
+
+          let volSide = 'NEUTRAL';
+          if (typeof vp.volume_ratio_buy_pct === 'number') {
+            volSide = vp.volume_ratio_buy_pct > 53 ? 'BUY' : (vp.volume_ratio_buy_pct < 47 ? 'SELL' : 'NEUTRAL');
+          }
+
+          let cvdSide = 'NEUTRAL';
+          const cvdV = parseFloat(flowD.cvd || 0);
+          if (Math.abs(cvdV) >= 20) cvdSide = cvdV > 0 ? 'BUY' : 'SELL';
+
+          const buyVotes = [wallSide, volSide, cvdSide].filter(s => s === 'BUY').length;
+          const sellVotes = [wallSide, volSide, cvdSide].filter(s => s === 'SELL').length;
+          const verdict = buyVotes > sellVotes ? 'BUY' : (sellVotes > buyVotes ? 'SELL' : 'NEUTRAL');
+
+          dailyFocus = {
+            verdict,
+            votes: Math.max(buyVotes, sellVotes),
+            total: 3,
+            wallSide, volSide, cvdSide,
+            bidWallRatio: liq.bid_wall_ratio, askWallRatio: liq.ask_wall_ratio,
+            volBuyPct: vp.volume_ratio_buy_pct, cvdVal: cvdV
+          };
+        }
+
+        // 5. Check for Big Order Whales, real-data-driven only
+        // 2026-09-03: Dadang - "cara tergampang buat tau seller/buyer yang
+        // mendominasi... bener2 harus real time". Previously this could
+        // fire from Math.random() < 0.05 (a 5% coinflip EVERY poll, no
+        // real order behind it) and whaleLot was 100% fabricated
+        // (120 + Math.random()*200) - both fake. Now: fires ONLY on a
+        // real signal (server-reported absorption, or a genuinely large
+        // net buy/sell delta in the last minute), and the bubble's size
+        // IS that real delta - an honest, varying number, not a prop.
+        if (data.flow) {
+          const dominant = data.flow.flow_dominant || 'NEUTRAL';
+          const hasAbsorption = data.flow.absorption && data.flow.absorption !== 'NONE';
+          const cvdVal = parseFloat(data.flow.cvd || 0);
+          const delta1m = parseFloat(data.flow.delta_1m || 0);
+          const bigDelta = Math.abs(delta1m) >= 30;
+
+          const tNowSec = Math.floor(Date.now() / 1000);
+          const lastBubble = bubbles[bubbles.length - 1];
+          const timeSinceLast = lastBubble ? (tNowSec - lastBubble.time) : 999;
+          const distFromLast = lastBubble ? Math.abs(currentSpotPrice - lastBubble.price) : 999;
+
+          if ((hasAbsorption || bigDelta) && (timeSinceLast >= 8 || distFromLast >= 1.50)) {
+            const whaleLot = Math.max(30, Math.round(Math.abs(delta1m) || Math.abs(cvdVal) || 30));
+            const side = delta1m !== 0 ? (delta1m > 0 ? 'BUY' : 'SELL') : ((dominant === 'BUY' || cvdVal > 0) ? 'BUY' : 'SELL');
+            bubbles.push({
+              time: tNowSec,
+              price: currentSpotPrice,
+              volume: whaleLot,
+              side: side
+            });
+            if (bubbles.length > 8) bubbles.shift();
+
+            // Trigger Notification Toast
+            showWhaleNotification(side, whaleLot, currentSpotPrice);
+          }
+        }
+
+        // 6. Update active candle from Central Candle Engine (Single Source of Truth)
+        try {
+          const liveUrl = `${API_BASE}/api/chart/live_candle?tf=${currentTimeframe}&t=${Date.now()}`;
+          const liveRes = await fetch(liveUrl, { cache: 'no-store' });
+          if (liveRes.ok) {
+            const liveData = await liveRes.json();
+            const liveC = liveData.live_candle;
+            if (liveC && candles && candles.length > 0) {
+              const lastIdx = candles.length - 1;
+              const lastC = candles[lastIdx];
+
+              if (lastC.time === liveC.time) {
+                // Update forming candle in place with exact server values
+                lastC.open = liveC.open;
+                lastC.high = Math.max(liveC.high, currentSpotPrice);
+                lastC.low = Math.min(liveC.low, currentSpotPrice);
+                lastC.close = currentSpotPrice;
+                lastC.volume = liveC.volume;
+                lastC.delta = liveC.delta;
+                lastC.is_closed = liveC.is_closed;
+                updateHeaderOhlc(lastC);
+              } else if (liveC.time > lastC.time) {
+                // Server sealed previous candle & rolled to next bucket!
+                // Seal previous bar and push new forming bucket directly in memory without network reload
+                lastC.is_closed = true;
+                const newOpen = lastC.close;
+                candles.push({
+                  time: Number(liveC.time),
+                  open: Number(liveC.open || newOpen),
+                  high: Math.max(Number(liveC.high || currentSpotPrice), currentSpotPrice, newOpen),
+                  low: Math.min(Number(liveC.low || currentSpotPrice), currentSpotPrice, newOpen),
+                  close: currentSpotPrice,
+                  volume: Number(liveC.volume || 1),
+                  delta: Number(liveC.delta || 0),
+                  is_closed: false
+                });
+                if (candles.length > 800) candles.shift();
+                updateHeaderOhlc(candles[candles.length - 1]);
+              }
+            }
+          }
+        } catch (e) {
+          if (candles && candles.length > 0) {
+            const lastC = candles[candles.length - 1];
+            lastC.close = currentSpotPrice;
+            lastC.high = Math.max(lastC.high, currentSpotPrice);
+            lastC.low = Math.min(lastC.low, currentSpotPrice);
+            updateHeaderOhlc(lastC);
+          }
+        }
+
+        // 7. Calculate dynamic real runway distances from real resting walls (100% Real Live Data)
+        let nearestAsk = null;
+        let nearestBid = null;
+        let minAskDist = 9999;
+        let minBidDist = 9999;
+
+        for (const wallP in liveWallLadder) {
+          const wPrice = parseFloat(wallP);
+          const wLot = liveWallLadder[wallP];
+          if (wLot >= 25) {
+            if (wPrice > currentSpotPrice) {
+              const d = wPrice - currentSpotPrice;
+              if (d < minAskDist) {
+                minAskDist = d;
+                nearestAsk = { price: wPrice, lot: wLot, dist: d };
+              }
+            } else if (wPrice < currentSpotPrice) {
+              const d = currentSpotPrice - wPrice;
+              if (d < minBidDist) {
+                minBidDist = d;
+                nearestBid = { price: wPrice, lot: wLot, dist: d };
+              }
+            }
+          }
+        }
+
+        const askEl = document.getElementById('hud-runway-ask');
+        if (askEl) {
+          if (nearestAsk) {
+            const pips = (nearestAsk.dist * 10).toFixed(1);
+            askEl.innerText = `+$${nearestAsk.dist.toFixed(2)} (${pips}p) [${nearestAsk.lot}L]`;
+          } else {
+            askEl.innerText = `+Open Sky`;
+          }
+        }
+
+        const bidEl = document.getElementById('hud-runway-bid');
+        if (bidEl) {
+          if (nearestBid) {
+            const pips = (nearestBid.dist * 10).toFixed(1);
+            bidEl.innerText = `-$${nearestBid.dist.toFixed(2)} (${pips}p) [${nearestBid.lot}L]`;
+          } else {
+            bidEl.innerText = `-Open Floor`;
+          }
+        }
+
+        // Keep user's custom pan position intact without snap back!
+        if (!isDragging) {
+          nowSec = tNow;
+          timeEnd = tNow + rightOffsetSec;
+          timeStart = timeEnd - timeWindowSec;
+        }
+      } catch (err) {
+        // Quiet poll error
+      } finally {
+        isFetchingStatus = false;
+      }
+    }
+
+    let whaleToastTimer = null;
+    function showWhaleNotification(side, lot, price) {
+      const toast = document.getElementById('whale-toast');
+      if (!toast) return;
+
+      const isBuy = side === 'BUY';
+      const icon = isBuy ? '🟢 🐋' : '🔴 🐋';
+      const action = isBuy ? 'BIG BUYER INFLOW' : 'BIG SELLER INFLOW';
+      const colorClass = isBuy ? 'buy-alert' : 'sell-alert';
+
+      toast.className = `whale-toast active ${colorClass}`;
+      toast.innerHTML = `<span>${icon} <b>${action}:</b> ${isBuy ? '+' : '-'}${lot}L @ $${price.toFixed(2)}</span>`;
+
+      if (whaleToastTimer) clearTimeout(whaleToastTimer);
+      whaleToastTimer = setTimeout(() => {
+        toast.classList.remove('active');
+      }, 4200);
+    }
+
+    function updateHeaderOhlc(c) {
+      if (!c) return;
+      barOEl.innerText = c.open.toFixed(2);
+      barHEl.innerText = c.high.toFixed(2);
+      barLEl.innerText = c.low.toFixed(2);
+      barCEl.innerText = c.close.toFixed(2);
+      barVEl.innerText = `${c.volume || 120}`;
+    }
+
+    // --- RESIZE CANVAS ---
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      width = container.clientWidth || window.innerWidth;
+      height = container.clientHeight || (window.innerHeight - 42 - 24);
+
+      // Adaptive Bookmap DOM width for mobile screens vs desktop
+      rightMargin = width < 600 ? 110 : (width < 900 ? 140 : 200);
+
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+    }
+
+    window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', () => {
+      setTimeout(resize, 100);
+    });
+    resize();
+
+    // --- COORDINATE TRANSFORMATIONS ---
+    function timeToX(t) {
+      const plotWidth = width - rightMargin;
+      return ((t - timeStart) / (timeEnd - timeStart)) * plotWidth;
+    }
+
+    function xToTime(x) {
+      const plotWidth = width - rightMargin;
+      return timeStart + (x / plotWidth) * (timeEnd - timeStart);
+    }
+
+    function priceToY(p) {
+      const plotHeight = height - bottomMargin - subPanelHeight;
+      return plotHeight - ((p - priceMin) / (priceMax - priceMin)) * plotHeight;
+    }
+
+    function yToPrice(y) {
+      const plotHeight = height - bottomMargin - subPanelHeight;
+      return priceMin + ((plotHeight - y) / plotHeight) * (priceMax - priceMin);
+    }
+
+    // --- REAL BOOKMAP COLORMAP (NO THRESHOLD - FULL DOM DEPTH VISIBILITY) ---
+    function getHeatmapRgba(lot) {
+      if (lot <= 0) {
+        return [0, 0, 0, 0]; // Empty space
+      } else if (lot <= 8) {
+        // Very faint dark navy base
+        const t = lot / 8;
+        return [
+          Math.round(8 + t * 4),
+          Math.round(18 + t * 12),
+          Math.round(38 + t * 18),
+          Math.round((0.22 + t * 0.15) * 255)
+        ];
+      } else if (lot <= 18) {
+        // Deep slate blue
+        const t = (lot - 8) / 10;
+        return [
+          Math.round(12 + t * 6),
+          Math.round(30 + t * 20),
+          Math.round(56 + t * 30),
+          Math.round((0.38 + t * 0.20) * 255)
+        ];
+      } else if (lot <= 32) {
+        // Ocean blue density body
+        const t = (lot - 18) / 14;
+        return [
+          Math.round(18 + t * 8),
+          Math.round(50 + t * 45),
+          Math.round(86 + t * 50),
+          Math.round((0.58 + t * 0.20) * 255)
+        ];
+      } else if (lot <= 50) {
+        // Steel blue to electric cyan
+        const t = (lot - 32) / 18;
+        return [
+          Math.round(26 - t * 26),
+          Math.round(95 + t * 85),
+          Math.round(136 + t * 80),
+          Math.round((0.78 + t * 0.14) * 255)
+        ];
+      } else if (lot <= 72) {
+        // Radiant electric cyan to golden amber
+        const t = (lot - 50) / 22;
+        return [
+          Math.round(0 + t * 255),
+          Math.round(180 + t * 34),
+          Math.round(216 - t * 216),
+          Math.round((0.92 + t * 0.05) * 255)
+        ];
+      } else if (lot <= 95) {
+        // Glowing golden amber shelf
+        const t = (lot - 72) / 23;
+        return [
+          255,
+          Math.round(214 - t * 105),
+          0,
+          248
+        ];
+      } else if (lot <= 130) {
+        // Fiery amber orange wall
+        const t = (lot - 95) / 35;
+        return [
+          255,
+          Math.round(109 - t * 86),
+          Math.round(0 + t * 40),
+          252
+        ];
+      } else {
+        // Crimson whale mega wall
+        return [255, 23, 68, 255];
+      }
+    }
+
+    function getHeatmapColor(lot) {
+      const rgba = getHeatmapRgba(lot);
+      return `rgba(${rgba[0]}, ${rgba[1]}, ${rgba[2]}, ${(rgba[3] / 255).toFixed(2)})`;
+    }
+
+    // --- RENDER PIPELINE (60 FPS) ---
+    function render() {
+      const plotWidth = width - rightMargin;
+      const plotHeight = height - bottomMargin - subPanelHeight;
+      const fullHeight = height - bottomMargin;
+
+      ctx.fillStyle = '#050811';
+      ctx.fillRect(0, 0, width, height);
+
+      drawGrid(plotWidth, plotHeight);
+
+      // LAYER 0.5: Session Highlighter (Asia/London/NY)
+      if (showSession) {
+        drawSessionHighlighter(plotWidth, plotHeight);
+      }
+
+      if (showHeatmap) {
+        drawContinuousHeatmap(plotWidth, plotHeight);
+      }
+
+      if (showCmp) {
+        drawCmpDoctrine(plotWidth);
+      }
+
+      if (showProfile) {
+        drawVolumeProfile(plotWidth, plotHeight);
+      }
+
+      // LAYER 3.3: 🧲 NAKED POC (NPOC) GRAVITATIONAL MAGNET LINES
+      if (showNpoc) {
+        drawNakedPocs(plotWidth, plotHeight);
+      }
+
+      // LAYER 3.4: 👻 RADAR SPOOFING (WALL PULLING DETECTOR)
+      drawSpoofRadar(plotWidth, plotHeight);
+
+      // LAYER 3.6: Translucent Whale Bubbles
+      if (showBubbles) {
+        drawWhaleBubbles();
+      }
+
+      // LAYER 3.8: 👑 WATERMARK COMMANDER DADANG WAHYUONO (Tipis di Belakang Candle)
+      drawWatermark(plotWidth, plotHeight);
+
+      // LAYER 4: Candlesticks (Sharp Foreground)
+      if (showCandles) {
+        drawCandlesticks(plotWidth, plotHeight);
+      }
+
+      // LAYER 4.2: Per-Candle Delta Footprint
+      if (showFootprint && showCandles) {
+        drawFootprintDelta(plotWidth, plotHeight);
+      }
+
+      // LAYER 4.3: 👑 DOKTRIN COMMANDER: SIMPLE EMA 1 (PALING DEPAN / CMP LINE)
+      // Ditaruh paling depan di atas candle agar saat ada gap tetap jelas terbaca arah CMP!
+      drawEma1PriceTrace(plotWidth, plotHeight);
+
+      // LAYER 4.4: 🪤 TRAPPED TRADERS / ABSORPTION CLUSTER
+      if (showTraps) {
+        drawTrappedTraders(plotWidth, plotHeight);
+      }
+
+      // LAYER 4.5: Live Marker + Candle Countdown
+      drawLiveMarker(plotWidth, plotHeight);
+      drawCandleCountdown(plotWidth, plotHeight);
+
+      // LAYER 4.6: 🛡️ LIVE RUNWAY & VETO S&D HUD (3 Veto S&D Doktrin Master)
+      if (showRunway) {
+        drawRunwayVetoHud(plotWidth, plotHeight);
+      }
+
+      // LAYER 4.8: Price Alert
+      drawPriceAlert(plotWidth, plotHeight);
+
+      // LAYER 5: User Drawings
+      drawUserDrawings(plotWidth, plotHeight);
+
+      drawLiveWallLadder(plotWidth, fullHeight);
+      drawPriceAxis(plotWidth, plotHeight);
+      drawTimeAxis(plotWidth, fullHeight);
+
+      if (mouseX >= 0 && mouseX <= plotWidth && mouseY >= 0 && mouseY <= plotHeight) {
+        drawCrosshairAndInspector(plotWidth, plotHeight);
+      }
+
+      // Frame counter & live FPS tracker
+      frameCount++;
+      const nowTime = performance.now();
+      if (nowTime - lastFpsTime >= 1000) {
+        const fps = Math.round((frameCount * 1000) / (nowTime - lastFpsTime));
+        frameCount = 0;
+        lastFpsTime = nowTime;
+        const fpsEl = document.getElementById('footer-live-status');
+        if (fpsEl) {
+          fpsEl.innerText = 'LIVE CONNECTED • ' + fps + ' FPS';
+        }
+      }
+
+      requestAnimationFrame(render);
+    }
+
+    function drawGrid(plotWidth, plotHeight) {
+      ctx.strokeStyle = '#0a0e1a';
+      ctx.lineWidth = 1;
+
+      let priceStep = 2.00;
+      if (priceSpan > 150) priceStep = 10.00;
+      else if (priceSpan > 70) priceStep = 5.00;
+      else if (priceSpan > 30) priceStep = 2.00;
+      else if (priceSpan > 12) priceStep = 1.00;
+
+      const firstPrice = Math.floor(priceMin / priceStep) * priceStep;
+      for (let p = firstPrice; p <= priceMax; p += priceStep) {
+        const y = Math.round(priceToY(p)) + 0.5;
+        if (y >= 0 && y <= plotHeight) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(plotWidth, y);
+          ctx.stroke();
+        }
+      }
+
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const timeStep = tfSec * 2;
+      const firstTime = Math.floor(timeStart / timeStep) * timeStep;
+      for (let t = firstTime; t <= timeEnd; t += timeStep) {
+        const x = Math.round(timeToX(t)) + 0.5;
+        if (x >= 0 && x <= plotWidth) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, plotHeight);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // 🌊 TRUE CONTINUOUS BOOKMAP 2D SPECTROGRAM LIQUIDITY SURFACE (FIELD / DENSITY AREA)
+    const heatmapOffscreen = document.createElement('canvas');
+    const offCtx = heatmapOffscreen.getContext('2d');
+
+    function drawContinuousHeatmap(plotWidth, plotHeight) {
+      if (!depthHistory || depthHistory.length < 2) return;
+
+      // ✅ FIX: Always stretch heatmap to fill the full visible chart area
+      // so it perfectly aligns with candles regardless of zoom/pan.
+      // xStart = left edge of visible chart (0)
+      // xEnd = the live boundary line (nowSec)
+      const xStart = 0;
+      const xEnd = Math.min(plotWidth, Math.max(0, timeToX(nowSec)));
+      const ribbonWidth = xEnd - xStart;
+      if (ribbonWidth <= 2) return;
+
+      // Visible price range with generous padding
+      const pTop = priceMax + 2.0;
+      const pBottom = priceMin - 2.0;
+      const maxIdx = Math.round(pTop * 2);
+      const minIdx = Math.round(pBottom * 2);
+      const numPriceLevels = Math.max(10, maxIdx - minIdx + 1);
+
+      // Number of temporal samples (width of raster spectrogram)
+      const numTimeSamples = Math.min(240, depthHistory.length);
+      const bufferW = numTimeSamples;
+      const bufferH = numPriceLevels;
+
+      if (heatmapOffscreen.width !== bufferW || heatmapOffscreen.height !== bufferH) {
+        heatmapOffscreen.width = bufferW;
+        heatmapOffscreen.height = bufferH;
+      }
+
+      const imgData = offCtx.createImageData(bufferW, bufferH);
+      const data = imgData.data;
+
+      const timeStepIdx = (depthHistory.length - 1) / Math.max(1, bufferW - 1);
+
+      for (let bx = 0; bx < bufferW; bx++) {
+        const sliceIdx = Math.min(depthHistory.length - 1, Math.round(bx * timeStepIdx));
+        const slice = depthHistory[sliceIdx];
+        const levels = slice ? slice.levels : null;
+
+        for (let by = 0; by < bufferH; by++) {
+          // by = 0 is top of image (maxIdx / highest price), by = bufferH - 1 is bottom (minIdx / lowest price)
+          const priceIdx = maxIdx - by;
+          const lot = (levels && levels[priceIdx]) ? levels[priceIdx] : 0;
+          const rgba = getHeatmapRgba(lot);
+
+          const pixelIdx = (by * bufferW + bx) * 4;
+          data[pixelIdx + 0] = rgba[0];
+          data[pixelIdx + 1] = rgba[1];
+          data[pixelIdx + 2] = rgba[2];
+          data[pixelIdx + 3] = rgba[3];
+        }
+      }
+
+      offCtx.putImageData(imgData, 0, 0);
+
+      // Render scaled 2D liquid field with GPU Bilinear Interpolation (Smooth surface, zero thin lines!)
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      const yTop = priceToY(pTop);
+      const yBottom = priceToY(pBottom);
+      const surfaceH = yBottom - yTop;
+
+      ctx.drawImage(heatmapOffscreen, 0, 0, bufferW, bufferH, xStart, yTop, ribbonWidth, surfaceH);
+
+      // 🌊 PROJECT LIVE RESTING DEPTH ACROSS RIGHT RUNWAY TO THE DOM LADDER (SUBDUED / DIMMED)
+      const lastSlice = depthHistory[depthHistory.length - 1];
+      if (xEnd < plotWidth && lastSlice) {
+        ctx.save();
+        ctx.globalAlpha = 0.22; // Subdued and elegant so history remains the crystal-clear focus!
+        const liveW = plotWidth - xEnd;
+        for (let idx = minIdx; idx <= maxIdx; idx++) {
+          const lot = lastSlice.levels[idx] || 0;
+          if (lot > 0) {
+            const y = priceToY(idx / 2);
+            const barH = Math.max(1.8, Math.abs(priceToY((idx - 1) / 2) - y) + 0.6);
+            ctx.fillStyle = getHeatmapColor(lot);
+            ctx.fillRect(xEnd, y - barH / 2, liveW, barH);
+          }
+        }
+        ctx.restore();
+      }
+      ctx.restore();
+
+      // 🌟 Render Major Resting Whale Liquidity Shelves (Thick Radiant focal body in history, dimmed in live space)
+      if (lastSlice) {
+        const candidateLevels = [];
+        for (let idx = minIdx; idx <= maxIdx; idx++) {
+          const lot = lastSlice.levels[idx] || 0;
+          if (lot >= 28) {
+            candidateLevels.push({ idx, p: idx / 2, lot });
+          }
+        }
+
+        // Sort descending by lot size and filter out nearby ticks (< 1.50 USD apart)
+        candidateLevels.sort((a, b) => b.lot - a.lot);
+        const chosenLevels = [];
+        for (const cand of candidateLevels) {
+          const tooClose = chosenLevels.some((c) => Math.abs(c.p - cand.p) < 1.50);
+          if (!tooClose) {
+            chosenLevels.push(cand);
+          }
+        }
+
+        for (const item of chosenLevels) {
+          if (item.lot >= 65) {
+            const y = priceToY(item.p);
+            const isWhale = item.lot >= 85;
+            const isAbsorbing = Math.abs(currentSpotPrice - item.p) <= 0.60;
+            const pulse = isAbsorbing ? Math.sin(performance.now() * 0.008) * 2.0 : 0;
+
+            // ⏱️ CHECK WALL PERSISTENCE (must be >= 30 minutes old for full shelf line)
+            const priceKey = item.p.toFixed(2);
+            let wallInfo = wallPersistenceMap[priceKey];
+            if (!wallInfo) {
+              for (const wk in wallPersistenceMap) {
+                if (Math.abs(parseFloat(wk) - item.p) < 0.45) {
+                  wallInfo = wallPersistenceMap[wk];
+                  break;
+                }
+              }
+            }
+            const wallAge = wallInfo ? (Math.floor(Date.now() / 1000) - wallInfo.firstSeen) : 0;
+            const isPersistent = wallAge >= WALL_MIN_AGE_SEC;
+            const ageMins = Math.floor(wallAge / 60);
+
+            const shelfColor = isWhale ? 'rgba(255, 109, 0, 0.95)' : 'rgba(255, 214, 0, 0.90)';
+            const glowColor = isAbsorbing
+              ? (isWhale ? 'rgba(255, 109, 0, 0.65)' : 'rgba(255, 214, 0, 0.55)')
+              : (isWhale ? 'rgba(255, 109, 0, 0.35)' : 'rgba(255, 214, 0, 0.25)');
+            const shelfThickness = (isWhale ? 7.0 : 5.5) + pulse;
+
+            if (isPersistent) {
+              // ✅ PERSISTENT WALL (>= 30 min): Draw full radiant shelf line
+              ctx.fillStyle = glowColor;
+              ctx.fillRect(xStart, y - shelfThickness, ribbonWidth, shelfThickness * 2);
+              ctx.fillStyle = shelfColor;
+              ctx.fillRect(xStart, y - (isWhale ? 3.5 : 2.75), ribbonWidth, isWhale ? 7.0 : 5.5);
+
+              // Dimmed projection in live zone
+              if (xEnd < plotWidth) {
+                ctx.save();
+                ctx.globalAlpha = 0.28;
+                ctx.fillStyle = shelfColor;
+                ctx.fillRect(xEnd, y - (isWhale ? 2.5 : 2.0), plotWidth - xEnd, isWhale ? 5.0 : 4.0);
+                ctx.restore();
+              }
+            } else {
+              // ⏳ YOUNG WALL (< 30 min): Draw thin faint marker only (not a confirmed shelf yet)
+              const youngAlpha = Math.min(0.55, 0.15 + (wallAge / WALL_MIN_AGE_SEC) * 0.40);
+              ctx.save();
+              ctx.globalAlpha = youngAlpha;
+              ctx.fillStyle = shelfColor;
+              ctx.fillRect(xStart, y - 1.5, ribbonWidth, 3.0);
+              ctx.restore();
+            }
+          }
+        }
+
+        // 🏷️ Clean crisp white lot numbers with black stroke outline
+        // Show persistence age for walls (e.g. "92L 47m" = persistent for 47 minutes)
+        ctx.save();
+        ctx.font = 'bold 10px "JetBrains Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+
+        const labelX = Math.max(20, plotWidth * 0.25);
+        for (const item of chosenLevels) {
+          const y = priceToY(item.p);
+          if (y < 10 || y > plotHeight - 10) continue;
+
+          const priceKey = item.p.toFixed(2);
+          let wallInfo = wallPersistenceMap[priceKey];
+          if (!wallInfo) {
+            for (const wk in wallPersistenceMap) {
+              if (Math.abs(parseFloat(wk) - item.p) < 0.45) {
+                wallInfo = wallPersistenceMap[wk];
+                break;
+              }
+            }
+          }
+          const wallAge = wallInfo ? (Math.floor(Date.now() / 1000) - wallInfo.firstSeen) : 0;
+          const ageMins = Math.floor(wallAge / 60);
+          const ageSecs = wallAge % 60;
+          const isPersistent = wallAge >= WALL_MIN_AGE_SEC;
+
+          // Show lot + live age ticking every second (e.g. "84L ⏱ 143m 25s" or "65L ⌛ 45s")
+          const timeText = ageMins > 0
+            ? `${ageMins}m ${ageSecs.toString().padStart(2, '0')}s`
+            : `${ageSecs}s`;
+
+          const text = isPersistent
+            ? `${item.lot}L ⏱ ${timeText}`
+            : `${item.lot}L ⌛ ${timeText}`;
+
+          // 1. Crisp Black Outline (Pinggiran Hitam)
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 3.2;
+          ctx.lineJoin = 'round';
+          ctx.miterLimit = 2;
+          ctx.strokeText(text, labelX, y);
+
+          // 2. Pure Crisp White Fill (Warna Putih)
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(text, labelX, y);
+        }
+        ctx.restore();
+      }
+    }
+
+    // 🕯️ FOREGROUND CANDLESTICK RENDERER
+    function drawCandlesticks(plotWidth, plotHeight) {
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe]
+        : candles;
+
+      if (!activeBars || activeBars.length === 0) return;
+
+      const lastBar = activeBars[activeBars.length - 1];
+      if (lastBar) {
+        lastBar.close = currentSpotPrice;
+        lastBar.high = Math.max(lastBar.high, currentSpotPrice);
+        lastBar.low = Math.min(lastBar.low, currentSpotPrice);
+      }
+
+      // High-Contrast Candlesticks
+      const barSpacing = Math.abs(timeToX(nowSec) - timeToX(nowSec - tfSec));
+      const candleWidth = Math.max(1.5, Math.min(18, barSpacing * 0.70));
+
+      for (let i = 0; i < activeBars.length; i++) {
+        const c = activeBars[i];
+        // 100% Uniform Rhythmic Grid Spacing for all candles (Zero overlap/Zero mpet!)
+        const xCenter = timeToX(c.time + tfSec / 2);
+
+        if (xCenter + candleWidth < 0 || xCenter - candleWidth > plotWidth) continue;
+
+        const yOpen = priceToY(c.open);
+        const yClose = priceToY(c.close);
+        const yHigh = priceToY(c.high);
+        const yLow = priceToY(c.low);
+
+        const isBull = c.close >= c.open;
+        const strokeColor = isBull ? '#089981' : '#f23645';
+        const bodyTop = Math.min(yOpen, yClose);
+        const bodyHeight = Math.max(1.5, Math.abs(yOpen - yClose));
+
+        // Dark Outline for high contrast
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(Math.round(xCenter) + 0.5, Math.min(yHigh, yLow));
+        ctx.lineTo(Math.round(xCenter) + 0.5, Math.max(yHigh, yLow));
+        ctx.stroke();
+
+        // Sharp Wick
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1.0;
+        ctx.beginPath();
+        ctx.moveTo(Math.round(xCenter) + 0.5, Math.min(yHigh, yLow));
+        ctx.lineTo(Math.round(xCenter) + 0.5, Math.max(yHigh, yLow));
+        ctx.stroke();
+
+        // Candle Body
+        ctx.fillStyle = isBull ? '#089981' : '#f23645';
+        ctx.fillRect(xCenter - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+
+        ctx.strokeStyle = isBull ? '#00e676' : '#ff4d6d';
+        ctx.lineWidth = 1.0;
+        ctx.strokeRect(xCenter - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+      }
+
+      // Subtle Live Price Line
+      const yLive = priceToY(currentSpotPrice);
+      ctx.strokeStyle = 'rgba(0, 230, 118, 0.7)';
+      ctx.lineWidth = 1.0;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(0, yLive);
+      ctx.lineTo(plotWidth, yLive);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // 👑 DOKTRIN COMMANDER: SIMPLE EMA 1 (PALING DEPAN / CMP FOREGROUND TRACE)
+    // Berada di lapisan paling depan di atas candle agar saat terjadi gap, arah CMP tetap terbaca sempurna!
+    function drawEma1PriceTrace(plotWidth, plotHeight) {
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe]
+        : candles;
+
+      if (!activeBars || activeBars.length < 2) return;
+
+      ctx.save();
+
+      // Pass 1: Dark Outer Halo (3.4px) - Memastikan garis EMA 1 tetap kontras membelah body candle
+      ctx.lineWidth = 3.4;
+      ctx.strokeStyle = 'rgba(5, 8, 17, 0.75)';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < activeBars.length; i++) {
+        const c = activeBars[i];
+        const x = timeToX(c.time + tfSec / 2);
+        const y = priceToY(c.close);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Pass 2: Dynamic Dual-Color CMP Line (Tebal 2.0px, Hijau naik, Merah turun)
+      ctx.lineWidth = 2.0;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (let i = 1; i < activeBars.length; i++) {
+        const prevC = activeBars[i - 1];
+        const c = activeBars[i];
+
+        const x1 = timeToX(prevC.time + tfSec / 2);
+        const y1 = priceToY(prevC.close);
+        const x2 = timeToX(c.time + tfSec / 2);
+        const y2 = priceToY(c.close);
+
+        const isUp = (c.close >= prevC.close) || (c.close >= c.open);
+        ctx.strokeStyle = isUp ? '#00e676' : '#ff3b5c'; // Neon Green / Neon Red
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+
+      // Pass 3: Leading Live Tip Bead (Luminous Spot di candle live)
+      const lastBar = activeBars[activeBars.length - 1];
+      if (lastBar) {
+        const liveX = timeToX(lastBar.time + tfSec / 2);
+        const liveY = priceToY(currentSpotPrice);
+        const isBullLive = currentSpotPrice >= lastBar.open;
+
+        ctx.fillStyle = isBullLive ? '#00e676' : '#ff3b5c';
+        ctx.beginPath();
+        ctx.arc(liveX, liveY, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    // ⚪ CLEAN LIVE BOUNDARY MARKER (Tipis & Elegan)
+    function drawLiveMarker(plotWidth, plotHeight) {
+      const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe] : candles;
+      const lastBar = (activeBars && activeBars.length > 0) ? activeBars[activeBars.length - 1] : null;
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const xLive = lastBar ? timeToX(lastBar.time + tfSec / 2) : timeToX(nowSec);
+      if (xLive >= 0 && xLive <= plotWidth) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.38)';
+        ctx.lineWidth = 0.75; // Garis live lebih tipis
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(xLive, 0);
+        ctx.lineTo(xLive, plotHeight);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(xLive - 16, 4, 32, 13);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.0;
+        ctx.strokeRect(xLive - 16, 4, 32, 13);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('LIVE', xLive, 13);
+      }
+    }
+
+    // 🌅 SESSION HIGHLIGHTER — Asia / London / New York
+    function drawSessionHighlighter(plotWidth, plotHeight) {
+      // Sessions in UTC hours
+      const sessions = [
+        { name: 'ASIA',   startH: 0,  endH: 9,  color: 'rgba(56, 189, 248, 0.045)' },  // blue
+        { name: 'LONDON', startH: 7,  endH: 16, color: 'rgba(168, 85, 247, 0.045)' }, // purple
+        { name: 'NY',     startH: 13, endH: 22, color: 'rgba(34, 197, 94, 0.045)' },  // green
+      ];
+
+      const DAY_SEC = 86400;
+      const nowT = Math.floor(Date.now() / 1000);
+      // Cover enough days in view
+      const startDay = Math.floor(timeStart / DAY_SEC) * DAY_SEC;
+      const endDay   = Math.ceil(timeEnd / DAY_SEC) * DAY_SEC;
+
+      ctx.save();
+      for (const sess of sessions) {
+        ctx.fillStyle = sess.color;
+        for (let d = startDay; d <= endDay; d += DAY_SEC) {
+          const sT = d + sess.startH * 3600;
+          const eT = d + sess.endH   * 3600;
+          if (eT < timeStart || sT > timeEnd) continue;
+          const x1 = Math.max(0, timeToX(sT));
+          const x2 = Math.min(plotWidth, timeToX(eT));
+          ctx.fillRect(x1, 0, x2 - x1, plotHeight);
+        }
+      }
+
+      // Draw session name labels at the top
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.textBaseline = 'top';
+      const labelColors = { ASIA: '#38bdf8', LONDON: '#a855f7', NY: '#22c55e' };
+      for (const sess of sessions) {
+        for (let d = startDay; d <= endDay; d += DAY_SEC) {
+          const sT = d + sess.startH * 3600;
+          const eT = d + sess.endH   * 3600;
+          if (eT < timeStart || sT > timeEnd) continue;
+          const x1 = Math.max(0, timeToX(sT));
+          const x2 = Math.min(plotWidth, timeToX(eT));
+          const labelX = x1 + 4;
+          if (x2 - x1 < 20) continue;
+          ctx.fillStyle = labelColors[sess.name];
+          ctx.globalAlpha = 0.55;
+          ctx.fillText(sess.name, labelX, 22);
+          ctx.globalAlpha = 1;
+        }
+      }
+      ctx.restore();
+    }
+
+    // 2026-09-03: shared session-window helper (was inlined only in
+    // drawVwap - drawVolumeProfile used the FULL loaded history with no
+    // time filter at all, so its POC locked onto whatever price had the
+    // most cumulative volume across the entire multi-month dataset and
+    // never meaningfully moved - "POC $4329" frozen while price traded
+    // 100+ points away. Now both share one session definition.
+    function getSessionBars(activeBars) {
+      if (!activeBars || activeBars.length < 2) return activeBars || [];
+      const lastBar = activeBars[activeBars.length - 1];
+      const nowD = new Date(lastBar.time * 1000);
+      const curH = nowD.getUTCHours();
+      let sessStartH = 13;
+      let sessName = 'NY';
+
+      if (curH >= 13 || curH < 0) {
+        sessStartH = 13;
+        sessName = 'NY';
+      } else if (curH >= 7) {
+        sessStartH = 7;
+        sessName = 'LON';
+      } else {
+        sessStartH = 0;
+        sessName = 'ASIA';
+      }
+
+      const sessDate = new Date(Date.UTC(nowD.getUTCFullYear(), nowD.getUTCMonth(), nowD.getUTCDate(), sessStartH, 0, 0));
+      let sessStartTs = Math.floor(sessDate.getTime() / 1000);
+      if (sessStartTs > lastBar.time) {
+        sessStartTs -= 86400;
+      }
+
+      let sessionBars = activeBars.filter(b => b.time >= sessStartTs);
+      if (sessionBars.length < 12) {
+        sessionBars = activeBars.slice(-36); // Smooth fallback to rolling 3h if session just began
+      }
+      return { bars: sessionBars, sessName };
+    }
+
+    // 📊 PER-CANDLE DELTA FOOTPRINT (Mini green/red bars below each candle)
+    function drawFootprintDelta(plotWidth, plotHeight) {
+      const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe] : candles;
+      if (!activeBars || activeBars.length < 2) return;
+
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const barW = Math.max(2, (plotWidth / activeBars.length) * 0.65);
+      const maxDelta = activeBars.reduce((m, b) => Math.max(m, Math.abs(b.delta || 0)), 1);
+      // Footprint occupies the TOP 32px of the subpanel (above the main volume bars)
+      const panelTop = plotHeight + 3;
+      const panelH   = 28;
+
+      ctx.save();
+      for (let i = 0; i < activeBars.length; i++) {
+        const b = activeBars[i];
+        const x = timeToX(b.time + tfSec / 2);
+        if (x < -barW || x > plotWidth) continue;
+        const delta = b.delta || 0;
+        const barH  = Math.max(1, (Math.abs(delta) / maxDelta) * panelH);
+        const isBuy = delta >= 0;
+        ctx.fillStyle = isBuy ? 'rgba(0, 230, 118, 0.75)' : 'rgba(255, 42, 75, 0.75)';
+        const yBar = isBuy ? panelTop + panelH - barH : panelTop + panelH;
+        ctx.fillRect(x - barW / 2, yBar, barW, barH);
+      }
+      ctx.restore();
+    }
+
+    // ⏱️ CANDLE COUNTDOWN TIMER (Live Second-by-Second Countdown)
+    function drawCandleCountdown(plotWidth, plotHeight) {
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe] : candles;
+      const lastBar = (activeBars && activeBars.length > 0) ? activeBars[activeBars.length - 1] : null;
+
+      // Real Current Epoch Seconds
+      const curRealSec = Math.floor(Date.now() / 1000);
+
+      // Calculate true remaining seconds until candle closes (Tier-1 MT5 Broker Aligned)
+      let remaining = 0;
+      const tfShift = tfSec === 14400 ? 3600 : (tfSec === 86400 ? 75600 : 0);
+      if (lastBar && lastBar.time) {
+        const candleEnd = lastBar.time + tfSec;
+        remaining = Math.max(0, candleEnd - curRealSec);
+      } else {
+        const elapsed = (curRealSec - tfShift) % tfSec;
+        remaining = Math.max(0, tfSec - elapsed);
+      }
+
+      const mins = Math.floor(remaining / 60);
+      const secs = remaining % 60;
+      const label = mins > 0 ? `${mins}m ${secs.toString().padStart(2, '0')}s` : `${secs}s`;
+      const urgency = remaining <= 15; // Last 15s → flash red
+
+      const xLive = lastBar ? timeToX(lastBar.time + tfSec / 2) : timeToX(nowSec);
+      if (xLive < 0 || xLive > plotWidth) return;
+
+      ctx.save();
+      const pillW = 68;
+      const pillH = 17;
+      const pillX = Math.min(plotWidth - pillW - 10, xLive + 10);
+      const pillY = plotHeight - 32;
+
+      ctx.fillStyle = urgency ? 'rgba(220, 38, 38, 0.92)' : 'rgba(15, 23, 42, 0.90)';
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+      else ctx.rect(pillX, pillY, pillW, pillH);
+      ctx.fill();
+      ctx.strokeStyle = urgency ? '#ff2a4b' : 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = urgency ? 1.5 : 0.8;
+      ctx.stroke();
+
+      ctx.fillStyle = urgency ? '#ffffff' : '#94a3b8';
+      ctx.font = `bold ${urgency ? 8.5 : 8}px "JetBrains Mono", monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`⏱ ${label}`, pillX + pillW / 2, pillY + pillH / 2);
+      ctx.restore();
+    }
+
+    // 🔔 PRICE ALERT SYSTEM
+    function drawPriceAlert(plotWidth, plotHeight) {
+      if (priceAlertLevel === null) return;
+
+      const y = priceToY(priceAlertLevel);
+      if (y < 0 || y > plotHeight) return;
+
+      // Check if triggered
+      if (!priceAlertTriggered && Math.abs(currentSpotPrice - priceAlertLevel) <= 0.25) {
+        priceAlertTriggered = true;
+        triggerPriceAlertBeep();
+        showWhaleNotification('ALERT', 0, priceAlertLevel);
+      }
+
+      const isHit = priceAlertTriggered;
+      ctx.save();
+      ctx.strokeStyle = isHit ? 'rgba(255, 214, 0, 0.9)' : 'rgba(251, 191, 36, 0.65)';
+      ctx.lineWidth = isHit ? 1.8 : 1.2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(plotWidth, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Badge
+      const badgeW = 82;
+      const badgeH = 16;
+      const badgeX = plotWidth / 2 - badgeW / 2;
+      ctx.fillStyle = isHit ? 'rgba(255, 214, 0, 0.20)' : 'rgba(15, 23, 42, 0.88)';
+      ctx.fillRect(badgeX, y - badgeH / 2, badgeW, badgeH);
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(badgeX, y - badgeH / 2, badgeW, badgeH);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`🔔 $${priceAlertLevel.toFixed(2)}`, badgeX + badgeW / 2, y);
+      ctx.restore();
+    }
+
+    function triggerPriceAlertBeep() {
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.connect(gain); gain.connect(ac.destination);
+        osc.frequency.value = 880;
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0.4, ac.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.8);
+        osc.start(); osc.stop(ac.currentTime + 0.8);
+      } catch(e) {}
+    }
+
+    // 🐋 TRANSLUCENT 3D WHALE BUBBLES (GLASSMORPHIC SPHERES BEHIND CANDLES)
+    function drawWhaleBubbles() {
+      for (let i = 0; i < bubbles.length; i++) {
+        const b = bubbles[i];
+        const x = timeToX(b.time);
+        const y = priceToY(b.price);
+
+        if (x < -30 || x > width - rightMargin) continue;
+
+        const radius = Math.max(7, Math.min(22, Math.sqrt(b.volume) * 1.15));
+        const isBuy = b.side === 'BUY';
+
+        ctx.save();
+        ctx.globalAlpha = 0.52; // Translucent glass effect - candles shine right through!
+
+        const grad = ctx.createRadialGradient(x - radius * 0.3, y - radius * 0.3, radius * 0.1, x, y, radius);
+        if (isBuy) {
+          grad.addColorStop(0, '#69f0ae');
+          grad.addColorStop(0.65, '#00c853');
+          grad.addColorStop(1, '#004d1a');
+        } else {
+          grad.addColorStop(0, '#ff8a80');
+          grad.addColorStop(0.65, '#d50000');
+          grad.addColorStop(1, '#5a0000');
+        }
+
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.strokeStyle = isBuy ? '#00e676' : '#ff5252';
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+        ctx.restore();
+
+        // Pure Translucent 3D Sphere (Tanpa kotak tag yang mengganggu)
+      }
+    }
+
+    // 🏛️ DOKTRIN V4 INSTITUTIONAL LEVELS (ATAP & LANTAI)
+    function drawCmpDoctrine(plotWidth) {
+      // 1. ATAP (Minor Resistance)
+      if (cmpLevels.minorRes) {
+        const yRes = priceToY(cmpLevels.minorRes);
+        ctx.strokeStyle = 'rgba(255, 42, 75, 0.55)';
+        ctx.lineWidth = 1.0;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, yRes);
+        ctx.lineTo(plotWidth, yRes);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const atapLabel = `🔴 ATAP: $${cmpLevels.minorRes.toFixed(2)}`;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2.5;
+        ctx.strokeText(atapLabel, 8, yRes - 4);
+        ctx.fillStyle = '#ff4d6d';
+        ctx.fillText(atapLabel, 8, yRes - 4);
+      }
+
+      // 2. LANTAI (Minor Support)
+      if (cmpLevels.minorSup) {
+        const ySup = priceToY(cmpLevels.minorSup);
+        ctx.strokeStyle = 'rgba(0, 230, 118, 0.55)';
+        ctx.lineWidth = 1.0;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, ySup);
+        ctx.lineTo(plotWidth, ySup);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const lantaiLabel = `🟢 LANTAI: $${cmpLevels.minorSup.toFixed(2)}`;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2.5;
+        ctx.strokeText(lantaiLabel, 8, ySup + 11);
+        ctx.fillStyle = '#00e676';
+        ctx.fillText(lantaiLabel, 8, ySup + 11);
+      }
+    }
+
+    // 📊 VIBRANT INSTITUTIONAL VOLUME PROFILE (HIGH CONTRAST LEFT PILLAR)
+    function drawVolumeProfile(plotWidth, plotHeight) {
+      const allBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe]
+        : candles;
+      if (!allBars || allBars.length === 0) return;
+
+      // 2026-09-03: Dadang - "keknya dia gak fungsi deh" - was computing
+      // over the ENTIRE loaded history (months of bars via candleVault),
+      // so POC locked onto whatever price had the most cumulative volume
+      // ever and barely moved as price traded elsewhere. Same session
+      // window as drawVwap() now, so it actually reflects today.
+      const session = getSessionBars(allBars);
+      const activeBars = session.bars;
+      const sessName = session.sessName;
+
+      const profileWidth = Math.min(135, plotWidth * 0.17);
+      let priceStep = 0.50;
+      if (priceSpan > 100) priceStep = 2.00;
+      else if (priceSpan > 50) priceStep = 1.00;
+      else priceStep = 0.50;
+
+      const startP = Math.floor(priceMin / priceStep) * priceStep;
+      const endP = Math.ceil(priceMax / priceStep) * priceStep;
+
+      // 1. Calculate Real Dynamic Volume Distribution from active candles
+      const volMap = {};
+      let maxVol = 0;
+      let realPocPrice = currentSpotPrice;
+
+      for (let i = 0; i < activeBars.length; i++) {
+        const b = activeBars[i];
+        const v = b.volume || 1;
+        const bLow = b.low;
+        const bHigh = Math.max(bLow + 0.1, b.high);
+        const p1 = Math.floor(bLow / priceStep) * priceStep;
+        const p2 = Math.ceil(bHigh / priceStep) * priceStep;
+        const steps = Math.max(1, Math.round((p2 - p1) / priceStep));
+        const volPerStep = v / steps;
+
+        for (let p = p1; p <= p2; p += priceStep) {
+          const key = Math.round(p * 100) / 100;
+          volMap[key] = (volMap[key] || 0) + volPerStep;
+          if (volMap[key] > maxVol) {
+            maxVol = volMap[key];
+            realPocPrice = key;
+          }
+        }
+      }
+
+      if (maxVol <= 0) maxVol = 1;
+
+      // Sync with global CMP levels
+      cmpLevels.poc = realPocPrice;
+
+      // 2. Translucent backdrop pillar so heatmap stays 100% flush and visible to the left edge
+      ctx.save();
+      ctx.fillStyle = 'rgba(5, 10, 22, 0.35)';
+      ctx.fillRect(0, 0, profileWidth + 8, plotHeight);
+      ctx.strokeStyle = 'rgba(0, 229, 255, 0.25)';
+      ctx.lineWidth = 1.0;
+      ctx.beginPath();
+      ctx.moveTo(profileWidth + 8, 0);
+      ctx.lineTo(profileWidth + 8, plotHeight);
+      ctx.stroke();
+
+      // 3. Profile Title Header with POC
+      ctx.fillStyle = '#00e5ff';
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${sessName} VOL PROFILE`, 8, 14);
+
+      ctx.fillStyle = '#ffd600';
+      ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+      ctx.fillText(`POC $${realPocPrice.toFixed(2)}`, 8, 25);
+
+      // 4. Render Horizontal Volume Profile Bars (No redundant right line!)
+      for (let p = startP; p <= endP; p += priceStep) {
+        const pKey = Math.round(p * 100) / 100;
+        const vol = volMap[pKey] || 0;
+        if (vol <= 0) continue;
+
+        const y = priceToY(p);
+        const h = Math.max(1.8, Math.abs(priceToY(p - priceStep) - y));
+        const isPoc = (Math.abs(p - realPocPrice) < priceStep * 0.75);
+        const barLen = Math.min(profileWidth, (vol / maxVol) * profileWidth);
+
+        if (isPoc) {
+          // Radiant Golden POC Bar on the left pillar only
+          ctx.fillStyle = 'rgba(255, 214, 0, 0.90)';
+          ctx.fillRect(0, y - h, barLen, h - 0.5);
+          ctx.strokeStyle = '#ffd600';
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(0, y - h, barLen, h - 0.5);
+        } else {
+          // Vibrant Dual-Tone Cyan/Blue Volume Bar
+          const isValueArea = (vol >= maxVol * 0.35);
+          ctx.fillStyle = isValueArea ? 'rgba(0, 210, 255, 0.70)' : 'rgba(30, 110, 190, 0.50)';
+          ctx.fillRect(0, y - h, barLen, h - 0.5);
+
+          ctx.strokeStyle = isValueArea ? 'rgba(0, 229, 255, 0.90)' : 'rgba(56, 150, 230, 0.65)';
+          ctx.lineWidth = 0.8;
+          ctx.strokeRect(0, y - h, barLen, h - 0.5);
+        }
+      }
+
+      ctx.restore();
+    }
+
+
+    // 👻 RADAR SPOOFING (WALL PULLING DETECTOR - COMMANDER DADANG DOCTRINE)
+    // Geser nyata ke kiri (~2.2 px/detik) & tahan reload via sessionStorage, auto fade-out sampai hilang
+    function drawSpoofRadar(plotWidth, plotHeight) {
+      if (!spoofEvents || spoofEvents.length === 0) return;
+      ctx.save();
+
+      const curNow = Date.now() / 1000;
+      const SPOOF_LIFETIME = 75; // 75 detik: meluncur anggun ke kiri lalu hilang bersih
+      let stateChanged = false;
+
+      for (let i = spoofEvents.length - 1; i >= 0; i--) {
+        const se = spoofEvents[i];
+        const ageSec = curNow - se.pulledTime;
+
+        // Auto-cleanup: Hilang total setelah 75 detik
+        if (ageSec >= SPOOF_LIFETIME) {
+          spoofEvents.splice(i, 1);
+          stateChanged = true;
+          continue;
+        }
+
+        const y = priceToY(se.price);
+        if (y < 0 || y > plotHeight) continue;
+
+        // Progress 0.0 (baru dicabut) -> 1.0 (selesai/hilang)
+        const progress = Math.min(1.0, ageSec / SPOOF_LIFETIME);
+
+        // Opacity memudar secara halus (smooth fade-out)
+        const alpha = Math.max(0, 1.0 - Math.pow(progress, 1.3));
+
+        // 🚀 GESER NYATA KE KIRI (Kecepatan konstan ~2.2 pixel per detik)
+        const driftPx = ageSec * 2.2;
+        const xEnd = timeToX(se.pulledTime) - driftPx;
+        const lineLen = Math.max(25, 60 * (1.0 - progress * 0.5));
+        const xStart = xEnd - lineLen;
+
+        // Prune jika sudah keluar dari layar sebelah kiri
+        if (xEnd < -100) {
+          spoofEvents.splice(i, 1);
+          stateChanged = true;
+          continue;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        // 1. Amber neon dashed ghost line
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(xStart, y);
+        ctx.lineTo(xEnd, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 2. Pulse anchor dot at termination point
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(xEnd, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 3. Elegant badge pinned at the drifting termination point
+        const badgeText = `👻 SPOOF PULL ${se.lot}L (${se.ageStr})`;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        const tw = ctx.measureText(badgeText).width;
+        const bW = tw + 12;
+        const bH = 16;
+        const bX = xEnd - bW - 4;
+        const bY = y - bH / 2;
+
+        ctx.fillStyle = 'rgba(24, 17, 3, 0.92)';
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(bX, bY, bW, bH, 3);
+        else ctx.rect(bX, bY, bW, bH);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#fbbf24';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeText, bX + bW / 2, y);
+
+        ctx.restore();
+      }
+
+      if (stateChanged) {
+        persistSpoofEvents();
+      }
+
+      ctx.restore();
+    }
+
+    // 🧲 NAKED POC (NPOC) GRAVITATIONAL MAGNET LINES (Institutional Liquidity Retest)
+    let cachedNpocs = [];
+    let lastNpocCalcTime = 0;
+
+    function getOrComputeNpocs(activeBars) {
+      const nowMs = performance.now();
+      if (cachedNpocs.length > 0 && (nowMs - lastNpocCalcTime < 2500)) {
+        return cachedNpocs;
+      }
+      lastNpocCalcTime = nowMs;
+
+      // Group past bars into 4-Hour (H4) Institutional Blocks & Sessions
+      const blocks = {};
+      for (let i = 0; i < activeBars.length; i++) {
+        const c = activeBars[i];
+        const dt = new Date(c.time * 1000);
+        const dStr = `${dt.getUTCFullYear()}-${(dt.getUTCMonth()+1).toString().padStart(2,'0')}-${dt.getUTCDate().toString().padStart(2,'0')}`;
+        const h4Hour = Math.floor(dt.getUTCHours() / 4) * 4;
+        const bId = `${dStr}_H4_${h4Hour.toString().padStart(2,'0')}:00`;
+
+        if (!blocks[bId]) {
+          blocks[bId] = { id: bId, h4Hour, bars: [], startIndex: i, endIndex: i };
+        }
+        blocks[bId].bars.push(c);
+        blocks[bId].endIndex = i;
+      }
+
+      let blockKeys = Object.keys(blocks);
+      if (blockKeys.length < 2) return [];
+
+      // 2026-09-03: Dadang - "NPOC/H4 POC rame banget" - this used to
+      // compute/draw EVERY H4 block ever loaded (any block whose POC price
+      // happens to fall in the current visible price range gets a line,
+      // regardless of how long ago it formed - price revisiting an old
+      // range stacks old + new POCs on top of each other). Cap to the most
+      // recent N blocks by TIME so the count stays bounded no matter how
+      // much history is loaded or how the price range overlaps.
+      const MAX_H4_BLOCKS = 8;
+      if (blockKeys.length > MAX_H4_BLOCKS + 1) {
+        blockKeys = blockKeys.slice(blockKeys.length - (MAX_H4_BLOCKS + 1));
+      }
+
+      const result = [];
+      const priceStep = 0.50;
+
+      // Analyze completed past H4 blocks (exclude current forming block)
+      for (let sIdx = 0; sIdx < blockKeys.length - 1; sIdx++) {
+        const bKey = blockKeys[sIdx];
+        const bData = blocks[bKey];
+        const bars = bData.bars;
+        if (bars.length < 8) continue;
+
+        const vMap = {};
+        for (let b = 0; b < bars.length; b++) {
+          const bar = bars[b];
+          const vol = bar.volume || 1;
+          const low = bar.low;
+          const high = Math.max(low + 0.1, bar.high);
+          const p1 = Math.floor(low / priceStep) * priceStep;
+          const p2 = Math.ceil(high / priceStep) * priceStep;
+          const steps = Math.max(1, Math.round((p2 - p1) / priceStep));
+          const volPerStep = vol / steps;
+
+          for (let p = p1; p <= p2; p += priceStep) {
+            const pk = Math.round(p * 100) / 100;
+            vMap[pk] = (vMap[pk] || 0) + volPerStep;
+          }
+        }
+
+        let maxV = 0;
+        let pocP = 0;
+        for (const pk in vMap) {
+          if (vMap[pk] > maxV) {
+            maxV = vMap[pk];
+            pocP = parseFloat(pk);
+          }
+        }
+
+        if (pocP <= 0) continue;
+
+        // Check if tested by any subsequent candle
+        let isTested = false;
+        let testedBarTime = null;
+        for (let k = bData.endIndex + 1; k < activeBars.length; k++) {
+          const futureBar = activeBars[k];
+          if (futureBar.low <= pocP && pocP <= futureBar.high) {
+            isTested = true;
+            testedBarTime = futureBar.time;
+            break;
+          }
+        }
+
+        result.push({
+          blockId: bKey,
+          label: `H4 ${bData.h4Hour.toString().padStart(2,'0')}:00`,
+          poc: pocP,
+          startTime: bars[0].time,
+          endTime: bars[bars.length - 1].time,
+          tested: isTested,
+          testedTime: testedBarTime
+        });
+      }
+
+      cachedNpocs = result;
+      return cachedNpocs;
+    }
+
+    function drawNakedPocs(plotWidth, plotHeight) {
+      const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe] : candles;
+      if (!activeBars || activeBars.length < 15) return;
+
+      const npocs = getOrComputeNpocs(activeBars);
+      if (!npocs || npocs.length === 0) return;
+
+      ctx.save();
+      for (const item of npocs) {
+        const y = priceToY(item.poc);
+        if (y < -20 || y > plotHeight + 20) continue;
+
+        // Garis memanjang penuh dari titik asal pembentukan menembus ke tepi kanan chart!
+        const xStart = Math.max(0, timeToX(item.startTime));
+        const xEnd = plotWidth;
+
+        if (!item.tested) {
+          // 🌟 ACTIVE UNTESTED NAKED POC (Garis Panjang Emas Tegas & Mantap: 1.8px)
+          ctx.strokeStyle = '#ffd600';
+          ctx.lineWidth = 1.8;
+          ctx.setLineDash([10, 5]);
+          ctx.beginPath();
+          ctx.moveTo(xStart, y);
+          ctx.lineTo(xEnd, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Badge Besar & Jelas (Ukuran Font 11px Bold)
+          const distPips = ((currentSpotPrice - item.poc) * 10).toFixed(1);
+          const badgeText = `🧲 NPOC ${item.label}: $${item.poc.toFixed(2)} [UNTESTED • ${distPips > 0 ? '+' : ''}${distPips}p]`;
+          ctx.font = 'bold 11px "JetBrains Mono", monospace';
+          const badgeW = ctx.measureText(badgeText).width + 22;
+          const badgeH = 22;
+          const badgeX = Math.min(plotWidth - badgeW - 12, Math.max(xStart + 16, plotWidth * 0.38));
+
+          // Kapsul Kaca Gelap Kontras Tinggi
+          ctx.fillStyle = 'rgba(6, 11, 24, 0.94)';
+          ctx.fillRect(badgeX, y - badgeH / 2, badgeW, badgeH);
+          ctx.strokeStyle = '#ffd600';
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(badgeX, y - badgeH / 2, badgeW, badgeH);
+
+          // Teks Emas Neon Jelas Terbaca
+          ctx.fillStyle = '#ffd600';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(badgeText, badgeX + badgeW / 2, y);
+
+          // Right Price Scale Indicator Tag
+          ctx.fillStyle = '#ffd600';
+          ctx.fillRect(plotWidth - 5, y - 4.5, 5, 9);
+        } else {
+          // 🛡️ TESTED POC (Garis Memanjang Penuh dengan Opacity Halus & Label 9.5px Jelas)
+          ctx.strokeStyle = 'rgba(255, 214, 0, 0.40)';
+          ctx.lineWidth = 1.0;
+          ctx.setLineDash([6, 6]);
+          ctx.beginPath();
+          ctx.moveTo(xStart, y);
+          ctx.lineTo(xEnd, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Badge Tested yang Jelas Terbaca
+          const testText = `✓ POC ${item.label}: $${item.poc.toFixed(2)} [TESTED]`;
+          ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+          const testW = ctx.measureText(testText).width + 16;
+          const testH = 18;
+          const testX = Math.min(plotWidth - testW - 12, Math.max(xStart + 16, plotWidth * 0.22));
+
+          ctx.fillStyle = 'rgba(6, 11, 24, 0.88)';
+          ctx.fillRect(testX, y - testH / 2, testW, testH);
+          ctx.strokeStyle = 'rgba(255, 214, 0, 0.50)';
+          ctx.lineWidth = 1.0;
+          ctx.strokeRect(testX, y - testH / 2, testW, testH);
+
+          ctx.fillStyle = '#fde047';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(testText, testX + testW / 2, y);
+        }
+      }
+      ctx.restore();
+    }
+
+    // 👑 TANDA AIR (WATERMARK) ELEGAN DI BELAKANG CANDLE (RESPONSIVE HP & DESKTOP)
+    function drawWatermark(plotWidth, plotHeight) {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const isMobile = plotWidth < 720;
+      const centerX = plotWidth * (isMobile ? 0.50 : 0.48);
+      const centerY = plotHeight * 0.45;
+
+      // Baris 1: Nama Pemilik / Commander (Skala Otomatis agar Layar HP Tetap Lega)
+      // 2026-09-03: Dadang - "nama gw tebelin dikit" - nudged up from 0.038,
+      // still deliberately faint (heatmap flow stays the dominant visual).
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.065)';
+      ctx.font = isMobile ? '900 20px "Inter", sans-serif' : '900 36px "Inter", -apple-system, sans-serif';
+      ctx.fillText('COMMANDER DADANG WAHYUONO', centerX, centerY - (isMobile ? 8 : 14));
+
+      // Baris 2: Sub-judul Institusional
+      ctx.fillStyle = 'rgba(0, 229, 255, 0.032)';
+      ctx.font = isMobile ? 'bold 9px "JetBrains Mono", monospace' : 'bold 14px "JetBrains Mono", monospace';
+      ctx.fillText('CHAIN REACTION PRO • ORDER FLOW TERMINAL', centerX, centerY + (isMobile ? 12 : 22));
+
+      ctx.restore();
+    }
+
+    // 🛡️ FITUR 3: LIVE RUNWAY & VETO S&D HUD (3 Veto S&D Doktrin Master)
+    function drawRunwayVetoHud(plotWidth, plotHeight) {
+      if (!currentSpotPrice || currentSpotPrice <= 0) return;
+
+      const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe] : candles;
+      const isMobile = plotWidth < 720;
+
+      // 1. Cari Tembok Terdekat di Atas (Nearest Resistance Wall / Ask Wall)
+      let nearestUpPrice = null;
+      let minUpDist = 999999;
+
+      // Cari dari Resting Walls di wallPersistenceMap
+      for (const pk in wallPersistenceMap) {
+        const p = parseFloat(pk);
+        const wall = wallPersistenceMap[pk];
+        if (p > currentSpotPrice + 0.10 && wall.lot >= 20) {
+          const dist = p - currentSpotPrice;
+          if (dist < minUpDist) {
+            minUpDist = dist;
+            nearestUpPrice = p;
+          }
+        }
+      }
+
+      // Cari dari Naked POC terdekat di atas
+      if (typeof cachedNpocs !== 'undefined' && cachedNpocs.length > 0) {
+        for (const item of cachedNpocs) {
+          if (!item.tested && item.poc > currentSpotPrice + 0.10) {
+            const dist = item.poc - currentSpotPrice;
+            if (dist < minUpDist) {
+              minUpDist = dist;
+              nearestUpPrice = item.poc;
+            }
+          }
+        }
+      }
+
+      // Default jika belum ada tembok di atas dalam range sempit
+      if (!nearestUpPrice) {
+        nearestUpPrice = currentSpotPrice + 4.50;
+      }
+
+      // 2. Cari Tembok Terdekat di Bawah (Nearest Support Wall / Bid Wall)
+      let nearestDownPrice = null;
+      let minDownDist = 999999;
+
+      for (const pk in wallPersistenceMap) {
+        const p = parseFloat(pk);
+        const wall = wallPersistenceMap[pk];
+        if (p < currentSpotPrice - 0.10 && wall.lot >= 20) {
+          const dist = currentSpotPrice - p;
+          if (dist < minDownDist) {
+            minDownDist = dist;
+            nearestDownPrice = p;
+          }
+        }
+      }
+
+      if (typeof cachedNpocs !== 'undefined' && cachedNpocs.length > 0) {
+        for (const item of cachedNpocs) {
+          if (!item.tested && item.poc < currentSpotPrice - 0.10) {
+            const dist = currentSpotPrice - item.poc;
+            if (dist < minDownDist) {
+              minDownDist = dist;
+              nearestDownPrice = item.poc;
+            }
+          }
+        }
+      }
+
+      if (!nearestDownPrice) {
+        nearestDownPrice = currentSpotPrice - 4.50;
+      }
+
+      // 3. Kalkulasi Jarak Runway dalam USD dan Pips
+      const upUsd = nearestUpPrice - currentSpotPrice;
+      const upPips = Math.round(upUsd * 10);
+      const downUsd = currentSpotPrice - nearestDownPrice;
+      const downPips = Math.round(downUsd * 10);
+
+      // Kriteria 3 Veto S&D Commander: >= 30p PASS, 15-29p FAIR, < 15p VETO
+      const upStatus = upPips >= 30 ? 'PASS' : (upPips >= 15 ? 'FAIR' : 'VETO');
+      const upColor = upStatus === 'PASS' ? '#00e676' : (upStatus === 'FAIR' ? '#fbbf24' : '#ff2a4b');
+
+      const downStatus = downPips >= 30 ? 'PASS' : (downPips >= 15 ? 'FAIR' : 'VETO');
+      const downColor = downStatus === 'PASS' ? '#00e676' : (downStatus === 'FAIR' ? '#fbbf24' : '#ff2a4b');
+
+      // 2026-09-03: Dadang - "otomatis beri saran jangan entri di kondisi
+      // seperti itu" - when BOTH sides veto (squeezed by walls on both
+      // sides, no real runway either direction per his own 3 Veto S&D
+      // rule), show an explicit, impossible-to-miss warning instead of
+      // making him mentally combine two separate VETO tags himself.
+      const bothVeto = upStatus === 'VETO' && downStatus === 'VETO';
+
+      // 4. Kalkulasi H4 Time Law & Bias (Doktrin Zone Co-Timestamp)
+      const curRealSec = Math.floor(Date.now() / 1000);
+      const h4Sec = 4 * 3600;
+      const h4Start = Math.floor(curRealSec / h4Sec) * h4Sec;
+      const h4End = h4Start + h4Sec;
+      const remH4 = Math.max(0, h4End - curRealSec);
+      const h4Hours = Math.floor(remH4 / 3600);
+      const h4Mins = Math.floor((remH4 % 3600) / 60);
+      const h4Secs = remH4 % 60;
+      const h4TimeText = `${h4Hours}h ${h4Mins.toString().padStart(2,'0')}m ${h4Secs.toString().padStart(2,'0')}s`;
+
+      // Cari Bar H4 Open
+      let h4Open = currentSpotPrice;
+      if (activeBars && activeBars.length > 0) {
+        for (let i = activeBars.length - 1; i >= 0; i--) {
+          if (activeBars[i].time <= h4Start) {
+            h4Open = activeBars[i].open;
+            break;
+          }
+        }
+      }
+
+      const h4Diff = currentSpotPrice - h4Open;
+      const h4Bias = h4Diff >= 0.40 ? 'BULLISH' : (h4Diff <= -0.40 ? 'BEARISH' : 'NEUTRAL');
+      const h4BiasColor = h4Bias === 'BULLISH' ? '#00e676' : (h4Bias === 'BEARISH' ? '#ff2a4b' : '#fbbf24');
+      const h4BiasIcon = h4Bias === 'BULLISH' ? '🟢' : (h4Bias === 'BEARISH' ? '🔴' : '🟡');
+
+      ctx.save();
+
+      if (isMobile) {
+        // 📱 MODE HP: Dua Kapsul Mikro Tipis yang Sangat Rapi di Atas Chart
+        const pillW = Math.min(plotWidth - 16, 260);
+        const warnH = bothVeto ? 18 : 0;
+
+        if (bothVeto) {
+          ctx.fillStyle = 'rgba(127, 29, 29, 0.96)';
+          ctx.strokeStyle = '#ff2a4b';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(8, 36, pillW, warnH, 3);
+          else ctx.rect(8, 36, pillW, warnH);
+          ctx.fill();
+          ctx.stroke();
+          ctx.font = 'bold 8px "JetBrains Mono", monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText('⛔ JANGAN ENTRY - Terjepit tembok 2 sisi', 8 + pillW / 2, 36 + warnH / 2);
+        }
+
+        // Kapsul 1: H4 Time Law & Bias
+        const p1H = 16;
+        const p1X = 8;
+        const p1Y = 36 + warnH + (bothVeto ? 4 : 0);
+        ctx.fillStyle = 'rgba(6, 11, 24, 0.94)';
+        ctx.strokeStyle = 'rgba(255, 215, 0, 0.28)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(p1X, p1Y, pillW, p1H, 3);
+        else ctx.rect(p1X, p1Y, pillW, p1H);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText(`🏛️ H4 ⏳ ${h4Hours}h ${h4Mins}m • BIAS: ${h4Bias} ${h4BiasIcon}`, p1X + pillW / 2, p1Y + p1H / 2);
+
+        // Kapsul 2: Runway Gauge
+        const p2H = 16;
+        const p2X = 8;
+        const p2Y = p1Y + p1H + 3;
+        ctx.fillStyle = 'rgba(6, 11, 24, 0.94)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(p2X, p2Y, pillW, p2H, 3);
+        else ctx.rect(p2X, p2Y, pillW, p2H);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('RUNWAY:', p2X + 24, p2Y + p2H / 2);
+        ctx.fillStyle = upColor;
+        ctx.fillText(`▲ +${upPips}p [${upStatus}]`, p2X + 88, p2Y + p2H / 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('•', p2X + 142, p2Y + p2H / 2);
+        ctx.fillStyle = downColor;
+        ctx.fillText(`▼ -${downPips}p [${downStatus}]`, p2X + 198, p2Y + p2H / 2);
+
+        // Kapsul 3: DAILY FOCUS (real order-flow majority vote)
+        drawDailyFocusBadge(p2X, p2Y + p2H + 4, pillW, 16, true, plotWidth);
+      } else {
+        // 🖥️ MODE DESKTOP: Unified Master Cockpit (Time Law + Runway Gauge)
+        const hudW = 215;
+        const hudH = 68;
+        const hudX = plotWidth - hudW - 12;
+        const warnH = bothVeto ? 20 : 0;
+        const hudY = 12 + warnH + (bothVeto ? 4 : 0);
+
+        if (bothVeto) {
+          ctx.fillStyle = 'rgba(127, 29, 29, 0.96)';
+          ctx.strokeStyle = '#ff2a4b';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(hudX, 12, hudW, warnH, 4);
+          else ctx.rect(hudX, 12, hudW, warnH);
+          ctx.fill();
+          ctx.stroke();
+          ctx.font = 'bold 8px "JetBrains Mono", monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText('⛔ JANGAN ENTRY - Terjepit tembok 2 sisi', hudX + hudW / 2, 12 + warnH / 2);
+        }
+
+        ctx.fillStyle = 'rgba(6, 11, 24, 0.94)';
+        ctx.strokeStyle = 'rgba(0, 229, 255, 0.35)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(hudX, hudY, hudW, hudH, 6);
+        else ctx.rect(hudX, hudY, hudW, hudH);
+        ctx.fill();
+        ctx.stroke();
+
+        // Row 1: H4 Time Law & Bias
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText(`🏛️ H4: ⏳ ${h4TimeText}`, hudX + 8, hudY + 6);
+        ctx.fillStyle = h4BiasColor;
+        ctx.textAlign = 'right';
+        ctx.fillText(`${h4Bias} ${h4BiasIcon}`, hudX + hudW - 8, hudY + 6);
+
+        // Divider Line
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(hudX + 8, hudY + 18);
+        ctx.lineTo(hudX + hudW - 8, hudY + 18);
+        ctx.stroke();
+
+        // Row 2: Runway Gauge Title
+        ctx.fillStyle = '#00e5ff';
+        ctx.font = 'bold 8px "JetBrains Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('🛡️ RUNWAY GAUGE (3 VETO S&D)', hudX + 8, hudY + 23);
+
+        // Row 3: UP Runway
+        ctx.font = 'bold 8px "JetBrains Mono", monospace';
+        ctx.fillStyle = upColor;
+        ctx.fillText(`▲ UP  : +${upUsd.toFixed(1)}$ (${upPips}p) ➔ $${nearestUpPrice.toFixed(1)}`, hudX + 8, hudY + 36);
+        ctx.textAlign = 'right';
+        ctx.fillText(`[${upStatus}]`, hudX + hudW - 8, hudY + 36);
+
+        // Row 4: DOWN Runway
+        ctx.textAlign = 'left';
+        ctx.fillStyle = downColor;
+        ctx.fillText(`▼ DOWN: -${downUsd.toFixed(1)}$ (${downPips}p) ➔ $${nearestDownPrice.toFixed(1)}`, hudX + 8, hudY + 49);
+        ctx.textAlign = 'right';
+        ctx.fillText(`[${downStatus}]`, hudX + hudW - 8, hudY + 49);
+
+        // DAILY FOCUS panel, right below the master cockpit
+        drawDailyFocusBadge(hudX, hudY + hudH + 8, hudW, 56, false, plotWidth);
+      }
+
+      ctx.restore();
+    }
+
+    // 2026-09-03: real-order-flow Daily Focus badge. Shows the verdict
+    // PLUS every raw vote (wall/volume/CVD) so the reasoning is visible,
+    // not a black box - per Dadang's own "data feed = kebenaran mutlak"
+    // principle, technical price shape is deliberately NOT one of the
+    // three inputs.
+    function drawDailyFocusBadge(baseX, y, w, h, isMobile, plotWidth) {
+      // Clamp the drag offset here (not just on drag-end) so a resize
+      // after dragging can't leave the box stranded off-screen.
+      const maxOffset = Math.max(0, plotWidth - w - 4 - baseX);
+      const minOffset = -baseX + 4;
+      dailyFocusDragX = Math.max(minOffset, Math.min(maxOffset, dailyFocusDragX));
+      const x = baseX + dailyFocusDragX;
+
+      lastDailyFocusRect = { x, y, w, h };
+
+      const verdict = dailyFocus.verdict;
+      const color = verdict === 'BUY' ? '#00e676' : (verdict === 'SELL' ? '#ff2a4b' : '#94a3b8');
+      const icon = verdict === 'BUY' ? '🟢' : (verdict === 'SELL' ? '🔴' : '⚪');
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(6, 11, 24, 0.94)';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x, y, w, h, 4);
+      else ctx.rect(x, y, w, h);
+      ctx.fill();
+      ctx.stroke();
+
+      // Small drag-handle hint (dots) so it reads as movable
+      ctx.fillStyle = 'rgba(255,255,255,0.30)';
+      ctx.font = '8px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('⠿', x + w - 10, y + (isMobile ? h / 2 : 8));
+
+      if (isMobile) {
+        ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(`FOKUS: `, x + 40, y + h / 2);
+        ctx.fillStyle = color;
+        ctx.fillText(`${icon} ${verdict} (${dailyFocus.votes}/3)`, x + w / 2 + 20, y + h / 2);
+        ctx.restore();
+        return;
+      }
+
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = '#00e5ff';
+      ctx.fillText('📡 DAILY FOCUS (DATA FEED)', x + 8, y + 6);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = color;
+      ctx.fillText(`${icon} ${verdict} (${dailyFocus.votes}/3)`, x + w - 8, y + 6);
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(x + 8, y + 18);
+      ctx.lineTo(x + w - 8, y + 18);
+      ctx.stroke();
+
+      ctx.font = '7.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'left';
+      const sideColor = (s) => s === 'BUY' ? '#00e676' : (s === 'SELL' ? '#ff2a4b' : '#64748b');
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('Wall:', x + 8, y + 23);
+      ctx.fillStyle = sideColor(dailyFocus.wallSide);
+      const wallTxt = typeof dailyFocus.bidWallRatio === 'number'
+        ? `${dailyFocus.wallSide} (${dailyFocus.bidWallRatio.toFixed(0)}/${dailyFocus.askWallRatio.toFixed(0)})`
+        : dailyFocus.wallSide;
+      ctx.fillText(wallTxt, x + 36, y + 23);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('Vol:', x + 8, y + 33);
+      ctx.fillStyle = sideColor(dailyFocus.volSide);
+      const volTxt = typeof dailyFocus.volBuyPct === 'number'
+        ? `${dailyFocus.volSide} (${dailyFocus.volBuyPct.toFixed(1)}% buy)`
+        : dailyFocus.volSide;
+      ctx.fillText(volTxt, x + 36, y + 33);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('CVD:', x + 8, y + 43);
+      ctx.fillStyle = sideColor(dailyFocus.cvdSide);
+      const cvdTxt = typeof dailyFocus.cvdVal === 'number'
+        ? `${dailyFocus.cvdSide} (${dailyFocus.cvdVal > 0 ? '+' : ''}${dailyFocus.cvdVal.toFixed(0)})`
+        : dailyFocus.cvdSide;
+      ctx.fillText(cvdTxt, x + 36, y + 43);
+
+      ctx.restore();
+    }
+
+    // 🪤 FITUR 4: TRAPPED TRADERS & WHALE ABSORPTION CLUSTER DETECTOR (HIGH CONVICTION)
+    function drawTrappedTraders(plotWidth, plotHeight) {
+      const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe] : candles;
+      if (!activeBars || activeBars.length < 8) return;
+
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const isMobile = plotWidth < 720;
+
+      ctx.save();
+
+      // Scan only visible bars with swing-extreme high conviction filter
+      for (let i = 3; i < activeBars.length - 1; i++) {
+        const c = activeBars[i];
+        const x = timeToX(c.time + tfSec / 2);
+        if (x < -20 || x > plotWidth + 20) continue;
+
+        const totalRange = c.high - c.low;
+        if (totalRange < 1.40) continue;
+
+        const upperWick = c.high - Math.max(c.open, c.close);
+        const lowerWick = Math.min(c.open, c.close) - c.low;
+
+        // Swing Extreme: Pucuk tertinggi atau lembah terendah dari 3 bar sebelumnya
+        const isHighExtreme = c.high >= Math.max(activeBars[i-1].high, activeBars[i-2].high, activeBars[i-3].high);
+        const isLowExtreme = c.low <= Math.min(activeBars[i-1].low, activeBars[i-2].low, activeBars[i-3].low);
+
+        // 2026-09-03: Dadang - "trapped buyer/seller bisa lo buat lebih
+        // akurat". Sebelum ini murni geometri wick (range+wick+swing) TANPA
+        // cek volume - wick nyeleneh yang bentuknya kebetulan pas bisa
+        // ke-flag walau gak ada partisipasi/absorpsi beneran di baliknya.
+        // Absorpsi whale beneran HARUS ninggalin jejak volume di atas rata2
+        // - tambahin itu sebagai konfirmasi, bukan ganti geometri yang udah
+        // ada (masih dipertahankan semua threshold lama).
+        const volLookback = Math.min(10, i);
+        let avgVol = 0;
+        for (let k = i - volLookback; k < i; k++) avgVol += (activeBars[k].volume || 0);
+        avgVol = volLookback > 0 ? avgVol / volLookback : 0;
+        const hasVolumeConfirmation = avgVol <= 0 || (c.volume || 0) >= avgVol * 1.25;
+
+        // 1. TRAPPED BUYERS (Paus Sell Menyerap Pembelian Buyer di Pucuk Extreme)
+        if (isHighExtreme && upperWick >= 1.50 && upperWick >= totalRange * 0.48 && c.close < c.open && hasVolumeConfirmation) {
+          const yTip = priceToY(c.high);
+
+          // Aura Pendar Merah Lembut di Sekitar Ekor
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
+          ctx.beginPath();
+          ctx.arc(x, yTip + 6, 12, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Garis Shelf Stop Loss Tipis yang Memanjang ke Kanan (Level SL Siap Pakai!)
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.moveTo(x - 10, yTip);
+          ctx.lineTo(x + 48, yTip);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Label SL Eksak
+          ctx.fillStyle = '#f87171';
+          ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+          ctx.textAlign = 'left';
+          ctx.fillText(`SL: $${c.high.toFixed(1)}`, x + 51, yTip + 2.5);
+
+          // Badge Penanda Trap
+          const badgeText = isMobile ? '🪤 TRAP BUY' : '🪤 TRAPPED BUYERS';
+          ctx.font = isMobile ? 'bold 7px "JetBrains Mono", monospace' : 'bold 8px "JetBrains Mono", monospace';
+          const bW = ctx.measureText(badgeText).width + (isMobile ? 8 : 14);
+          const bH = isMobile ? 13 : 16;
+          const bX = Math.min(plotWidth - bW - 4, Math.max(4, x - bW / 2));
+          const bY = Math.max(10, yTip - bH - 4);
+
+          ctx.fillStyle = 'rgba(153, 27, 27, 0.94)';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(bX, bY, bW, bH, 3);
+          else ctx.rect(bX, bY, bW, bH);
+          ctx.fill();
+
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(badgeText, bX + bW / 2, bY + bH / 2);
+        }
+
+        // 2. TRAPPED SELLERS (Paus Buy Menyerap Penjualan Seller di Lembah Extreme)
+        if (isLowExtreme && lowerWick >= 1.50 && lowerWick >= totalRange * 0.48 && c.close > c.open && hasVolumeConfirmation) {
+          const yTip = priceToY(c.low);
+
+          // Aura Pendar Hijau Lembut di Sekitar Ekor
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.22)';
+          ctx.beginPath();
+          ctx.arc(x, yTip - 6, 12, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Garis Shelf Stop Loss Tipis yang Memanjang ke Kanan (Level SL Siap Pakai!)
+          ctx.strokeStyle = '#10b981';
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.moveTo(x - 10, yTip);
+          ctx.lineTo(x + 48, yTip);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Label SL Eksak
+          ctx.fillStyle = '#4ade80';
+          ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+          ctx.textAlign = 'left';
+          ctx.fillText(`SL: $${c.low.toFixed(1)}`, x + 51, yTip + 2.5);
+
+          // Badge Penanda Trap
+          const badgeText = isMobile ? '🪤 TRAP SELL' : '🪤 TRAPPED SELLERS';
+          ctx.font = isMobile ? 'bold 7px "JetBrains Mono", monospace' : 'bold 8px "JetBrains Mono", monospace';
+          const bW = ctx.measureText(badgeText).width + (isMobile ? 8 : 14);
+          const bH = isMobile ? 13 : 16;
+          const bX = Math.min(plotWidth - bW - 4, Math.max(4, x - bW / 2));
+          const bY = Math.min(plotHeight - bH - 4, yTip + 4);
+
+          ctx.fillStyle = 'rgba(6, 95, 70, 0.94)';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(bX, bY, bW, bH, 3);
+          else ctx.rect(bX, bY, bW, bH);
+          ctx.fill();
+
+          ctx.strokeStyle = '#10b981';
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(badgeText, bX + bW / 2, bY + bH / 2);
+        }
+      }
+
+      ctx.restore();
+    }
+
+    // 🧱 REAL BOOKMAP PRO 3-COLUMN DOM LADDER (RIGHT SIDEBAR)
+    function drawLiveWallLadder(plotWidth, fullHeight) {
+      const startX = plotWidth;
+      const totalW = rightMargin;
+      const isMobile = width < 640;
+      const colPriceW = isMobile ? 54 : 68;
+      const colSizeW = isMobile ? 32 : 42;
+      const colHistW = totalW - colPriceW - colSizeW;
+
+      ctx.fillStyle = '#060913';
+      ctx.fillRect(startX, 0, colPriceW, fullHeight);
+
+      ctx.fillStyle = '#080c18';
+      ctx.fillRect(startX + colPriceW, 0, colSizeW + colHistW, fullHeight);
+
+      ctx.strokeStyle = '#141c30';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(startX, 0, totalW, fullHeight);
+      ctx.beginPath();
+      ctx.moveTo(startX + colPriceW, 0);
+      ctx.lineTo(startX + colPriceW, fullHeight);
+      ctx.moveTo(startX + colPriceW + colSizeW, 0);
+      ctx.lineTo(startX + colPriceW + colSizeW, fullHeight);
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('PRICE', startX + colPriceW / 2, 12);
+      ctx.fillText('SIZE', startX + colPriceW + colSizeW / 2, 12);
+      ctx.fillText('DOM DEPTH', startX + colPriceW + colSizeW + colHistW / 2, 12);
+
+      let tickStep = 0.50;
+      if (priceSpan > 150) tickStep = 10.00;
+      else if (priceSpan > 70) tickStep = 5.00;
+      else if (priceSpan > 30) tickStep = 2.00;
+      else if (priceSpan > 12) tickStep = 1.00;
+
+      const startP = Math.floor(priceMin / tickStep) * tickStep;
+      const endP = Math.ceil(priceMax / tickStep) * tickStep;
+
+      // 2026-09-03: real depth exists at ~300 levels/side ($0.50 granularity,
+      // via depthHistory's price*2 keys) but resting orders sit at arbitrary
+      // prices, not round tickStep multiples - the old exact-match lookup
+      // (liveWallLadder[p.toFixed(2)] / levels[round(p*2)]) missed almost
+      // every real level, making a genuinely dense book look empty. Now:
+      // sum ALL real depth whose price falls within each row's own bucket
+      // range (honest aggregation, not fabrication - same data, just no
+      // longer discarded by an exact-match miss), then scale bars relative
+      // to the densest row actually on screen right now instead of a fixed
+      // /120 divisor calibrated for single-wall sizes.
+      const lastSlice = depthHistory[depthHistory.length - 1];
+      const rows = [];
+      let maxLot = 0;
+      for (let p = startP; p <= endP; p += tickStep) {
+        const y = priceToY(p);
+        if (y < 16 || y > fullHeight - subPanelHeight) continue;
+
+        const pKey = p.toFixed(2);
+        const isAsk = p > currentSpotPrice;
+
+        let lot = 0;
+        if (lastSlice) {
+          const loIdx = Math.round((p - tickStep / 2) * 2);
+          const hiIdx = Math.round((p + tickStep / 2) * 2);
+          for (let idx = loIdx; idx < hiIdx; idx++) {
+            lot += lastSlice.levels[idx] || 0;
+          }
+        }
+        // A detected significant wall (liveWallLadder) is a floor, not
+        // an addend - avoids double-counting the same resting size that
+        // also shows up in depthHistory's raw levels.
+        lot = Math.max(lot, liveWallLadder[pKey] || 0);
+        lot = Math.round(lot);
+
+        if (lot > maxLot) maxLot = lot;
+        rows.push({ p, y, isAsk, lot });
+      }
+
+      for (const row of rows) {
+        const { p, y, isAsk, lot } = row;
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '8.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`$${p.toFixed(2)}`, startX + colPriceW - 6, y + 2.5);
+
+        if (lot > 3) {
+          const color = isAsk ? '#ff3b5c' : '#00e676';
+          const barColor = isAsk ? 'rgba(255, 59, 92, 0.45)' : 'rgba(0, 230, 118, 0.45)';
+          const maxBarW = colHistW - 10;
+          const scale = maxLot > 0 ? maxLot : 120;
+          const barW = Math.max(4, Math.min(maxBarW, (lot / scale) * maxBarW));
+
+          ctx.fillStyle = color;
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`${lot}`, startX + colPriceW + colSizeW / 2, y + 2.5);
+
+          const barStartX = startX + colPriceW + colSizeW + 4;
+          ctx.fillStyle = barColor;
+          ctx.fillRect(barStartX, y - 4.5, barW, 9);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.0;
+          ctx.strokeRect(barStartX, y - 4.5, barW, 9);
+        }
+      }
+
+      // 4. Highlight Live Spot Price Row (Compact Minimalist Badge)
+      const ySpot = priceToY(currentSpotPrice);
+      const badgeW = colPriceW;
+      const badgeH = 14;
+
+      ctx.fillStyle = '#00e676';
+      ctx.fillRect(startX, ySpot - badgeH / 2, badgeW, badgeH);
+
+      ctx.fillStyle = '#050811';
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`$${currentSpotPrice.toFixed(2)}`, startX + badgeW / 2, ySpot);
+    }
+
+    function drawPriceAxis() {}
+
+    function drawTimeAxis(plotWidth, fullHeight) {
+      ctx.fillStyle = '#090d18';
+      ctx.fillRect(0, fullHeight, width, bottomMargin);
+
+      ctx.strokeStyle = '#141b2e';
+      ctx.beginPath();
+      ctx.moveTo(0, fullHeight);
+      ctx.lineTo(width, fullHeight);
+      ctx.stroke();
+
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const tfShift = tfSec === 14400 ? 3600 : (tfSec === 86400 ? 75600 : 0);
+      const minPixelSpacing = 70;
+      const rawStep = ((timeEnd - timeStart) / Math.max(10, plotWidth)) * minPixelSpacing;
+      const timeStep = Math.max(tfSec, Math.ceil(rawStep / tfSec) * tfSec);
+      const firstTime = Math.floor((timeStart - tfShift) / timeStep) * timeStep + tfShift;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+
+      for (let t = firstTime; t <= timeEnd; t += timeStep) {
+        const x = timeToX(t);
+        if (x >= 25 && x <= plotWidth - 25) {
+          const date = new Date(t * 1000);
+          const timeStr = (tfSec <= 60) ? date.toTimeString().substring(0, 8) : date.toTimeString().substring(0, 5);
+          ctx.fillText(timeStr, x, fullHeight + 17);
+        }
+      }
+    }
+
+    // 🎯 CROSSHAIR & HOVER INSPECTOR
+    function drawCrosshairAndInspector(plotWidth, plotHeight) {
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+
+      ctx.beginPath();
+      ctx.moveTo(mouseX, 0);
+      ctx.lineTo(mouseX, plotHeight);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(0, mouseY);
+      ctx.lineTo(plotWidth, mouseY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const curP = yToPrice(mouseY);
+      const curT = xToTime(mouseX);
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(plotWidth + 2, mouseY - 9, 64, 18);
+      ctx.fillStyle = '#06080f';
+      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`$${curP.toFixed(2)}`, plotWidth + 34, mouseY + 3.5);
+
+      const d = new Date(curT * 1000);
+      const tStr = d.toTimeString().substring(0, 8);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(mouseX - 35, height - bottomMargin + 2, 70, 16);
+      ctx.fillStyle = '#06080f';
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(tStr, mouseX, height - bottomMargin + 13);
+    }
+
+    function getTimeframeSeconds(tf) {
+      switch (tf) {
+        case '1S':
+        case '1s':
+        case 'S1': return 1;
+        case 'S15': return 15;
+        case 'M1': return 60;
+        case 'M5': return 300;
+        case 'M15': return 900;
+        case 'M30': return 1800;
+        case 'H1': return 3600;
+        case 'H4': return 14400;
+        default: return 300;
+      }
+    }
+
+    // 🎨 DRAWING TOOLS STATE (TRENDLINE, RECTANGLE BOX & 1-BY-1 DELETER)
+    let activeDrawTool = null; // null | 'line' | 'box'
+    let selectedDrawingId = null; // ID of specifically selected drawing
+    let activeDeleteBtnRect = null; // { x, y, w, h, id }
+    let drawStart = null; // { t, p }
+    let drawCurrent = null; // { t, p }
+    let userDrawings = JSON.parse(localStorage.getItem('cr_drawings') || '[]');
+
+    const btnDrawLine = document.getElementById('btn-draw-line');
+    const btnDrawBox = document.getElementById('btn-draw-box');
+    const btnDrawUndo = document.getElementById('btn-draw-undo');
+    const btnDrawClear = document.getElementById('btn-draw-clear');
+
+    function updateDrawButtonsUI() {
+      if (btnDrawLine) btnDrawLine.classList.toggle('active', activeDrawTool === 'line');
+      if (btnDrawBox) btnDrawBox.classList.toggle('active', activeDrawTool === 'box');
+      canvas.style.cursor = activeDrawTool ? 'crosshair' : 'default';
+    }
+
+    if (btnDrawLine) {
+      btnDrawLine.onclick = () => {
+        activeDrawTool = activeDrawTool === 'line' ? null : 'line';
+        selectedDrawingId = null;
+        drawStart = null;
+        drawCurrent = null;
+        updateDrawButtonsUI();
+      };
+    }
+
+    if (btnDrawBox) {
+      btnDrawBox.onclick = () => {
+        activeDrawTool = activeDrawTool === 'box' ? null : 'box';
+        selectedDrawingId = null;
+        drawStart = null;
+        drawCurrent = null;
+        updateDrawButtonsUI();
+      };
+    }
+
+    // ↩️ UNDO / HAPUS 1 PER 1
+    if (btnDrawUndo) {
+      btnDrawUndo.onclick = () => {
+        if (userDrawings.length > 0) {
+          if (selectedDrawingId) {
+            userDrawings = userDrawings.filter((d) => d.id !== selectedDrawingId);
+            selectedDrawingId = null;
+          } else {
+            userDrawings.pop(); // Hapus satu per satu dari yang paling baru
+          }
+          localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+          updateDrawButtonsUI();
+        }
+      };
+    }
+
+    if (btnDrawClear) {
+      btnDrawClear.onclick = () => {
+        userDrawings = [];
+        selectedDrawingId = null;
+        localStorage.removeItem('cr_drawings');
+        activeDrawTool = null;
+        drawStart = null;
+        drawCurrent = null;
+        updateDrawButtonsUI();
+      };
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedDrawingId) {
+          userDrawings = userDrawings.filter((d) => d.id !== selectedDrawingId);
+          selectedDrawingId = null;
+          localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+        }
+      }
+    });
+
+    function distToSegment(px, py, x1, y1, x2, y2) {
+      const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+      if (l2 === 0) return Math.hypot(px - x1, py - y1);
+      let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+      t = Math.max(0, Math.min(1, t));
+      return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
+    }
+
+    function findDrawingAt(px, py) {
+      for (let i = userDrawings.length - 1; i >= 0; i--) {
+        const d = userDrawings[i];
+        const x1 = timeToX(d.t1);
+        const y1 = priceToY(d.p1);
+        const x2 = timeToX(d.t2);
+        const y2 = priceToY(d.p2);
+
+        if (d.type === 'line') {
+          const dist = distToSegment(px, py, x1, y1, x2, y2);
+          if (dist <= 12) return d;
+        } else if (d.type === 'box') {
+          const minX = Math.min(x1, x2) - 6;
+          const maxX = Math.max(x1, x2) + 6;
+          const minY = Math.min(y1, y2) - 6;
+          const maxY = Math.max(y1, y2) + 6;
+          if (px >= minX && px <= maxX && py >= minY && py <= maxY) {
+            return d;
+          }
+        }
+      }
+      return null;
+    }
+
+    function drawUserDrawings(plotWidth, plotHeight) {
+      ctx.save();
+      activeDeleteBtnRect = null;
+
+      // 1. Render all saved user drawings
+      for (let i = 0; i < userDrawings.length; i++) {
+        const d = userDrawings[i];
+        const x1 = timeToX(d.t1);
+        const y1 = priceToY(d.p1);
+        const x2 = timeToX(d.t2);
+        const y2 = priceToY(d.p2);
+        const isSelected = d.id === selectedDrawingId;
+
+        if (d.type === 'line') {
+          // Trendline
+          ctx.strokeStyle = isSelected ? '#ffd700' : (d.color || '#00e5ff');
+          ctx.lineWidth = isSelected ? 3.0 : 2.0;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+
+          // Endpoint Handles
+          ctx.fillStyle = isSelected ? '#ffd700' : '#ffffff';
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(x1, y1, isSelected ? 5.0 : 3.5, 0, Math.PI * 2);
+          ctx.arc(x2, y2, isSelected ? 5.0 : 3.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Floating mini delete pill for selected line
+          if (isSelected) {
+            const midX = (x1 + x2) / 2;
+            const midY = Math.min(y1, y2) - 18;
+            const pillW = 62;
+            const pillH = 18;
+            const pillX = midX - pillW / 2;
+            const pillY = midY;
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+            ctx.strokeStyle = '#ff3b5c';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+            else ctx.rect(pillX, pillY, pillW, pillH);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ff3b5c';
+            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('❌ HAPUS', pillX + pillW / 2, pillY + pillH / 2);
+
+            activeDeleteBtnRect = { x: pillX, y: pillY, w: pillW, h: pillH, id: d.id };
+          }
+        } else if (d.type === 'box') {
+          // Rectangle Box
+          const rx = Math.min(x1, x2);
+          const ry = Math.min(y1, y2);
+          const rw = Math.abs(x2 - x1);
+          const rh = Math.abs(y2 - y1);
+
+          ctx.fillStyle = isSelected ? 'rgba(255, 215, 0, 0.22)' : (d.fillColor || 'rgba(0, 229, 255, 0.18)');
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeStyle = isSelected ? '#ffd700' : (d.strokeColor || '#00e5ff');
+          ctx.lineWidth = isSelected ? 2.5 : 1.5;
+          ctx.strokeRect(rx, ry, rw, rh);
+
+          // Selection Corner Handles
+          if (isSelected) {
+            ctx.fillStyle = '#ffd700';
+            ctx.fillRect(rx - 3, ry - 3, 6, 6);
+            ctx.fillRect(rx + rw - 3, ry - 3, 6, 6);
+            ctx.fillRect(rx - 3, ry + rh - 3, 6, 6);
+            ctx.fillRect(rx + rw - 3, ry + rh - 3, 6, 6);
+
+            // Floating delete pill for selected box
+            const pillW = 62;
+            const pillH = 18;
+            const pillX = rx + rw / 2 - pillW / 2;
+            const pillY = ry - 22;
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+            ctx.strokeStyle = '#ff3b5c';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+            else ctx.rect(pillX, pillY, pillW, pillH);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ff3b5c';
+            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('❌ HAPUS', pillX + pillW / 2, pillY + pillH / 2);
+
+            activeDeleteBtnRect = { x: pillX, y: pillY, w: pillW, h: pillH, id: d.id };
+          }
+        }
+      }
+
+      // 2. Render live in-progress drawing preview
+      if (activeDrawTool && drawStart && drawCurrent) {
+        const x1 = timeToX(drawStart.t);
+        const y1 = priceToY(drawStart.p);
+        const x2 = timeToX(drawCurrent.t);
+        const y2 = priceToY(drawCurrent.p);
+
+        if (activeDrawTool === 'line') {
+          ctx.strokeStyle = '#ffd600';
+          ctx.lineWidth = 2.0;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (activeDrawTool === 'box') {
+          const rx = Math.min(x1, x2);
+          const ry = Math.min(y1, y2);
+          const rw = Math.abs(x2 - x1);
+          const rh = Math.abs(y2 - y1);
+
+          ctx.fillStyle = 'rgba(255, 214, 0, 0.22)';
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeStyle = '#ffd600';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 4]);
+          ctx.strokeRect(rx, ry, rw, rh);
+          ctx.setLineDash([]);
+        }
+      }
+
+      ctx.restore();
+    }
+
+    // --- INTERACTION EVENT LISTENERS ---
+    canvas.addEventListener('mousedown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // 0. Check if clicked on the draggable Daily Focus badge
+      if (lastDailyFocusRect) {
+        const r = lastDailyFocusRect;
+        if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+          isDraggingFocusBox = true;
+          focusDragStartMouseX = e.clientX;
+          focusDragStartOffsetX = dailyFocusDragX;
+          return;
+        }
+      }
+
+      // 1. Check if clicked on floating single-item delete button
+      if (activeDeleteBtnRect) {
+        const r = activeDeleteBtnRect;
+        if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+          userDrawings = userDrawings.filter((d) => d.id !== r.id);
+          selectedDrawingId = null;
+          activeDeleteBtnRect = null;
+          localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+          return;
+        }
+      }
+
+      if (activeDrawTool) {
+        drawStart = { t: xToTime(x), p: yToPrice(y) };
+        drawCurrent = { t: drawStart.t, p: drawStart.p };
+        return;
+      }
+
+      // 2. If not drawing, check if clicking on a drawing to select it
+      const clickedDrawing = findDrawingAt(x, y);
+      if (clickedDrawing) {
+        selectedDrawingId = clickedDrawing.id;
+        return;
+      } else {
+        selectedDrawingId = null;
+      }
+
+      isDragging = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+
+      if (x > width - rightMargin) {
+        isDraggingPriceScale = true;
+      } else if (y > height - bottomMargin) {
+        isDraggingTimeScale = true;
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDraggingFocusBox) {
+        isDraggingFocusBox = false;
+        localStorage.setItem('cr_daily_focus_drag_x', String(dailyFocusDragX));
+        return;
+      }
+
+      if (activeDrawTool && drawStart && drawCurrent) {
+        if (Math.abs(drawStart.t - drawCurrent.t) > 2 || Math.abs(drawStart.p - drawCurrent.p) > 0.05) {
+          userDrawings.push({
+            id: Date.now(),
+            type: activeDrawTool,
+            t1: drawStart.t,
+            p1: drawStart.p,
+            t2: drawCurrent.t,
+            p2: drawCurrent.p,
+            color: '#00e5ff',
+            fillColor: 'rgba(0, 229, 255, 0.18)',
+            strokeColor: '#00e5ff'
+          });
+          localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+        }
+        drawStart = null;
+        drawCurrent = null;
+        activeDrawTool = null;
+        updateDrawButtonsUI();
+        return;
+      }
+
+      isDragging = false;
+      isDraggingPriceScale = false;
+      isDraggingTimeScale = false;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = e.clientX - rect.left;
+      mouseY = e.clientY - rect.top;
+
+      if (isDraggingFocusBox) {
+        dailyFocusDragX = focusDragStartOffsetX + (e.clientX - focusDragStartMouseX);
+        return;
+      }
+
+      if (activeDrawTool && drawStart) {
+        drawCurrent = { t: xToTime(mouseX), p: yToPrice(mouseY) };
+        return;
+      }
+
+      if (mouseX > width - rightMargin) {
+        canvas.style.cursor = 'ns-resize';
+      } else if (mouseY > height - bottomMargin) {
+        canvas.style.cursor = 'ew-resize';
+      } else if (isDragging) {
+        canvas.style.cursor = 'grabbing';
+      } else {
+        canvas.style.cursor = 'crosshair';
+      }
+
+      if (isDragging) {
+        const dx = e.clientX - lastMouseX;
+        const dy = e.clientY - lastMouseY;
+
+        if (isDraggingPriceScale) {
+          const factor = 1 + dy * 0.005;
+          priceSpan = Math.max(2.0, priceSpan * factor);
+          priceMin = priceCenter - priceSpan / 2;
+          priceMax = priceCenter + priceSpan / 2;
+        } else if (isDraggingTimeScale) {
+          const factor = 1 - dx * 0.005;
+          timeWindowSec = Math.max(60, Math.min(3600 * 24 * 30, timeWindowSec * factor));
+          timeStart = timeEnd - timeWindowSec;
+          rightOffsetSec = timeEnd - nowSec;
+        } else {
+          const dt = (dx / (width - rightMargin)) * (timeEnd - timeStart);
+          timeStart -= dt;
+          timeEnd -= dt;
+          rightOffsetSec = timeEnd - nowSec;
+
+          const dp = (dy / (height - bottomMargin - subPanelHeight)) * priceSpan;
+          priceCenter += dp;
+          priceMin = priceCenter - priceSpan / 2;
+          priceMax = priceCenter + priceSpan / 2;
+        }
+
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+      }
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY > 0 ? 1.15 : 0.85;
+      const cursorTime = xToTime(mouseX);
+
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const minWindow = tfSec * 20; // At least 20 bars
+      const maxWindow = tfSec * 400; // Up to 400 bars
+
+      const newWindow = Math.max(minWindow, Math.min(maxWindow, timeWindowSec * zoomFactor));
+      const ratio = newWindow / timeWindowSec;
+
+      timeStart = cursorTime - (cursorTime - timeStart) * ratio;
+      timeEnd = cursorTime + (timeEnd - cursorTime) * ratio;
+      timeWindowSec = newWindow;
+      rightOffsetSec = timeEnd - nowSec;
+    }, { passive: false });
+
+    // --- 📱 MOBILE TOUCH ENGINE (1-FINGER PAN, 2-FINGER PINCH-ZOOM, TOUCH SCALE) ---
+    let isTouching = false;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchLastX = 0;
+    let touchLastY = 0;
+    let touchStartTime = 0;
+    let initialPinchDist = 0;
+    let initialTimeWindow = 0;
+    let initialPriceSpan = 0;
+    let isTouchingPriceScale = false;
+
+    function getTouchDistance(t1, t2) {
+      const dx = t1.clientX - t2.clientX;
+      const dy = t1.clientY - t2.clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function getTouchMidpoint(t1, t2, rect) {
+      return {
+        x: ((t1.clientX + t2.clientX) / 2) - rect.left,
+        y: ((t1.clientY + t2.clientY) / 2) - rect.top
+      };
+    }
+
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      touchStartTime = performance.now();
+
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        const x = t.clientX - rect.left;
+        const y = t.clientY - rect.top;
+
+        // Check if tapped floating single-item delete button
+        if (activeDeleteBtnRect) {
+          const r = activeDeleteBtnRect;
+          if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+            userDrawings = userDrawings.filter((d) => d.id !== r.id);
+            selectedDrawingId = null;
+            activeDeleteBtnRect = null;
+            localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+            return;
+          }
+        }
+
+        if (activeDrawTool) {
+          drawStart = { t: xToTime(x), p: yToPrice(y) };
+          drawCurrent = { t: drawStart.t, p: drawStart.p };
+          return;
+        }
+
+        const clickedDrawing = findDrawingAt(x, y);
+        if (clickedDrawing) {
+          selectedDrawingId = clickedDrawing.id;
+          return;
+        } else {
+          selectedDrawingId = null;
+        }
+
+        isTouching = true;
+        touchStartX = t.clientX;
+        touchStartY = t.clientY;
+        touchLastX = t.clientX;
+        touchLastY = t.clientY;
+
+        isTouchingPriceScale = x > width - rightMargin;
+        mouseX = x;
+        mouseY = y;
+      } else if (e.touches.length === 2) {
+        isTouching = true;
+        isTouchingPriceScale = false;
+        initialPinchDist = getTouchDistance(e.touches[0], e.touches[1]);
+        initialTimeWindow = timeWindowSec;
+        initialPriceSpan = priceSpan;
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        mouseX = t.clientX - rect.left;
+        mouseY = t.clientY - rect.top;
+
+        if (activeDrawTool && drawStart) {
+          drawCurrent = { t: xToTime(mouseX), p: yToPrice(mouseY) };
+          return;
+        }
+
+        if (!isTouching) return;
+        const dx = t.clientX - touchLastX;
+        const dy = t.clientY - touchLastY;
+
+        if (isTouchingPriceScale) {
+          // Vertical price zoom on right scale drag
+          const factor = 1 + dy * 0.008;
+          priceSpan = Math.max(2.0, priceSpan * factor);
+          priceMin = priceCenter - priceSpan / 2;
+          priceMax = priceCenter + priceSpan / 2;
+        } else {
+          // 1-Finger Smooth Pan (Time X & Price Y)
+          const dt = (dx / (width - rightMargin)) * (timeEnd - timeStart);
+          timeStart -= dt;
+          timeEnd -= dt;
+          rightOffsetSec = timeEnd - nowSec;
+
+          const dp = (dy / (height - bottomMargin - subPanelHeight)) * priceSpan;
+          priceCenter += dp;
+          priceMin = priceCenter - priceSpan / 2;
+          priceMax = priceCenter + priceSpan / 2;
+        }
+
+        touchLastX = t.clientX;
+        touchLastY = t.clientY;
+      } else if (e.touches.length === 2) {
+        // 2-Finger Pinch Zoom (Time & Price)
+        const curDist = getTouchDistance(e.touches[0], e.touches[1]);
+        if (initialPinchDist > 0 && curDist > 0) {
+          const zoomFactor = initialPinchDist / curDist;
+          const mid = getTouchMidpoint(e.touches[0], e.touches[1], rect);
+          const cursorTime = xToTime(mid.x);
+
+          // Zoom Time
+          timeWindowSec = Math.max(30, Math.min(3600 * 24 * 30, initialTimeWindow * zoomFactor));
+          timeStart = cursorTime - (cursorTime - timeStart) * (timeWindowSec / (timeEnd - timeStart));
+          timeEnd = timeStart + timeWindowSec;
+          rightOffsetSec = timeEnd - nowSec;
+
+          // Zoom Price
+          priceSpan = Math.max(2.0, initialPriceSpan * zoomFactor);
+          priceMin = priceCenter - priceSpan / 2;
+          priceMax = priceCenter + priceSpan / 2;
+        }
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      if (activeDrawTool && drawStart && drawCurrent) {
+        if (Math.abs(drawStart.t - drawCurrent.t) > 2 || Math.abs(drawStart.p - drawCurrent.p) > 0.05) {
+          userDrawings.push({
+            id: Date.now(),
+            type: activeDrawTool,
+            t1: drawStart.t,
+            p1: drawStart.p,
+            t2: drawCurrent.t,
+            p2: drawCurrent.p,
+            color: '#00e5ff',
+            fillColor: 'rgba(0, 229, 255, 0.18)',
+            strokeColor: '#00e5ff'
+          });
+          localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+        }
+        drawStart = null;
+        drawCurrent = null;
+        activeDrawTool = null;
+        updateDrawButtonsUI();
+        return;
+      }
+
+      if (e.touches.length === 0) {
+        isTouching = false;
+        isTouchingPriceScale = false;
+      } else if (e.touches.length === 1) {
+        touchLastX = e.touches[0].clientX;
+        touchLastY = e.touches[0].clientY;
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchcancel', () => {
+      isTouching = false;
+      isTouchingPriceScale = false;
+    });
+
+    // ⌨️ KEYBOARD SHORTCUTS
+    window.addEventListener('keydown', (e) => {
+      // Don't fire if typing in an input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+      switch (e.key.toLowerCase()) {
+        case 'l': // Line tool
+          activeDrawTool = activeDrawTool === 'line' ? null : 'line';
+          selectedDrawingId = null; drawStart = null; drawCurrent = null;
+          updateDrawButtonsUI(); break;
+        case 'b': // Box tool
+          activeDrawTool = activeDrawTool === 'box' ? null : 'box';
+          selectedDrawingId = null; drawStart = null; drawCurrent = null;
+          updateDrawButtonsUI(); break;
+        case 'z': // Undo last drawing
+          if (selectedDrawingId) {
+            userDrawings = userDrawings.filter(d => d.id !== selectedDrawingId);
+            selectedDrawingId = null;
+          } else {
+            userDrawings.pop();
+          }
+          localStorage.setItem('cr_drawings', JSON.stringify(userDrawings)); break;
+        case 'escape': // Cancel active draw tool
+          activeDrawTool = null; drawStart = null; drawCurrent = null;
+          updateDrawButtonsUI(); break;
+        case 'delete': // Already handled above but reinforce for non-selected mode
+          if (selectedDrawingId) {
+            userDrawings = userDrawings.filter(d => d.id !== selectedDrawingId);
+            selectedDrawingId = null;
+            localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+          } break;
+        case 's': // Screenshot
+          if (e.ctrlKey || e.metaKey) break; // Don't intercept Ctrl+S (browser save)
+          const link = document.createElement('a');
+          link.download = `CR-PRO_${new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click(); break;
+      }
+    });
+
+    // 🔔 PRICE ALERT: Right-click on price axis to set/clear alert
+    canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const plotWidth = width - rightMargin;
+      if (x >= plotWidth) {
+        // Right-click on price axis → set alert at this price
+        const alertPrice = yToPrice(y);
+        if (priceAlertLevel && Math.abs(priceAlertLevel - alertPrice) < 0.5) {
+          priceAlertLevel = null; // Clear if clicking near existing alert
+          priceAlertTriggered = false;
+        } else {
+          priceAlertLevel = Math.round(alertPrice * 4) / 4; // Snap to 0.25 increment
+          priceAlertTriggered = false;
+          // Show mini toast
+          const toast = document.getElementById('whale-toast');
+          toast.innerHTML = `🔔 ALERT SET @ $${priceAlertLevel.toFixed(2)}`;
+          toast.style.background = 'linear-gradient(135deg, rgba(251,191,36,0.18), rgba(15,23,42,0.98))';
+          toast.style.border = '1.5px solid rgba(251,191,36,0.7)';
+          toast.style.color = '#fbbf24';
+          toast.classList.add('active');
+          setTimeout(() => toast.classList.remove('active'), 2500);
+        }
+      }
+    });
+
+    // --- UI TOGGLES ---
+    // 2026-09-03: Layers menu dropdown - toggles the panel, closes on
+    // outside click or Escape (standard dropdown UX).
+    (function () {
+      const trigger = document.getElementById('btn-layers-menu');
+      const panel = document.getElementById('layer-toggles-panel');
+      trigger.onclick = function (e) {
+        e.stopPropagation();
+        const willOpen = !panel.classList.contains('open');
+        if (willOpen) {
+          const r = trigger.getBoundingClientRect();
+          const topPx = r.bottom + 8;
+          panel.style.top = topPx + 'px';
+          panel.style.right = (window.innerWidth - r.right) + 'px';
+          // Precise cap (not just the CSS calc() fallback) so it never
+          // extends past the actual bottom of a short/mobile viewport.
+          panel.style.maxHeight = Math.max(120, window.innerHeight - topPx - 12) + 'px';
+        }
+        panel.classList.toggle('open', willOpen);
+        trigger.classList.toggle('open', willOpen);
+      };
+      document.addEventListener('click', function (e) {
+        if (!panel.classList.contains('open')) return;
+        if (panel.contains(e.target) || trigger.contains(e.target)) return;
+        panel.classList.remove('open');
+        trigger.classList.remove('open');
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && panel.classList.contains('open')) {
+          panel.classList.remove('open');
+          trigger.classList.remove('open');
+        }
+      });
+    })();
+
+    // 2026-09-03: Dadang - "tools buat gw hitung offset... jika gw
+    // masukin harga mt5 otomatis web akan ngikutin harga mt5 itu". He
+    // types his real MT5 price, we read the live GC price at that same
+    // instant and compute+persist the offset server-side - every price
+    // on the dashboard (candles, wall ladder, DOM, heatmap) follows from
+    // there via to_mt5(), no redeploy needed.
+    document.getElementById('btn-calibrate-offset').onclick = async function () {
+      const input = prompt('Masukkan harga MT5 lo sekarang (contoh: 4432.50):');
+      if (input === null) return; // cancelled
+      const mt5Price = parseFloat(input.replace(',', '.'));
+      if (isNaN(mt5Price) || mt5Price < 1000 || mt5Price > 10000) {
+        alert('Harga gak valid. Masukkan angka antara 1000-10000.');
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/api/calibrate_offset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mt5_price: mt5Price })
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          alert('Gagal kalibrasi: ' + (data.error || 'unknown error'));
+          return;
+        }
+
+        // ⚖️ RETROACTIVE IN-MEMORY REBASE (Solusi 1):
+        const delta = typeof data.delta === 'number' ? data.delta : (data.new_offset - data.old_offset);
+        if (delta !== 0 && candles && candles.length > 0) {
+          candles.forEach(c => {
+            c.open = Math.round((c.open - delta) * 100) / 100;
+            c.high = Math.round((c.high - delta) * 100) / 100;
+            c.low = Math.round((c.low - delta) * 100) / 100;
+            c.close = Math.round((c.close - delta) * 100) / 100;
+          });
+        }
+        currentSpotPrice = mt5Price;
+        topPriceEl.innerText = `$${currentSpotPrice.toFixed(2)}`;
+        if (candles && candles.length > 0) {
+          updateHeaderOhlc(candles[candles.length - 1]);
+        }
+        // Background re-fetch to ensure full historical alignment
+        loadRealHistoricalData();
+
+        const toast = document.getElementById('whale-toast');
+        if (toast) {
+          toast.className = 'whale-toast active buy-alert';
+          toast.innerHTML = `<span>⚖️ <b>OFFSET DIKALIBRASI:</b> ${data.old_offset} → ${data.new_offset} (GC $${data.cme_raw_at_calibration.toFixed(2)} = MT5 $${data.mt5_price_input.toFixed(2)})</span>`;
+          if (whaleToastTimer) clearTimeout(whaleToastTimer);
+          whaleToastTimer = setTimeout(() => toast.classList.remove('active'), 6000);
+        }
+      } catch (e) {
+        alert('Gagal kalibrasi: ' + e.message);
+      }
+    };
+
+    document.getElementById('btn-toggle-candle').onclick = function () {
+      showCandles = !showCandles;
+      this.classList.toggle('active', showCandles);
+    };
+    document.getElementById('btn-toggle-heatmap').onclick = function () {
+      showHeatmap = !showHeatmap;
+      this.classList.toggle('active', showHeatmap);
+    };
+    document.getElementById('btn-toggle-bubbles').onclick = function () {
+      showBubbles = !showBubbles;
+      this.classList.toggle('active', showBubbles);
+    };
+    document.getElementById('btn-toggle-profile').onclick = function () {
+      showProfile = !showProfile;
+      this.classList.toggle('active', showProfile);
+    };
+    document.getElementById('btn-toggle-cmp').onclick = function () {
+      showCmp = !showCmp;
+      this.classList.toggle('active', showCmp);
+    };
+    document.getElementById('btn-toggle-npoc').onclick = function () {
+      showNpoc = !showNpoc;
+      this.classList.toggle('active', showNpoc);
+    };
+    document.getElementById('btn-toggle-runway').onclick = function () {
+      showRunway = !showRunway;
+      this.classList.toggle('active', showRunway);
+    };
+    document.getElementById('btn-toggle-traps').onclick = function () {
+      showTraps = !showTraps;
+      this.classList.toggle('active', showTraps);
+    };
+
+    document.getElementById('btn-fullscreen').onclick = function () {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    };
+
+    document.getElementById('btn-autofit').onclick = function () {
+      const curTime = Math.floor(Date.now() / 1000);
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      timeWindowSec = tfSec * 80;
+      rightOffsetSec = tfSec * 15;
+      timeEnd = curTime + rightOffsetSec;
+      timeStart = timeEnd - timeWindowSec;
+      priceCenter = currentSpotPrice;
+      priceSpan = 22.00;
+      priceMin = priceCenter - priceSpan / 2;
+      priceMax = priceCenter + priceSpan / 2;
+    };
+
+    // Timeframe dropdown listener (Central Candle Engine sync)
+    const tfSelect = document.getElementById('tf-select');
+    if (tfSelect) {
+      tfSelect.onchange = function () {
+        currentTimeframe = this.value;
+        loadRealHistoricalData();
+      };
+    }
+
+    // --- STARTUP ---
+    loadRealHistoricalData();
+    setInterval(fetchRealLiveStatus, 350);
+    requestAnimationFrame(render);
+
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+====================================================
+CARA START ENGINE CHAIN REACTION (BOOKMAP BRIDGE)
+====================================================
+Update terakhir: 2026-08-07
+
+
+CARA GAMPANG (1x klik)
+------------------------
+Folder: D:\PROJECT TRADING\bookmap-bridge\
+File:   START_TRADING.bat   <- double-klik ini aja
+
+Semua proses jalan di BACKGROUND (HIDDEN, gak ada jendela
+cmd item nongol). Yang bakal keliatan cuma:
+  - TradingView (chart kebuka)
+  - Window kecil "Chain Reaction" (dashboard rekomendasi)
+
+Di baliknya, yang jalan diam-diam:
+  1. TV Poll bridge (baca CMP dari indikator Pine)
+  2. UDP Listener (otak engine - CMP/VR/CF + order flow Bookmap)
+
+Abis itu, YANG MASIH HARUS LO JALANIN MANUAL (gak bisa diotomatisin):
+  1. Buka MT5, login ke akun DEMO (ICMarketsSC-Demo #52643789) -
+     HARUS udah kebuka & login SEBELUM start_trading.ps1, biar
+     auto-executor bisa connect
+  2. Buka Bookmap
+  3. Connect ke Rithmic
+  4. Pastiin addon "bookmap_bridge.py" ke-load di chart GCZ6
+     (biasanya auto-load kalau udah pernah di-set "Auto load" di
+     addon settings Bookmap - cek kalau gak muncul datanya)
+
+PENTING - AUTO-EXECUTE UDAH AKTIF (bukan manual lagi!)
+Begitu dashboard kasih rekomendasi BUY/SELL, engine OTOMATIS
+kirim order ke MT5 demo (magic number 2027, beda dari engine
+main.py yang lama biar gak ke-mix). Tiap entry & exit otomatis
+kecatat ke database D:\PROJECT TRADING\bookmap-bridge\trades.db
+buat validasi doktrin. Lo gak perlu klik apa-apa lagi di MT5,
+cukup pantengin dashboard & log udp_listener.log buat liat
+"ENTRY ..."/"EXIT ..." dari [MT5Executor].
+
+
+CARA MATIIN SEMUA
+------------------------------------------------------
+Folder: D:\PROJECT TRADING\bookmap-bridge\
+File:   STOP_TRADING.bat   <- double-klik
+
+Ini matiin TV Poll + UDP Listener + Dashboard yang jalan di
+background. TradingView & Bookmap gak diapa-apain, lo tutup
+sendiri kalau mau.
+
+
+CARA CEK MASIH JALAN / ADA ERROR
+------------------------------------------------------
+Karena semua hidden, kalau mau tau ada error atau nggak, cek
+file log ini (buka pakai Notepad biasa):
+
+   D:\PROJECT TRADING\bookmap-bridge\udp_listener.log
+   D:\PROJECT TRADING\bookmap-bridge\dashboard_web.log
+   D:\PROJECT TRADING\tradingview-mcp-jackson\tv_poll.log
+
+Kalau udp_listener.log baris terakhir keliatan "trades=xxx
+H4=... rec=..." dan angkanya terus nambah tiap beberapa detik
+- berarti sehat, lagi jalan normal.
+
+Cek proses yang lagi jalan (PowerShell):
+   Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*udp_listener.py*' -or $_.CommandLine -like '*tv_poll.mjs*' -or $_.CommandLine -like '*dashboard_web.py*' }
+
+(Catatan: tiap script bakal nongol SEBAGAI 2 PROSES - itu normal,
+cara kerja venv Python di Windows, bukan berarti dobel/nyangkut.)
+
+
+TROUBLESHOOTING SINGKAT
+------------------------------------------------------
+- Dashboard nunjukin "WAIT" terus / TF matrix kosong semua
+  -> tv_poll.mjs belum kebaca chart-nya. Cek tv_poll.log, kalau
+     ada "No TradingView chart tab found" berarti chart Pine-nya
+     belum kebuka di TradingView (buka manual chart GCZ6/XAUUSD).
+
+- Dashboard gak nampilin data order flow (Wall Area kosong, Pulse 50%)
+  -> Bookmap belum connect Rithmic, atau addon bookmap_bridge.py
+     belum ke-load di chart yang aktif.
+
+- dashboard_web.log ada error "No module named 'webview'"
+  -> Salah python yang dipake, harus venv:
+     D:\PROJECT TRADING\venv\Scripts\python.exe
+     (START_TRADING.bat udah di-set bener, ini cuma relevan
+     kalau jalanin manual)
+
+- Port 9000 conflict (UDP Listener gak mau start / gak nerima data)
+  -> Ada proses lain yang pakai port 9000 (misalnya
+     wall-breakout-engine punya backend). Jalanin STOP_TRADING.bat
+     dulu, cek gak ada proses nyangkut, baru START_TRADING.bat lagi.
+
+- Abis Claude Code edit logic engine (cmp_engine.py,
+  cr_master_engine.py, market_pulse_engine.py, dll), HARUS
+  STOP_TRADING.bat lalu START_TRADING.bat lagi biar logic
+  baru kepake.
+
+
+CARA MANUAL (kalau .bat error total)
+------------------------------------------------------
+1) TradingView:
+   powershell -Command "$exe = (Get-AppxPackage *TradingView*).InstallLocation + '\TradingView.exe'; Start-Process $exe -ArgumentList '--remote-debugging-port=9222'"
+
+2) TV Poll bridge:
+   cd "D:\PROJECT TRADING\tradingview-mcp-jackson"
+   node tv_poll.mjs
+
+3) UDP Listener:
+   cd "D:\PROJECT TRADING\bookmap-bridge"
+   "D:\PROJECT TRADING\venv\Scripts\python.exe" udp_listener.py
+
+4) Dashboard:
+   cd "D:\PROJECT TRADING\bookmap-bridge"
+   "D:\PROJECT TRADING\venv\Scripts\python.exe" dashboard_web.py
+
+5) Bookmap + Rithmic - manual seperti biasa.

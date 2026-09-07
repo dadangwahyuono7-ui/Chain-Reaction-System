@@ -1,0 +1,1170 @@
+{
+  "recommendation": "SELL",
+  "status_badge": "\ud83d\udd34 SELL (HOLD)",
+  "reason_lines": [
+    "\ud83d\udccc HOLD posisi SELL (entry via M5)",
+    "  - M5 masih/sudah balik SELL - posisi valid, lanjut",
+    "\u2714 H4 CMP: SELL",
+    "\u26a1 Market Pulse: 78.6% (BUY)",
+    "\ud83d\udcc8 CVD Delta: +30.0 (BUY)",
+    "\ud83d\udc63 M1 SELL (searah H4) - leading indicator, cascade bottom-up udah mulai"
+  ],
+  "order_book": {
+    "asks": [
+      [
+        4653.1,
+        10.0
+      ],
+      [
+        4653.2,
+        1.0
+      ],
+      [
+        4653.3,
+        6.0
+      ],
+      [
+        4653.400000000001,
+        5.0
+      ],
+      [
+        4653.5,
+        7.0
+      ],
+      [
+        4653.6,
+        4.0
+      ],
+      [
+        4653.7,
+        3.0
+      ],
+      [
+        4653.8,
+        4.0
+      ],
+      [
+        4653.900000000001,
+        5.0
+      ],
+      [
+        4654.0,
+        5.0
+      ],
+      [
+        4654.1,
+        5.0
+      ],
+      [
+        4654.2,
+        8.0
+      ],
+      [
+        4654.3,
+        6.0
+      ],
+      [
+        4654.400000000001,
+        8.0
+      ],
+      [
+        4654.5,
+        5.0
+      ]
+    ],
+    "bids": [
+      [
+        4652.8,
+        3.0
+      ],
+      [
+        4652.7,
+        4.0
+      ],
+      [
+        4652.6,
+        4.0
+      ],
+      [
+        4652.5,
+        4.0
+      ],
+      [
+        4652.400000000001,
+        6.0
+      ],
+      [
+        4652.3,
+        6.0
+      ],
+      [
+        4652.2,
+        3.0
+      ],
+      [
+        4652.1,
+        6.0
+      ],
+      [
+        4652.0,
+        5.0
+      ],
+      [
+        4651.900000000001,
+        4.0
+      ],
+      [
+        4651.8,
+        4.0
+      ],
+      [
+        4651.7,
+        3.0
+      ],
+      [
+        4651.6,
+        5.0
+      ],
+      [
+        4651.5,
+        4.0
+      ],
+      [
+        4651.400000000001,
+        6.0
+      ]
+    ]
+  },
+  "spread": 0.3,
+  "m5_bars": [
+    {
+      "time": 1787907000,
+      "open": 4655.5,
+      "high": 4659.900000000001,
+      "low": 4655.3,
+      "close": 4658.1
+    },
+    {
+      "time": 1787907300,
+      "open": 4658.3,
+      "high": 4658.8,
+      "low": 4654.3,
+      "close": 4656.2
+    },
+    {
+      "time": 1787907600,
+      "open": 4656.3,
+      "high": 4657.900000000001,
+      "low": 4655.7,
+      "close": 4657.900000000001
+    },
+    {
+      "time": 1787907900,
+      "open": 4657.8,
+      "high": 4657.8,
+      "low": 4654.7,
+      "close": 4655.400000000001
+    },
+    {
+      "time": 1787908200,
+      "open": 4655.0,
+      "high": 4656.5,
+      "low": 4654.3,
+      "close": 4655.3
+    },
+    {
+      "time": 1787908500,
+      "open": 4655.0,
+      "high": 4656.1,
+      "low": 4653.5,
+      "close": 4655.6
+    },
+    {
+      "time": 1787908800,
+      "open": 4655.6,
+      "high": 4657.7,
+      "low": 4654.1,
+      "close": 4656.6
+    },
+    {
+      "time": 1787909100,
+      "open": 4656.7,
+      "high": 4656.8,
+      "low": 4654.0,
+      "close": 4655.5
+    },
+    {
+      "time": 1787909400,
+      "open": 4655.2,
+      "high": 4657.900000000001,
+      "low": 4655.1,
+      "close": 4656.0
+    },
+    {
+      "time": 1787909700,
+      "open": 4656.1,
+      "high": 4658.7,
+      "low": 4654.6,
+      "close": 4657.400000000001
+    },
+    {
+      "time": 1787910000,
+      "open": 4657.400000000001,
+      "high": 4658.6,
+      "low": 4655.6,
+      "close": 4657.7
+    },
+    {
+      "time": 1787910300,
+      "open": 4657.6,
+      "high": 4659.0,
+      "low": 4656.7,
+      "close": 4658.0
+    },
+    {
+      "time": 1787910600,
+      "open": 4658.400000000001,
+      "high": 4660.8,
+      "low": 4658.2,
+      "close": 4660.8
+    },
+    {
+      "time": 1787910900,
+      "open": 4660.8,
+      "high": 4661.400000000001,
+      "low": 4658.7,
+      "close": 4658.7
+    },
+    {
+      "time": 1787911200,
+      "open": 4658.7,
+      "high": 4660.1,
+      "low": 4657.0,
+      "close": 4659.3
+    },
+    {
+      "time": 1787911500,
+      "open": 4659.3,
+      "high": 4661.1,
+      "low": 4659.2,
+      "close": 4661.0
+    },
+    {
+      "time": 1787911800,
+      "open": 4661.1,
+      "high": 4662.8,
+      "low": 4660.5,
+      "close": 4662.2
+    },
+    {
+      "time": 1787912100,
+      "open": 4662.400000000001,
+      "high": 4663.5,
+      "low": 4657.900000000001,
+      "close": 4658.0
+    },
+    {
+      "time": 1787912400,
+      "open": 4657.8,
+      "high": 4658.0,
+      "low": 4656.0,
+      "close": 4657.2
+    },
+    {
+      "time": 1787912700,
+      "open": 4657.5,
+      "high": 4658.6,
+      "low": 4655.0,
+      "close": 4658.5
+    },
+    {
+      "time": 1787913000,
+      "open": 4658.7,
+      "high": 4661.2,
+      "low": 4658.5,
+      "close": 4660.1
+    },
+    {
+      "time": 1787913300,
+      "open": 4660.2,
+      "high": 4660.7,
+      "low": 4656.2,
+      "close": 4657.0
+    },
+    {
+      "time": 1787913600,
+      "open": 4657.2,
+      "high": 4657.5,
+      "low": 4655.0,
+      "close": 4656.0
+    },
+    {
+      "time": 1787913900,
+      "open": 4655.8,
+      "high": 4656.5,
+      "low": 4652.8,
+      "close": 4654.3
+    },
+    {
+      "time": 1787914200,
+      "open": 4654.2,
+      "high": 4654.400000000001,
+      "low": 4650.3,
+      "close": 4651.2
+    },
+    {
+      "time": 1787914500,
+      "open": 4651.2,
+      "high": 4653.3,
+      "low": 4650.900000000001,
+      "close": 4652.900000000001
+    },
+    {
+      "time": 1787914800,
+      "open": 4653.1,
+      "high": 4654.2,
+      "low": 4650.2,
+      "close": 4651.5
+    },
+    {
+      "time": 1787915100,
+      "open": 4651.6,
+      "high": 4651.8,
+      "low": 4647.7,
+      "close": 4648.5
+    },
+    {
+      "time": 1787915400,
+      "open": 4648.5,
+      "high": 4651.3,
+      "low": 4647.8,
+      "close": 4651.3
+    },
+    {
+      "time": 1787915700,
+      "open": 4651.3,
+      "high": 4653.900000000001,
+      "low": 4651.0,
+      "close": 4652.8
+    }
+  ],
+  "wall_ladder": {
+    "asks": [
+      [
+        4653.1,
+        10.0,
+        2437
+      ],
+      [
+        4666.0,
+        13.0,
+        7349
+      ],
+      [
+        4668.0,
+        32.0,
+        19450
+      ],
+      [
+        4670.0,
+        19.0,
+        18796
+      ],
+      [
+        4673.0,
+        12.0,
+        5955
+      ],
+      [
+        4674.900000000001,
+        102.0,
+        18056
+      ],
+      [
+        4675.0,
+        39.0,
+        18626
+      ],
+      [
+        4687.5,
+        10.0,
+        18322
+      ],
+      [
+        4688.0,
+        54.0,
+        18315
+      ],
+      [
+        4690.0,
+        20.0,
+        18407
+      ],
+      [
+        4695.0,
+        17.0,
+        15737
+      ],
+      [
+        4700.0,
+        12.0,
+        14014
+      ],
+      [
+        4705.0,
+        10.0,
+        14010
+      ],
+      [
+        4708.0,
+        54.0,
+        10667
+      ],
+      [
+        4750.0,
+        46.0,
+        18342
+      ],
+      [
+        4780.0,
+        13.0,
+        6489
+      ],
+      [
+        4842.0,
+        40.0,
+        15797
+      ],
+      [
+        4850.0,
+        12.0,
+        17751
+      ]
+    ],
+    "bids": [
+      [
+        4647.6,
+        10.0,
+        2413
+      ],
+      [
+        4640.0,
+        13.0,
+        11520
+      ],
+      [
+        4630.0,
+        22.0,
+        18355
+      ],
+      [
+        4625.0,
+        15.0,
+        6109
+      ],
+      [
+        4622.3,
+        10.0,
+        18521
+      ],
+      [
+        4620.0,
+        17.0,
+        18558
+      ],
+      [
+        4612.0,
+        12.0,
+        18836
+      ],
+      [
+        4610.0,
+        37.0,
+        19536
+      ],
+      [
+        4608.0,
+        10.0,
+        18164
+      ],
+      [
+        4607.0,
+        13.0,
+        19501
+      ],
+      [
+        4606.0,
+        156.0,
+        17801
+      ],
+      [
+        4605.0,
+        17.0,
+        19439
+      ],
+      [
+        4602.0,
+        32.0,
+        18262
+      ],
+      [
+        4601.0,
+        20.0,
+        14732
+      ],
+      [
+        4600.0,
+        59.0,
+        13982
+      ],
+      [
+        4590.0,
+        22.0,
+        6354
+      ],
+      [
+        4585.0,
+        10.0,
+        5858
+      ],
+      [
+        4583.0,
+        22.0,
+        9713
+      ],
+      [
+        4581.0,
+        11.0,
+        9095
+      ],
+      [
+        4580.0,
+        49.0,
+        17963
+      ],
+      [
+        4575.0,
+        11.0,
+        11421
+      ],
+      [
+        4571.0,
+        12.0,
+        18465
+      ],
+      [
+        4566.6,
+        20.0,
+        6062
+      ],
+      [
+        4559.0,
+        10.0,
+        6563
+      ],
+      [
+        4555.0,
+        31.0,
+        6564
+      ],
+      [
+        4551.0,
+        14.0,
+        17873
+      ],
+      [
+        4550.0,
+        23.0,
+        17652
+      ],
+      [
+        4548.0,
+        12.0,
+        17383
+      ],
+      [
+        4547.0,
+        10.0,
+        7211
+      ],
+      [
+        4543.0,
+        10.0,
+        7488
+      ],
+      [
+        4539.0,
+        10.0,
+        18352
+      ],
+      [
+        4505.0,
+        27.0,
+        6673
+      ],
+      [
+        4503.0,
+        10.0,
+        16057
+      ],
+      [
+        4500.0,
+        21.0,
+        12183
+      ]
+    ],
+    "historical_asks": [],
+    "historical_bids": [
+      [
+        4633.0,
+        13.0,
+        19724
+      ],
+      [
+        4635.900000000001,
+        14.0,
+        19609
+      ],
+      [
+        4630.0,
+        22.0,
+        19595
+      ],
+      [
+        4610.0,
+        37.0,
+        19536
+      ],
+      [
+        4636.400000000001,
+        15.0,
+        19529
+      ],
+      [
+        4634.400000000001,
+        10.0,
+        19501
+      ],
+      [
+        4607.0,
+        13.0,
+        19501
+      ],
+      [
+        4611.0,
+        18.0,
+        19450
+      ],
+      [
+        4610.6,
+        10.0,
+        19450
+      ],
+      [
+        4605.0,
+        17.0,
+        19439
+      ]
+    ],
+    "magnet_age_sec": 1200,
+    "ask_jebol": false,
+    "bid_jebol": false,
+    "ask_spoofed": false,
+    "bid_spoofed": false,
+    "ask_shrinking": false,
+    "bid_shrinking": false,
+    "new_ask_wall": null,
+    "new_bid_wall": null,
+    "event_log": [
+      {
+        "time": 1787915880.7928748,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4647.6,
+        "size": 10.0
+      },
+      {
+        "time": 1787915877.0600014,
+        "side": "ASK",
+        "type": "NEW",
+        "price": 4653.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915875.9859886,
+        "side": "ASK",
+        "type": "NEW",
+        "price": 4653.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915872.3775582,
+        "side": "ASK",
+        "type": "NEW",
+        "price": 4653.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915863.9951274,
+        "side": "ASK",
+        "type": "NEW",
+        "price": 4653.0,
+        "size": 11.0
+      },
+      {
+        "time": 1787915860.462673,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4647.6,
+        "size": 10.0
+      },
+      {
+        "time": 1787915856.2516947,
+        "side": "ASK",
+        "type": "NEW",
+        "price": 4653.1,
+        "size": 11.0
+      },
+      {
+        "time": 1787915852.108875,
+        "side": "ASK",
+        "type": "NEW",
+        "price": 4654.2,
+        "size": 10.0
+      },
+      {
+        "time": 1787915848.9190235,
+        "side": "ASK",
+        "type": "NEW",
+        "price": 4654.2,
+        "size": 10.0
+      },
+      {
+        "time": 1787915845.6255057,
+        "side": "ASK",
+        "type": "NEW",
+        "price": 4655.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915842.0465765,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4628.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915840.5225952,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4628.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915839.4742599,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4647.3,
+        "size": 10.0
+      },
+      {
+        "time": 1787915837.3427079,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4628.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915835.4023123,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4628.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915834.308444,
+        "side": "ASK",
+        "type": "NEW",
+        "price": 4655.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915831.5892797,
+        "side": "ASK",
+        "type": "NEW",
+        "price": 4655.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915827.8868492,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4628.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915826.5769463,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4628.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915826.5769463,
+        "side": "ASK",
+        "type": "NEW",
+        "price": 4655.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915823.3952885,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4646.5,
+        "size": 10.0
+      },
+      {
+        "time": 1787915810.8487165,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4650.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915808.5397997,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4650.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915807.155796,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4650.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915803.8150127,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4650.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915802.9544208,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4645.8,
+        "size": 10.0
+      },
+      {
+        "time": 1787915802.9544208,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4650.0,
+        "size": 10.0
+      },
+      {
+        "time": 1787915799.1496234,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4646.4,
+        "size": 14.0
+      },
+      {
+        "time": 1787915799.1496234,
+        "side": "BID",
+        "type": "NEW",
+        "price": 4647.6,
+        "size": 10.0
+      },
+      {
+        "time": 1787915792.3605294,
+        "side": "ASK",
+        "type": "NEW",
+        "price": 4652.8,
+        "size": 10.0
+      }
+    ]
+  },
+  "wall_sweep": {
+    "latest": {
+      "side": "ASK",
+      "price": 4664.8,
+      "size": 162.0,
+      "age_at_sweep": 547,
+      "swept_time": 1787900370.9607756,
+      "status": "REVERSAL_CONFIRMED",
+      "resolved_time": 1787900436.470034
+    },
+    "history": [
+      {
+        "side": "ASK",
+        "price": 4664.8,
+        "size": 162.0,
+        "age_at_sweep": 547,
+        "swept_time": 1787900370.9607756,
+        "status": "REVERSAL_CONFIRMED",
+        "resolved_time": 1787900436.470034
+      }
+    ],
+    "mega": {
+      "active": false,
+      "side": "",
+      "count": 0
+    }
+  },
+  "conclusion": "Posisi SELL masih valid. M5 masih/sudah balik SELL - posisi valid, lanjut",
+  "wall_summary": "Bid Wall Far @ 4612.00 (15 contracts)",
+  "target_advice": "Normal TP (Potensi Besar)",
+  "sizing_advice": "Full Position Size",
+  "current_price": 4652.8,
+  "buyer_aggression_pct": 78.6,
+  "cvd_30s": 30.0,
+  "tf_matrix": {
+    "D": {
+      "cmp": "BUY",
+      "vr": "-",
+      "cf": "-",
+      "action": "MONITOR",
+      "time": "LIVE"
+    },
+    "H4": {
+      "cmp": "SELL",
+      "vr": "-",
+      "cf": "-",
+      "action": "MONITOR",
+      "time": "LIVE"
+    },
+    "H1": {
+      "cmp": "SELL",
+      "vr": "-",
+      "cf": "-",
+      "action": "MONITOR",
+      "time": "LIVE"
+    },
+    "M30": {
+      "cmp": "SELL",
+      "vr": "-",
+      "cf": "-",
+      "action": "MONITOR",
+      "time": "LIVE"
+    },
+    "M15": {
+      "cmp": "SELL",
+      "vr": "-",
+      "cf": "-",
+      "action": "MONITOR",
+      "time": "LIVE"
+    },
+    "M5": {
+      "cmp": "SELL",
+      "vr": "-",
+      "cf": "-",
+      "action": "MONITOR",
+      "time": "LIVE"
+    },
+    "M1": {
+      "cmp": "SELL",
+      "vr": "-",
+      "cf": "-",
+      "action": "MONITOR",
+      "time": "LIVE"
+    }
+  },
+  "active_signal": null,
+  "position": {
+    "dir": "SELL",
+    "tf": "M5",
+    "entry_time": 1787912400.6029084
+  },
+  "absorption": {
+    "status": "NONE",
+    "reason": "gak ada tanda absorption"
+  },
+  "footprint": {
+    "status": "NEUTRAL",
+    "buy_volume": 0.0,
+    "sell_volume": 0.0,
+    "buy_pct": 50.0,
+    "side": "ASK",
+    "wall_price": 4668.0,
+    "distance": 15.2
+  },
+  "lot_multiplier": 1.0,
+  "volume_profile": {
+    "session_buy_volume": 10638.0,
+    "session_sell_volume": 10298.0,
+    "session_total_volume": 20936.0,
+    "volume_ratio_buy_pct": 50.8,
+    "poc_price": 4656.7,
+    "poc_volume": 253.0,
+    "val": 4654.5,
+    "vah": 4666.1
+  },
+  "iceberg": {
+    "bid_iceberg": null,
+    "ask_iceberg": null
+  },
+  "updated_at": 1787918293.516933,
+  "mt5_overlay_active": [
+    "D1",
+    "H4"
+  ],
+  "macro": {
+    "active": false,
+    "alias": "",
+    "reason": "belum ada data (attach addon Bookmap ke tab 6E)"
+  },
+  "db_stats": {
+    "total": 70,
+    "wins": 26,
+    "losses": 44,
+    "win_rate": 37.1,
+    "total_pnl": 68.59,
+    "total_points": 61.2,
+    "avg_rr": "1:0.2",
+    "max_dd": -125.6,
+    "balance": 10068.59,
+    "equity": 10068.59
+  },
+  "recent_trades": [
+    {
+      "id": 74,
+      "time": "20:35",
+      "pair": "XAUUSD",
+      "direction": "SELL",
+      "entry": 4577.62,
+      "exit": 4590.66,
+      "points": "-13.0",
+      "rr": "1:0.1",
+      "duration": "00:15:01",
+      "reason": "M5 SELL (status: CF) di area SNR 4637.60 (jarak 3.00)",
+      "status": "CLOSED"
+    },
+    {
+      "id": 73,
+      "time": "20:06",
+      "pair": "XAUUSD",
+      "direction": "BUY",
+      "entry": 4582.66,
+      "exit": 4573.82,
+      "points": "-8.8",
+      "rr": "1:0.1",
+      "duration": "00:28:54",
+      "reason": "M5 BUY (status: VR) di area SNR 4636.90 (jarak 2.40)",
+      "status": "CLOSED"
+    },
+    {
+      "id": 72,
+      "time": "23:19",
+      "pair": "XAUUSD",
+      "direction": "BUY",
+      "entry": 4511.62,
+      "exit": 4580.14,
+      "points": "+68.5",
+      "rr": "1:0.5",
+      "duration": "20:12:31",
+      "reason": "M30 VR ke H4 - retracement, TP di area H4 (kalau M30 gak berhasil flip H4)",
+      "status": "CLOSED"
+    },
+    {
+      "id": 71,
+      "time": "23:00",
+      "pair": "XAUUSD",
+      "direction": "BUY",
+      "entry": 4522.01,
+      "exit": 4510.94,
+      "points": "-11.1",
+      "rr": "1:0.1",
+      "duration": "00:14:59",
+      "reason": "M5 BUY (status: CF) di area SNR 4576.00 (jarak 1.60)",
+      "status": "CLOSED"
+    },
+    {
+      "id": 70,
+      "time": "22:35",
+      "pair": "XAUUSD",
+      "direction": "SELL",
+      "entry": 4524.2,
+      "exit": 4521.7,
+      "points": "+2.5",
+      "rr": "1:0.0",
+      "duration": "00:24:59",
+      "reason": "M5 SELL (status: VR) di area SNR 4582.40 (jarak 2.30)",
+      "status": "CLOSED"
+    },
+    {
+      "id": 69,
+      "time": "21:00",
+      "pair": "XAUUSD",
+      "direction": "BUY",
+      "entry": 4488.34,
+      "exit": 4524.08,
+      "points": "+35.7",
+      "rr": "1:0.3",
+      "duration": "01:34:05",
+      "reason": "M5 BUY (status: CMP) di area SNR 4541.30 (jarak 2.20)",
+      "status": "CLOSED"
+    },
+    {
+      "id": 68,
+      "time": "20:30",
+      "pair": "XAUUSD",
+      "direction": "SELL",
+      "entry": 4472.64,
+      "exit": 4483.37,
+      "points": "-10.7",
+      "rr": "1:0.1",
+      "duration": "00:06:28",
+      "reason": "M5 SELL (status: CF) di area SNR 4528.20 (jarak 1.40)",
+      "status": "CLOSED"
+    },
+    {
+      "id": 67,
+      "time": "17:55",
+      "pair": "XAUUSD",
+      "direction": "SELL",
+      "entry": 4487.78,
+      "exit": 4471.4,
+      "points": "+16.4",
+      "rr": "1:0.1",
+      "duration": "01:54:50",
+      "reason": "M5 SELL (status: VR) di area SNR 4546.60 (jarak 2.60)",
+      "status": "CLOSED"
+    },
+    {
+      "id": 66,
+      "time": "17:10",
+      "pair": "XAUUSD",
+      "direction": "BUY",
+      "entry": 4489.64,
+      "exit": 4487.63,
+      "points": "-2.0",
+      "rr": "1:0.0",
+      "duration": "00:45:08",
+      "reason": "M5 BUY (status: VR) di area SNR 4545.60 (jarak 0.50)",
+      "status": "CLOSED"
+    },
+    {
+      "id": 65,
+      "time": "16:15",
+      "pair": "XAUUSD",
+      "direction": "BUY",
+      "entry": 4492.34,
+      "exit": 4488.0,
+      "points": "-4.3",
+      "rr": "1:0.0",
+      "duration": "00:19:16",
+      "reason": "M5 BUY (status: CF) di area SNR 4548.40 (jarak 0.60)",
+      "status": "CLOSED"
+    }
+  ],
+  "mt5_bridge": true,
+  "regime": {
+    "trending": true,
+    "direction": "SELL",
+    "label": "TRENDING SELL"
+  }
+}

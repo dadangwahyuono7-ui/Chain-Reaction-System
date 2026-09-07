@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>News & Catalyst - Chain Reaction System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    /* Same visual language as index.html (the production dashboard) -
+       Dadang wants this as its own TAB, not a redesign, so it should look
+       like it belongs next to the page it's a tab OF. */
+    html, body { margin: 0; }
+    body { font-family: 'Inter', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .font-crest { font-family: 'Cormorant Garamond', serif; }
+    .panel {
+      background: linear-gradient(180deg, rgba(15,23,42,0.7) 0%, rgba(15,23,42,0.35) 100%);
+      border: 1px solid rgba(148,163,184,0.10);
+      border-radius: 18px;
+      box-shadow: 0 12px 40px -18px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.04);
+      backdrop-filter: blur(8px);
+    }
+    .section-title {
+      font-size: 12px; font-weight: 600; letter-spacing: 0.14em;
+      text-transform: uppercase; color: #94a3b8;
+    }
+    .gold-rule {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(217,180,101,0.55), transparent);
+    }
+    .chip { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; padding: 2px 9px; border-radius: 9999px; }
+    .chip-bull { background: rgba(52,211,153,0.14); color: #34d399; }
+    .chip-bear { background: rgba(244,63,94,0.14); color: #fb7185; }
+    .chip-neu  { background: rgba(148,163,184,0.14); color: #94a3b8; }
+    .chip-red-flag { background: rgba(244,63,94,0.16); color: #fb7185; border: 1px solid rgba(244,63,94,0.35); }
+    .chip-orange-flag { background: rgba(251,146,60,0.16); color: #fb923c; border: 1px solid rgba(251,146,60,0.35); }
+    .chip-yellow-flag { background: rgba(250,204,21,0.16); color: #facc15; border: 1px solid rgba(250,204,21,0.35); }
+    .news-item { border-bottom: 1px solid rgba(148,163,184,0.08); padding: 14px 0; }
+    .news-item:last-child { border-bottom: none; }
+    .news-item a { color: inherit; text-decoration: none; }
+    .news-item a:hover .news-title { color: #d9b465; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100 px-4 py-5">
+  <div class="max-w-[980px] w-full mx-auto">
+
+    <header class="flex items-center justify-between pb-3">
+      <a href="/index.html" class="text-[10px] tracking-[0.15em] uppercase text-slate-500 hover:text-amber-300 transition-colors">&larr; Dashboard</a>
+      <div class="text-center">
+        <h1 class="font-crest text-[22px] leading-none font-bold tracking-[0.08em] text-amber-100" style="text-shadow:0 0 20px rgba(217,180,101,0.18)">NEWS &amp; CATALYST</h1>
+        <p class="text-[9.5px] tracking-[0.2em] uppercase text-slate-400 font-medium mt-1">XAUUSD &middot; Gold Narrative</p>
+      </div>
+      <span class="text-[9px] font-mono text-slate-600 w-16 text-right" id="updated-label">-</span>
+    </header>
+    <div class="gold-rule mb-4"></div>
+
+    <!-- ANALISA AI - Dadang: "kenapa gak lo buat setiap reload ai
+         analisa bro kalo cuman translate kan saya [bisa sendiri]" - the
+         real LLM-written narrative (news_engine.py's generate_ai_
+         analysis()) is now the headline content here, not the keyword
+         tally. -->
+    <section class="panel p-4 mb-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="section-title">&#129504; Analisa AI</span>
+        <span class="text-[9px] font-mono text-slate-600" id="analysis-model-label">-</span>
+      </div>
+      <p class="text-[13.5px] text-slate-200 leading-relaxed" id="ai-analysis-text">Memuat...</p>
+      <!-- 2026-08-25 - Dadang explicitly OK'd naming actual watch-zones here
+           ("zona pantau aja untuk entri buy atau sell area nya publik gak
+           apa2 yang penting ada warning") on the condition this warning
+           stays visible - a static banner, not left to the model to
+           remember to add every single generation. -->
+      <div class="mt-2.5 rounded-md border border-amber-500/30 bg-amber-500/[0.07] px-2.5 py-1.5">
+        <p class="text-[9.5px] text-amber-300/90 leading-snug">&#9888;&#65039; <span class="font-semibold">BUKAN SARAN FINANSIAL.</span> Zona pantau di atas hasil bacaan otomatis (berita + katalis + sistem sendiri), bukan perintah entri. Keputusan &amp; risiko sepenuhnya di tangan Anda.</p>
+      </div>
+    </section>
+
+    <!-- KESIMPULAN (nada headline + konfluensi - stat pendukung, bukan headline lagi) -->
+    <section class="panel p-4 mb-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="section-title">Nada Headline &amp; Konfluensi</span>
+        <span id="verdict-badge" class="chip chip-neu">-</span>
+      </div>
+      <p class="text-[12px] text-slate-400 leading-relaxed" id="verdict-text">Memuat data...</p>
+      <p class="text-[12px] text-amber-200 leading-relaxed mt-2 pt-2 border-t border-slate-800/50" id="confluence-note">Memuat...</p>
+      <p class="text-[9.5px] text-slate-600 mt-2 italic">*Nada berita: hitung kata kunci, bukan AI (analisa AI ada di kotak atas). Konfluensi: level $ yang disebut berita dicek jaraknya ke POC/VAH/VAL/wall kita sendiri (radius $15) - kalau EA lagi bukan di XAUUSD, bagian ini otomatis kosong.</p>
+    </section>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+      <!-- KATALIS HARI INI -->
+      <section class="panel p-4">
+        <div class="flex items-center justify-between mb-3">
+          <span class="section-title">Katalis Hari Ini &middot; Flag Merah</span>
+          <span class="text-[9px] font-mono text-slate-600">Semua Impact &middot; USD &amp; Gold</span>
+        </div>
+        <div id="calendar-list" class="space-y-2">
+          <p class="text-[11px] text-slate-500">Memuat...</p>
+        </div>
+      </section>
+
+      <!-- BERITA GOLD -->
+      <section class="panel p-4">
+        <div class="flex items-center justify-between mb-3">
+          <span class="section-title">Berita Gold Terbaru</span>
+          <span class="text-[9px] font-mono text-slate-600" id="news-source-label">Kitco News</span>
+        </div>
+        <div id="news-list" class="max-h-[520px] overflow-y-auto pr-1">
+          <p class="text-[11px] text-slate-500">Memuat...</p>
+        </div>
+      </section>
+
+    </div>
+
+    <footer class="text-center pt-5 pb-2">
+      <p class="text-[8px] tracking-[0.15em] uppercase text-slate-700">News: Kitco &middot; Calendar: MT5 Economic Calendar (via EA) &middot; Refresh otomatis tiap 60 detik</p>
+      <p class="text-[8px] tracking-[0.15em] uppercase mt-1"><a href="/admin.html" class="text-slate-700 hover:text-amber-300 transition-colors">Pengaturan Admin &rarr;</a></p>
+    </footer>
+
+  </div>
+
+  <script src="news.js"></script>
+</body>
+</html>

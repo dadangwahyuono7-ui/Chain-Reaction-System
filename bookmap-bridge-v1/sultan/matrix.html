@@ -1,0 +1,2768 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chain Reaction Pro | 4-Grid Institutional Order Flow War Room</title>
+
+  <!-- 🔐 AUTHENTICATION GATE: PROTECTED TERMINAL -->
+  <script>
+  (function() {
+    function checkAuth() {
+      try {
+        const u = localStorage.getItem('cr_auth_user') || sessionStorage.getItem('cr_auth_user');
+        if (!u) return false;
+        const uLower = u.toLowerCase().trim();
+        if (uLower === 'commander' || uLower === 'comander') return true;
+        const exp = localStorage.getItem('cr_auth_expires') || sessionStorage.getItem('cr_auth_expires');
+        if (exp) {
+          const expSec = parseInt(exp, 10);
+          const nowSec = Math.floor(Date.now() / 1000);
+          if (nowSec > expSec) {
+            localStorage.removeItem('cr_auth_user');
+            sessionStorage.removeItem('cr_auth_user');
+            localStorage.removeItem('cr_auth_expires');
+            sessionStorage.removeItem('cr_auth_expires');
+            return false;
+          }
+        }
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+    if (!checkAuth()) {
+      document.documentElement.style.display = 'none';
+      const redirect = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.replace('/heatmap.html?redirect=' + redirect);
+    }
+  })();
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #050811;
+      --bg-panel: #090d18;
+      --bg-card: #0d1322;
+      --border-subtle: #141b2e;
+      --border-accent: #1e293b;
+      --accent-cyan: #00e5ff;
+      --accent-blue: #38bdf8;
+      --accent-green: #00e676;
+      --accent-red: #ff2a4b;
+      --accent-gold: #ffd700;
+      --accent-purple: #c084fc;
+      --text-main: #f8fafc;
+      --text-muted: #64748b;
+      --text-sub: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ══════════ TOP INSTITUTIONAL WAR ROOM HEADER ══════════ */
+    header {
+      height: 44px;
+      min-height: 44px;
+      width: 100vw;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      z-index: 50;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .war-room-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.20), rgba(0, 229, 255, 0.12));
+      border: 1px solid rgba(168, 85, 247, 0.60);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #e879f9;
+      letter-spacing: 0.5px;
+    }
+
+    .war-room-title {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 900;
+      font-size: 13px;
+      background: linear-gradient(135deg, #00e5ff 0%, #c084fc 60%, #ffffff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 0.6px;
+    }
+
+    .header-stats {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stat-chip {
+      background: #060913;
+      border: 1px solid var(--border-accent);
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-size: 10.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .stat-chip .lbl {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .stat-chip .val {
+      font-weight: 800;
+    }
+
+    .val-cyan { color: var(--accent-cyan); }
+    .val-gold { color: var(--accent-gold); }
+    .val-green { color: var(--accent-green); }
+    .val-red { color: var(--accent-red); }
+    .val-purple { color: var(--accent-purple); }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-action {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-accent);
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .btn-action:hover {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+    }
+
+    .btn-return-heatmap {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.20), rgba(245, 158, 11, 0.15));
+      border-color: rgba(239, 68, 68, 0.60);
+      color: #fca5a5;
+    }
+
+    .btn-return-heatmap:hover {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.35), rgba(245, 158, 11, 0.25));
+      border-color: #ef4444;
+      color: #ffffff;
+      box-shadow: 0 0 14px rgba(239, 68, 68, 0.45);
+    }
+
+    .btn-action.active {
+      background: linear-gradient(135deg, rgba(255, 109, 0, 0.28), rgba(255, 42, 75, 0.22));
+      border-color: #ff8a00;
+      color: #ffffff;
+      box-shadow: 0 0 10px rgba(255, 109, 0, 0.35);
+    }
+
+    /* ══════════ 4-GRID MATRIX WORKSPACE ══════════ */
+    #matrix-container {
+      flex: 1;
+      width: 100vw;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 4px;
+      padding: 4px;
+      background: #02040a;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .grid-cell {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+      transition: border-color 0.2s ease;
+    }
+
+    .grid-cell:hover {
+      border-color: rgba(0, 229, 255, 0.35);
+    }
+
+    .cell-header {
+      height: 28px;
+      min-height: 28px;
+      background: #070b14;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 8px;
+      font-size: 10px;
+    }
+
+    .cell-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+    }
+
+    .cell-badge {
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-weight: 700;
+    }
+
+    .cell-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-max {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-accent);
+      color: #94a3b8;
+      border-radius: 4px;
+      padding: 2px 7px;
+      cursor: pointer;
+      font-size: 9.5px;
+      font-weight: 700;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .btn-max:hover {
+      border-color: var(--accent-cyan);
+      color: #ffffff;
+      background: rgba(0, 229, 255, 0.15);
+      box-shadow: 0 0 8px rgba(0, 229, 255, 0.35);
+    }
+
+    .cell-canvas-wrap {
+      flex: 1;
+      width: 100%;
+      height: calc(100% - 28px);
+      position: relative;
+      background: #04070e;
+    }
+
+    canvas.matrix-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+    }
+
+    /* FULLSCREEN MAXIMIZE STATE */
+    .grid-cell.maximized {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      width: calc(100vw - 8px);
+      height: calc(100vh - 52px);
+      z-index: 100;
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 30px rgba(0, 229, 255, 0.25);
+    }
+
+    /* TIME & HUD BAR */
+    .cell-hud {
+      position: absolute;
+      top: 6px;
+      right: 10px;
+      background: rgba(5, 8, 17, 0.85);
+      border: 1px solid var(--border-accent);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 9px;
+      pointer-events: none;
+      display: flex;
+      gap: 6px;
+      z-index: 5;
+    }
+
+    /* ══════════ MOBILE RESPONSIVE ADAPTATION ══════════ */
+    @media (max-width: 900px) {
+      #matrix-container {
+        grid-template-columns: 1fr;
+        grid-template-rows: repeat(4, 1fr);
+        overflow-y: auto;
+      }
+      .grid-cell {
+        min-height: 280px;
+      }
+      .header-stats {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ══════════ WAR ROOM HEADER ══════════ -->
+  <header>
+    <div class="brand-group">
+      <div class="war-room-badge">
+        <span>🪟 WAR ROOM</span>
+      </div>
+      <div class="war-room-title">CHAIN REACTION PRO • 4-GRID MATRIX</div>
+    </div>
+
+    <!-- LIVE INSTITUTIONAL STATUS -->
+    <div class="header-stats">
+      <div class="stat-chip">
+        <span class="lbl">SPOT</span>
+        <span class="val val-green" id="hdr-spot">$4328.50</span>
+      </div>
+      <div class="stat-chip">
+        <span class="lbl">CVD FLOW</span>
+        <span class="val val-cyan" id="hdr-cvd">+420L (BULLISH)</span>
+      </div>
+      <div class="stat-chip">
+        <span class="lbl">OFI MOMENTUM</span>
+        <span class="val val-purple" id="hdr-ofi">+14.2 BUY</span>
+      </div>
+      <div class="stat-chip">
+        <span class="lbl">AUCTION REGIME</span>
+        <span class="val val-gold" id="hdr-auction">D-SHAPE ⚖️ BALANCE</span>
+      </div>
+      <div class="stat-chip" id="hdr-chip-signal" style="border: 1px solid rgba(255, 215, 0, 0.5); background: rgba(6, 11, 24, 0.85);">
+        <span class="lbl">ORDER FLOW RADAR</span>
+        <span class="val" id="hdr-of-signal" style="color: #ffd700; font-weight: 800;">SCANNING CONFLUENCE...</span>
+      </div>
+    </div>
+
+    <!-- ACTIONS -->
+    <div class="header-controls">
+      <a href="heatmap.html" class="btn-action btn-return-heatmap" title="Kembali ke Cockpit Heatmap Utama">
+        <span>🔥</span><span>HEATMAP COCKPIT</span>
+      </a>
+      <a href="/backtest_report.html" target="_blank" class="btn-action" title="Laporan Optimasi Order Flow & Salin Preset MT5" style="text-decoration: none; border-color: rgba(255, 215, 0, 0.5); color: #ffd700; background: rgba(255, 215, 0, 0.1);">
+        <span>📈</span><span>OPTIMIZER & MT5</span>
+      </a>
+      <button class="btn-action" id="btn-test-signal-bridge" title="Test Broadcast Sinyal Order Flow Murni ke Chart Utama" style="border-color: rgba(0, 229, 255, 0.5); color: #00e5ff;">
+        <span>⚡</span><span>TEST BRIDGE</span>
+      </button>
+      <button class="btn-action" id="btn-broadcast-matrix-telegram" onclick="broadcastMatrixSignalToTelegram()" style="border-color: #0088cc; color: #38bdf8; background: rgba(0, 136, 204, 0.15);" title="Broadcast Sinyal Terkonfirmasi ke Telegram Commander">
+        <span>📡</span><span>TELEGRAM</span>
+      </button>
+      <button class="btn-action active" id="btn-toggle-matrix-walls" title="Toggle Bookmap Wall Lines [Hotkey: W]">
+        <span>🧱</span><span>WALLS</span>
+      </button>
+      <button class="btn-action" id="btn-toggle-fs" title="Toggle Fullscreen">
+        <span>⛶</span><span>FULL</span>
+      </button>
+      <span id="matrix-user-badge" class="hdr-chip" style="display:none; padding:4px 8px; font-size:10px; border-radius:4px; align-items:center; gap:4px;"></span>
+      <button class="btn-action" onclick="handleCommanderLogout()" title="Keluar Akun" style="border-color: rgba(239, 68, 68, 0.4); color: #ef4444; padding: 4px 8px;">
+        <span>🚪</span><span>KELUAR</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ══════════ 4-GRID MATRIX WORKSPACE ══════════ -->
+  <div id="matrix-container">
+
+    <!-- 🏛️ GRID 1: ZENOBI MULTI-SESSION VOLUME PROFILE -->
+    <div class="grid-cell" id="cell-tpo">
+      <div class="cell-header" title="Double-click to expand/restore panel [1]">
+        <div class="cell-title" style="color: #38bdf8;">
+          <span>🏛️</span><span>GRID 1: ZENOBI MULTI-SESSION VOLUME PROFILE</span>
+        </div>
+        <div class="cell-controls" style="display: flex; align-items: center; gap: 5px;">
+          <div style="display: flex; gap: 3px; background: rgba(15, 23, 42, 0.8); border: 1px solid #1e293b; padding: 2px 3px; border-radius: 4px;">
+            <button class="btn-prof-mode" id="btn-mode-bidask" onclick="window.setZenobiMode('BID_ASK')" style="background: rgba(56, 189, 248, 0.25); border: 1px solid #38bdf8; color: #38bdf8; font-size: 8.5px; font-weight: 800; border-radius: 3px; padding: 1px 5px; cursor: pointer; font-family: inherit;">BID/ASK</button>
+            <button class="btn-prof-mode" id="btn-mode-delta" onclick="window.setZenobiMode('DELTA')" style="background: transparent; border: 1px solid transparent; color: #94a3b8; font-size: 8.5px; font-weight: 800; border-radius: 3px; padding: 1px 5px; cursor: pointer; font-family: inherit;">DELTA</button>
+            <button class="btn-prof-mode" id="btn-mode-total" onclick="window.setZenobiMode('TOTAL')" style="background: transparent; border: 1px solid transparent; color: #94a3b8; font-size: 8.5px; font-weight: 800; border-radius: 3px; padding: 1px 5px; cursor: pointer; font-family: inherit;">TOTAL</button>
+          </div>
+          <button class="btn-max" id="btn-max-tpo" onclick="toggleMaximize('cell-tpo')" title="Maximize Panel [Key: 1]">⛶ MAX [1]</button>
+        </div>
+      </div>
+      <div class="cell-canvas-wrap">
+        <canvas class="matrix-canvas" id="canvas-tpo"></canvas>
+        <div class="cell-hud" id="hud-tpo">ZENOBI PROFILE: BID/ASK FORMULA • 70% VALUE AREA</div>
+      </div>
+    </div>
+
+    <!-- 🦶 GRID 2: BID x ASK FOOTPRINT CLUSTER LADDER -->
+    <div class="grid-cell" id="cell-footprint">
+      <div class="cell-header" title="Double-click to expand/restore panel [2]">
+        <div class="cell-title" style="color: #00e5ff;">
+          <span>🦶</span><span>GRID 2: FOOTPRINT CLUSTER LADDER</span>
+        </div>
+        <div class="cell-controls" style="display: flex; align-items: center; gap: 5px;">
+          <div style="display: flex; gap: 3px; background: rgba(15, 23, 42, 0.8); border: 1px solid #1e293b; padding: 2px 3px; border-radius: 4px;">
+            <button class="btn-fp-mode" id="btn-fp-bidask" onclick="window.setFootprintMode('BID_ASK')" style="background: rgba(0, 229, 255, 0.25); border: 1px solid #00e5ff; color: #00e5ff; font-size: 8.5px; font-weight: 800; border-radius: 3px; padding: 1px 5px; cursor: pointer; font-family: inherit;">BIDxASK</button>
+            <button class="btn-fp-mode" id="btn-fp-delta" onclick="window.setFootprintMode('DELTA')" style="background: transparent; border: 1px solid transparent; color: #94a3b8; font-size: 8.5px; font-weight: 800; border-radius: 3px; padding: 1px 5px; cursor: pointer; font-family: inherit;">DELTA</button>
+            <button class="btn-fp-mode" id="btn-fp-vol" onclick="window.setFootprintMode('VOL')" style="background: transparent; border: 1px solid transparent; color: #94a3b8; font-size: 8.5px; font-weight: 800; border-radius: 3px; padding: 1px 5px; cursor: pointer; font-family: inherit;">VOL</button>
+          </div>
+          <span class="cell-badge" style="background: rgba(0, 229, 255, 0.15); color: #00e5ff;" id="badge-footprint-imb">STACKED BUY IMBALANCE</span>
+          <button class="btn-max" id="btn-max-footprint" onclick="toggleMaximize('cell-footprint')" title="Maximize Panel [Key: 2]">⛶ MAX [2]</button>
+        </div>
+      </div>
+      <div class="cell-canvas-wrap">
+        <canvas class="matrix-canvas" id="canvas-footprint"></canvas>
+        <div class="cell-hud" id="hud-footprint">RATIO > 300% DIAGONAL AGGRESSION</div>
+      </div>
+    </div>
+
+    <!-- 🌊 GRID 3: CUMULATIVE VOLUME DELTA (CVD) & OFI OSCILLATOR -->
+    <div class="grid-cell" id="cell-cvd">
+      <div class="cell-header" title="Double-click to expand/restore panel [3]">
+        <div class="cell-title" style="color: #c084fc;">
+          <span>🌊</span><span>GRID 3: CUMULATIVE DELTA (CVD) & OFI MOMENTUM</span>
+        </div>
+        <div class="cell-controls">
+          <span class="cell-badge" style="background: rgba(192, 132, 252, 0.15); color: #c084fc;" id="badge-cvd-div">CVD ABSORPTION RADAR</span>
+          <button class="btn-max" id="btn-max-cvd" onclick="toggleMaximize('cell-cvd')" title="Maximize Panel [Key: 3]">⛶ MAX [3]</button>
+        </div>
+      </div>
+      <div class="cell-canvas-wrap">
+        <canvas class="matrix-canvas" id="canvas-cvd"></canvas>
+        <div class="cell-hud" id="hud-cvd">CVD: +420L | OFI AGGRESSION: +14.2</div>
+      </div>
+    </div>
+
+    <!-- 👑 GRID 4: MULTI-TF CANDLE CASCADE & VIVID BARS -->
+    <div class="grid-cell" id="cell-cascade">
+      <div class="cell-header" title="Double-click to expand/restore panel [4]">
+        <div class="cell-title" style="color: #ffd700;">
+          <span>👑</span><span>GRID 4: MULTI-TF CASCADE & CENTRAL EXECUTION</span>
+        </div>
+        <div class="cell-controls" style="display: flex; align-items: center; gap: 5px;">
+          <button class="btn-cascade-opt active" id="btn-toggle-vwap" onclick="window.toggleVwapBands()" style="background: rgba(255, 215, 0, 0.20); border: 1px solid #ffd700; color: #ffd700; font-size: 8.5px; font-weight: 800; border-radius: 3px; padding: 1px 5px; cursor: pointer; font-family: inherit;" title="Toggle Session Anchored VWAP ±2σ Bands">🎯 AVWAP ±2σ</button>
+          <span class="cell-badge" style="background: rgba(255, 215, 0, 0.15); color: #ffd700;" id="badge-vivid-status">INSIDE COIL / SWEEP</span>
+          <button class="btn-max" id="btn-max-cascade" onclick="toggleMaximize('cell-cascade')" title="Maximize Panel [Key: 4]">⛶ MAX [4]</button>
+        </div>
+      </div>
+      <div class="cell-canvas-wrap">
+        <canvas class="matrix-canvas" id="canvas-cascade"></canvas>
+        <div class="cell-hud" id="hud-cascade">M5 CENTRAL EXECUTION • H4 MASTER CMP</div>
+        <button id="btn-snap-live" onclick="window.resetMatrixPan()" style="display: none; position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); background: rgba(0, 230, 118, 0.22); border: 1px solid #00e676; color: #00e676; font-size: 10px; font-weight: 800; border-radius: 4px; padding: 4px 12px; cursor: pointer; z-index: 25; font-family: inherit; box-shadow: 0 0 12px rgba(0,230,118,0.4); backdrop-filter: blur(6px);">⏪ PAN HISTORI (KLIK SNAP KE LIVE)</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════ CLIENT SCRIPT: DUAL-TERMINAL MATRIX ENGINE ══════════ -->
+  <script>
+  (function () {
+    // Shared State across 4 Grids
+    let liveSpotPrice = 4328.50;
+    let visualSpotPrice = 4328.50;
+    let candlesM5 = [];
+    let cvdHistory = [];
+    let ofiHistory = [];
+    let tpoProfile = null;
+    let footprintBars = [];
+    let bookmapWalls = { asks: [], bids: [] };
+    let showWalls = true;
+
+    // 📡 PURE ORDER FLOW EVALUATION MATRIX & CROSS-WINDOW SIGNAL BUS (<5ms latency)
+    const orderFlowBus = ('BroadcastChannel' in window) ? new BroadcastChannel('cr_orderflow_bus') : null;
+    let lastSignalBroadcastTime = 0;
+    let currentActiveSignal = null;
+    const matrixMetrics = {
+      grid1: { vah: 0, val: 0, poc: 0, failedAuction: null, ibHigh: 0, ibLow: 0 },
+      grid2: { stackedImbalance: null, count: 0, price: 0 },
+      grid3: { cvdValue: 0, divergence: null, ofi: 0 },
+      grid4: { trend: 'BULL', isInside: false, isOutside: false, isAbsorption: false }
+    };
+
+    // Canvas elements & 2D contexts
+    const canvases = {
+      tpo: document.getElementById('canvas-tpo'),
+      footprint: document.getElementById('canvas-footprint'),
+      cvd: document.getElementById('canvas-cvd'),
+      cascade: document.getElementById('canvas-cascade')
+    };
+
+    const contexts = {
+      tpo: canvases.tpo.getContext('2d'),
+      footprint: canvases.footprint.getContext('2d'),
+      cvd: canvases.cvd.getContext('2d'),
+      cascade: canvases.cascade.getContext('2d')
+    };
+
+    // Crosshair Synchronization State
+    let syncCursor = { xRatio: -1, yRatio: -1, activeSource: null };
+
+    // Resize Observer for pixel-perfect DPI
+    function resizeCanvases() {
+      const dpr = window.devicePixelRatio || 1;
+      for (const key in canvases) {
+        const c = canvases[key];
+        const rect = c.parentElement.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          c.width = rect.width * dpr;
+          c.height = rect.height * dpr;
+          contexts[key].setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+      }
+    }
+    window.addEventListener('resize', resizeCanvases);
+
+    // 1-Click Maximize / Restore handler
+    window.toggleMaximize = function (cellId) {
+      const el = document.getElementById(cellId);
+      if (!el) return;
+      const isMax = el.classList.contains('maximized');
+      document.querySelectorAll('.grid-cell').forEach(c => c.classList.remove('maximized'));
+      
+      const btnTpo = document.getElementById('btn-max-tpo');
+      const btnFp = document.getElementById('btn-max-footprint');
+      const btnCvd = document.getElementById('btn-max-cvd');
+      const btnCas = document.getElementById('btn-max-cascade');
+      if (btnTpo) btnTpo.innerText = '⛶ MAX [1]';
+      if (btnFp) btnFp.innerText = '⛶ MAX [2]';
+      if (btnCvd) btnCvd.innerText = '⛶ MAX [3]';
+      if (btnCas) btnCas.innerText = '⛶ MAX [4]';
+
+      if (!isMax) {
+        el.classList.add('maximized');
+        const activeBtn = el.querySelector('.btn-max');
+        if (activeBtn) activeBtn.innerText = '🗗 RESTORE [ESC]';
+      }
+      setTimeout(resizeCanvases, 60);
+    };
+
+    // Keyboard Shortcuts [1, 2, 3, 4, Esc, 0] & Double-Click Header
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+      if (e.key === '1') window.toggleMaximize('cell-tpo');
+      if (e.key === '2') window.toggleMaximize('cell-footprint');
+      if (e.key === '3') window.toggleMaximize('cell-cvd');
+      if (e.key === '4') window.toggleMaximize('cell-cascade');
+      if (e.key === 'Escape' || e.key === '0') {
+        document.querySelectorAll('.grid-cell').forEach(c => c.classList.remove('maximized'));
+        const btnTpo = document.getElementById('btn-max-tpo');
+        const btnFp = document.getElementById('btn-max-footprint');
+        const btnCvd = document.getElementById('btn-max-cvd');
+        const btnCas = document.getElementById('btn-max-cascade');
+        if (btnTpo) btnTpo.innerText = '⛶ MAX [1]';
+        if (btnFp) btnFp.innerText = '⛶ MAX [2]';
+        if (btnCvd) btnCvd.innerText = '⛶ MAX [3]';
+        if (btnCas) btnCas.innerText = '⛶ MAX [4]';
+        setTimeout(resizeCanvases, 60);
+      }
+      if (e.key.toLowerCase() === 'w') {
+        if (matrixWallBtn) matrixWallBtn.click();
+      }
+    });
+
+    document.querySelectorAll('.cell-header').forEach(hdr => {
+      hdr.style.cursor = 'pointer';
+      hdr.addEventListener('dblclick', function () {
+        const parent = hdr.closest('.grid-cell');
+        if (parent) window.toggleMaximize(parent.id);
+      });
+    });
+
+    // Fullscreen Toggle
+    document.getElementById('btn-toggle-fs').onclick = function () {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    };
+
+    // ══════════════════════════════════════════════════════════
+    // 🖐️ INTERACTIVE PAN & DRAG CONTROLLER (60 FPS FLUID)
+    // ══════════════════════════════════════════════════════════
+    let panOffsetBars = 0; // 0 = Live edge, >0 = scrolled into history
+    let isDraggingChart = false;
+    let dragStartX = 0;
+    let dragStartPan = 0;
+
+    window.resetMatrixPan = function () {
+      panOffsetBars = 0;
+      updatePanBadge();
+    };
+
+    function updatePanBadge() {
+      const snapBtn = document.getElementById('btn-snap-live');
+      if (!snapBtn) return;
+      if (panOffsetBars > 0) {
+        snapBtn.style.display = 'block';
+        const minsAgo = panOffsetBars * 5;
+        snapBtn.innerHTML = `⏪ HISTORI: -${panOffsetBars} BAR (~${minsAgo} Mnt Lalu) • 🟢 KLIK SNAP LIVE`;
+      } else {
+        snapBtn.style.display = 'none';
+      }
+    }
+
+    function handlePanStart(clientX) {
+      isDraggingChart = true;
+      dragStartX = clientX;
+      dragStartPan = panOffsetBars;
+    }
+
+    function handlePanMove(clientX) {
+      if (!isDraggingChart) return;
+      const deltaX = clientX - dragStartX;
+      // Dragging right pulls past into view (increases panOffsetBars)
+      // Dragging left moves back towards live (decreases panOffsetBars)
+      const barDelta = Math.round(deltaX / 12);
+      const maxPan = Math.max(0, candlesM5.length - 30);
+      panOffsetBars = Math.max(0, Math.min(maxPan, dragStartPan + barDelta));
+      updatePanBadge();
+    }
+
+    function handlePanEnd() {
+      if (isDraggingChart) {
+        isDraggingChart = false;
+        for (const key in canvases) canvases[key].style.cursor = 'grab';
+      }
+    }
+
+    function handlePanWheel(deltaY) {
+      const maxPan = Math.max(0, candlesM5.length - 30);
+      const step = Math.sign(deltaY) * 3;
+      panOffsetBars = Math.max(0, Math.min(maxPan, panOffsetBars + step));
+      updatePanBadge();
+    }
+
+    // Synchronized Cursor Tracking & Interactive Pan
+    for (const key in canvases) {
+      const c = canvases[key];
+      c.style.cursor = 'grab';
+
+      c.addEventListener('mousedown', (e) => {
+        if (e.button === 0) {
+          c.style.cursor = 'grabbing';
+          handlePanStart(e.clientX);
+        }
+      });
+
+      c.addEventListener('mousemove', (e) => {
+        const rect = c.getBoundingClientRect();
+        syncCursor.xRatio = (e.clientX - rect.left) / rect.width;
+        syncCursor.yRatio = (e.clientY - rect.top) / rect.height;
+        syncCursor.activeSource = key;
+        if (isDraggingChart) handlePanMove(e.clientX);
+      });
+
+      c.addEventListener('mouseleave', () => {
+        syncCursor.xRatio = -1;
+        syncCursor.yRatio = -1;
+        syncCursor.activeSource = null;
+      });
+
+      c.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        handlePanWheel(e.deltaY);
+      }, { passive: false });
+
+      // Touch handlers for mobile/tablet swipe
+      c.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches.length === 1) {
+          handlePanStart(e.touches[0].clientX);
+        }
+      }, { passive: true });
+
+      c.addEventListener('touchmove', (e) => {
+        if (e.touches && e.touches.length === 1) {
+          handlePanMove(e.touches[0].clientX);
+        }
+      }, { passive: true });
+
+      c.addEventListener('touchend', handlePanEnd);
+    }
+
+    window.addEventListener('mouseup', handlePanEnd);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.key === '0') {
+        window.resetMatrixPan();
+      }
+    });
+
+    // Walls Toggle Button & Keyboard [W]
+    const matrixWallBtn = document.getElementById('btn-toggle-matrix-walls');
+    if (matrixWallBtn) {
+      matrixWallBtn.onclick = function () {
+        showWalls = !showWalls;
+        this.classList.toggle('active', showWalls);
+      };
+    }
+
+    // 🧱 DRAW BOOKMAP INSTITUTIONAL WALL LINES (SYNCHRONIZED WITH HEATMAP - 2-BARRIER TACTICAL)
+    function drawBookmapWalls(ctx, width, height, priceToY) {
+      if (!showWalls || !bookmapWalls) return;
+      ctx.save();
+
+      const rawAsks = [];
+      const rawBids = [];
+      const spot = liveSpotPrice || 4431.23;
+
+      // Filter Asks within 35 USD and lot >= 15
+      for (const w of (bookmapWalls.asks || [])) {
+        if (!w || w.length < 2) continue;
+        const p = parseFloat(w[0]);
+        const lot = parseFloat(w[1]);
+        if (lot < 15) continue;
+        const dist = Math.abs(p - spot);
+        if (dist > 35.0 || p <= spot) continue;
+        rawAsks.push({ p, lot, dist });
+      }
+
+      // Filter Bids within 35 USD and lot >= 15
+      for (const w of (bookmapWalls.bids || [])) {
+        if (!w || w.length < 2) continue;
+        const p = parseFloat(w[0]);
+        const lot = parseFloat(w[1]);
+        if (lot < 15) continue;
+        const dist = Math.abs(p - spot);
+        if (dist > 35.0 || p >= spot) continue;
+        rawBids.push({ p, lot, dist });
+      }
+
+      // Sort by proximity
+      rawAsks.sort((a, b) => a.dist - b.dist);
+      const selectedAsks = [];
+      for (const a of rawAsks) {
+        if (selectedAsks.length === 0) selectedAsks.push(a);
+        else if (selectedAsks.length === 1 && Math.abs(a.p - selectedAsks[0].p) >= 1.50) {
+          selectedAsks.push(a); break;
+        }
+      }
+
+      rawBids.sort((a, b) => a.dist - b.dist);
+      const selectedBids = [];
+      for (const b of rawBids) {
+        if (selectedBids.length === 0) selectedBids.push(b);
+        else if (selectedBids.length === 1 && Math.abs(b.p - selectedBids[0].p) >= 1.50) {
+          selectedBids.push(b); break;
+        }
+      }
+
+      let nearestOffscreenAsk = null;
+      let nearestOffscreenBid = null;
+
+      // Draw Selected Asks (Max 2)
+      for (const w of selectedAsks) {
+        const y = priceToY(w.p);
+        if (y < 4) {
+          if (!nearestOffscreenAsk || w.p < nearestOffscreenAsk.p) nearestOffscreenAsk = { ...w, y };
+        } else if (y <= height - 10) {
+          const isWhale = w.lot >= 40;
+          ctx.strokeStyle = isWhale ? 'rgba(255, 42, 75, 0.90)' : 'rgba(255, 109, 0, 0.75)';
+          ctx.lineWidth = isWhale ? 1.5 : 1.0;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+          ctx.stroke();
+
+          ctx.fillStyle = isWhale ? '#ff4d6d' : '#ffa726';
+          ctx.font = 'bold 8px "JetBrains Mono", monospace';
+          ctx.textAlign = 'right';
+          const tag = isWhale ? `🧱 🐋 ${Math.round(w.lot)}L RES $${w.p.toFixed(2)}` : `🧱 ${Math.round(w.lot)}L RES $${w.p.toFixed(2)}`;
+          ctx.fillText(tag, width - 8, y - 3);
+        }
+      }
+
+      // Draw Selected Bids (Max 2)
+      for (const w of selectedBids) {
+        const y = priceToY(w.p);
+        if (y > height - 10) {
+          if (!nearestOffscreenBid || w.p > nearestOffscreenBid.p) nearestOffscreenBid = { ...w, y };
+        } else if (y >= 4) {
+          const isWhale = w.lot >= 40;
+          ctx.strokeStyle = isWhale ? 'rgba(0, 230, 118, 0.90)' : 'rgba(0, 229, 255, 0.75)';
+          ctx.lineWidth = isWhale ? 1.5 : 1.0;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+          ctx.stroke();
+
+          ctx.fillStyle = isWhale ? '#00e676' : '#26c6da';
+          ctx.font = 'bold 8px "JetBrains Mono", monospace';
+          ctx.textAlign = 'right';
+          const tag = isWhale ? `🧱 🐋 ${Math.round(w.lot)}L SUP $${w.p.toFixed(2)}` : `🧱 ${Math.round(w.lot)}L SUP $${w.p.toFixed(2)}`;
+          ctx.fillText(tag, width - 8, y + 10);
+        }
+      }
+
+      // Off-Screen Navigation Beacons (Max 1 top & 1 bottom)
+      if (nearestOffscreenAsk) {
+        ctx.font = 'bold 8px "JetBrains Mono"';
+        ctx.fillStyle = '#ff4d6d';
+        ctx.textAlign = 'right';
+        ctx.fillText(`▲ 🧱 RES $${nearestOffscreenAsk.p.toFixed(2)} [${Math.round(nearestOffscreenAsk.lot)}L]`, width - 8, 14);
+      }
+      if (nearestOffscreenBid) {
+        ctx.font = 'bold 8px "JetBrains Mono"';
+        ctx.fillStyle = '#00e676';
+        ctx.textAlign = 'right';
+        ctx.fillText(`▼ 🧱 SUP $${nearestOffscreenBid.p.toFixed(2)} [${Math.round(nearestOffscreenBid.lot)}L]`, width - 8, height - 6);
+      }
+
+      ctx.restore();
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 🏛️ GRID 1: ZENOBI MULTI-SESSION VOLUME PROFILE ENGINE
+    // ══════════════════════════════════════════════════════════
+    let zenobiProfileMode = 'BID_ASK'; // 'BID_ASK' | 'DELTA' | 'TOTAL'
+    window.setZenobiMode = function (mode) {
+      zenobiProfileMode = mode;
+      document.querySelectorAll('.btn-prof-mode').forEach(b => {
+        b.style.background = 'transparent';
+        b.style.borderColor = 'transparent';
+        b.style.color = '#94a3b8';
+      });
+      const activeBtn = document.getElementById(
+        mode === 'BID_ASK' ? 'btn-mode-bidask' : (mode === 'DELTA' ? 'btn-mode-delta' : 'btn-mode-total')
+      );
+      if (activeBtn) {
+        activeBtn.style.background = mode === 'DELTA' ? 'rgba(0, 230, 118, 0.25)' : 'rgba(56, 189, 248, 0.25)';
+        activeBtn.style.borderColor = mode === 'DELTA' ? '#00e676' : '#38bdf8';
+        activeBtn.style.color = mode === 'DELTA' ? '#00e676' : '#38bdf8';
+      }
+      const hud = document.getElementById('hud-tpo');
+      if (hud) {
+        hud.innerText = `ZENOBI PROFILE: ${mode} FORMULA • 70% VALUE AREA`;
+      }
+    };
+
+    function renderTPO(ctx, width, height) {
+      ctx.fillStyle = '#04070e';
+      ctx.fillRect(0, 0, width, height);
+
+      // Grid Lines
+      ctx.strokeStyle = '#0d1424';
+      ctx.lineWidth = 1;
+      const stepY = height / 10;
+      for (let y = 0; y < height; y += stepY) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      if (!candlesM5 || candlesM5.length === 0) {
+        ctx.fillStyle = '#64748b';
+        ctx.font = '11px "JetBrains Mono"';
+        ctx.fillText('Loading Zenobi Multi-Session Profile Data...', 20, 30);
+        return;
+      }
+
+      const allBars = candlesM5.slice(-45);
+      let minP = Infinity, maxP = -Infinity;
+      allBars.forEach(b => {
+        if (b.low < minP) minP = b.low;
+        if (b.high > maxP) maxP = b.high;
+      });
+
+      const pad = Math.max(1.0, (maxP - minP) * 0.12);
+      minP -= pad;
+      maxP += pad;
+      const span = Math.max(3.0, maxP - minP);
+      const priceToY = (p) => height - 32 - ((p - minP) / span) * (height - 60);
+
+      // Left Price Scale Ladder
+      const pStepGrid = span > 12 ? 2.0 : (span > 5 ? 1.0 : 0.50);
+      const firstP = Math.ceil(minP / pStepGrid) * pStepGrid;
+      for (let p = firstP; p <= maxP; p += pStepGrid) {
+        const gy = priceToY(p);
+        if (gy < 12 || gy > height - 12) continue;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+        ctx.beginPath(); ctx.moveTo(42, gy); ctx.lineTo(width, gy); ctx.stroke();
+
+        ctx.fillStyle = '#475569';
+        ctx.font = '8px "JetBrains Mono"';
+        ctx.textAlign = 'right';
+        ctx.fillText(`$${p.toFixed(2)}`, 40, gy + 3);
+      }
+
+      // Partition into 3 Session Blocks (PeriodMode.Minutes / Periodic Blocks from Zenobi NT8)
+      const sessionCount = 3;
+      const barsPerSession = Math.ceil(allBars.length / sessionCount);
+      const sessions = [
+        allBars.slice(0, barsPerSession),
+        allBars.slice(barsPerSession, barsPerSession * 2),
+        allBars.slice(barsPerSession * 2)
+      ];
+
+      const leftM = 45;
+      const sessionW = (width - leftM - 10) / sessionCount;
+      const pStep = 0.50;
+
+      let liveSessionVah = 0, liveSessionVal = 0, liveSessionPoc = 0;
+      let liveSessionIbHigh = 0, liveSessionIbLow = Infinity;
+
+      sessions.forEach((sBars, sIdx) => {
+        if (!sBars || sBars.length === 0) return;
+        const sX = leftM + sIdx * sessionW;
+        const sW = sessionW - 6;
+        const isLiveSession = (sIdx === sessions.length - 1);
+
+        // Session Background Box (Zenobi Session Frame)
+        ctx.fillStyle = isLiveSession ? 'rgba(56, 189, 248, 0.03)' : 'rgba(255, 255, 255, 0.015)';
+        ctx.fillRect(sX, 22, sW, height - 44);
+        ctx.strokeStyle = isLiveSession ? 'rgba(56, 189, 248, 0.35)' : 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sX, 22, sW, height - 44);
+
+        // 1. Ghost Candlesticks in Background (Price Action under Profile)
+        const candleStep = sW / sBars.length;
+        const cW = Math.max(2, Math.floor(candleStep * 0.65));
+        sBars.forEach((b, bIdx) => {
+          const cx = sX + bIdx * candleStep + candleStep / 2;
+          const cyO = priceToY(b.open);
+          const cyC = priceToY(b.close);
+          const cyH = priceToY(b.high);
+          const cyL = priceToY(b.low);
+          const isBull = b.close >= b.open;
+
+          ctx.strokeStyle = isBull ? 'rgba(0, 230, 118, 0.22)' : 'rgba(255, 42, 75, 0.22)';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(cx, cyH); ctx.lineTo(cx, cyL);
+          ctx.stroke();
+
+          ctx.fillStyle = isBull ? 'rgba(0, 230, 118, 0.16)' : 'rgba(255, 42, 75, 0.16)';
+          ctx.fillRect(cx - cW / 2, Math.min(cyO, cyC), cW, Math.max(1.5, Math.abs(cyO - cyC)));
+        });
+
+        // 2. Real Volume Profile Aggregation (Zenobi Formula Calculation from Real M5 Feed)
+        const bins = {};
+        let sTotalVol = 0;
+        let sNetDelta = 0;
+        let sHigh = -Infinity;
+        let sLow = Infinity;
+
+        sBars.forEach((b, bIndex) => {
+          const v = (b && typeof b.volume === 'number' && b.volume > 0) ? b.volume : 120;
+          const bRange = Math.max(0.10, b.high - b.low);
+          const bEff = (b.close - b.open) / bRange;
+          const d = (typeof b.delta === 'number' && b.delta !== 0) ? b.delta : Math.round(v * bEff * 0.45);
+          
+          sTotalVol += v;
+          sNetDelta += d;
+          if (b.high > sHigh) sHigh = b.high;
+          if (b.low < sLow) sLow = b.low;
+
+          if (isLiveSession && bIndex < 5) {
+            if (b.high > liveSessionIbHigh) liveSessionIbHigh = b.high;
+            if (b.low < liveSessionIbLow) liveSessionIbLow = b.low;
+          }
+
+          const p1 = Math.floor(b.low / pStep) * pStep;
+          const p2 = Math.ceil(b.high / pStep) * pStep;
+          const count = Math.max(1, Math.round((p2 - p1) / pStep) + 1);
+          const centerP = (b.open + b.close + b.high + b.low) / 4;
+
+          for (let p = p1; p <= p2; p += pStep) {
+            const k = p.toFixed(2);
+            if (!bins[k]) bins[k] = { price: p, total: 0, bid: 0, ask: 0 };
+            
+            const normP = Math.max(0, Math.min(1, (p - b.low) / bRange));
+            const dist = Math.abs(p - centerP) / bRange;
+            const w = Math.exp(-2.5 * dist * dist);
+            const volPerBin = (v / count) * (0.6 + 0.8 * w);
+            
+            const posBias = (normP - 0.5) * 0.40;
+            const effBias = bEff * 0.35;
+            const askRatio = Math.max(0.12, Math.min(0.88, 0.50 + effBias + posBias));
+            
+            const bVol = volPerBin * (1 - askRatio);
+            const aVol = volPerBin * askRatio;
+            bins[k].total += volPerBin;
+            bins[k].bid += bVol;
+            bins[k].ask += aVol;
+          }
+        });
+
+        // 3. Find Session POC and 70% Value Area
+        let maxBinVol = 0;
+        let maxDelta = 0;
+        let sPoc = sBars[0].close;
+
+        for (const k in bins) {
+          const bn = bins[k];
+          if (bn.total > maxBinVol) {
+            maxBinVol = bn.total;
+            sPoc = bn.price;
+          }
+          const dAbs = Math.abs(bn.ask - bn.bid);
+          if (dAbs > maxDelta) maxDelta = dAbs;
+        }
+
+        // Steidlmayer / Zenobi 70% Value Area Range
+        const targetVA = sTotalVol * 0.70;
+        let curVA = maxBinVol;
+        let sVah = sPoc, sVal = sPoc;
+        let upP = sPoc + pStep, downP = sPoc - pStep;
+
+        while (curVA < targetVA && (upP <= maxP || downP >= minP)) {
+          const upV = bins[upP.toFixed(2)] ? bins[upP.toFixed(2)].total : 0;
+          const downV = bins[downP.toFixed(2)] ? bins[downP.toFixed(2)].total : 0;
+          if (upV >= downV && upP <= maxP) {
+            curVA += upV;
+            sVah = upP;
+            upP += pStep;
+          } else if (downP >= minP) {
+            curVA += downV;
+            sVal = downP;
+            downP -= pStep;
+          } else break;
+        }
+
+        if (isLiveSession) {
+          liveSessionVah = sVah;
+          liveSessionVal = sVal;
+          liveSessionPoc = sPoc;
+        }
+
+        // Value Area Shaded Zone (70% Auction Bracket)
+        const yVah = priceToY(sVah);
+        const yVal = priceToY(sVal);
+        ctx.fillStyle = 'rgba(0, 229, 255, 0.06)';
+        ctx.fillRect(sX, Math.min(yVah, yVal), sW, Math.abs(yVal - yVah));
+
+        // 4. Render Profile Bars according to zenobiProfileMode
+        for (const k in bins) {
+          const bn = bins[k];
+          const y = priceToY(bn.price);
+          const isPoc = Math.abs(bn.price - sPoc) < 0.25;
+          const inVA = (bn.price >= sVal - 0.01 && bn.price <= sVah + 0.01);
+          const barH = 7.5;
+
+          if (zenobiProfileMode === 'BID_ASK') {
+            // Dual-Tone: Bid (Cyan) vs Ask (Gold) (Gabriel Zenobi Formula.TotalAndBidAsk)
+            const barW = (bn.total / Math.max(1, maxBinVol)) * (sW * 0.85);
+            const bidRatio = bn.bid / Math.max(1, bn.total);
+            const bidW = barW * bidRatio;
+            const askW = barW * (1 - bidRatio);
+
+            ctx.fillStyle = '#38bdf8'; // Bid
+            ctx.fillRect(sX + 2, y - barH / 2, bidW, barH);
+
+            ctx.fillStyle = '#ffd700'; // Ask
+            ctx.fillRect(sX + 2 + bidW, y - barH / 2, askW, barH);
+
+            if (isPoc) {
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 1;
+              ctx.strokeRect(sX + 2, y - barH / 2, barW, barH);
+            }
+
+            // In-Bar Text Numbers if maximized and wide enough
+            const isTpoMax = document.getElementById('cell-tpo') && document.getElementById('cell-tpo').classList.contains('maximized');
+            if (isTpoMax && barW >= 55) {
+              ctx.fillStyle = '#04070e';
+              ctx.font = 'bold 7px "JetBrains Mono"';
+              ctx.textAlign = 'left';
+              ctx.fillText(`${Math.round(bn.bid)}x${Math.round(bn.ask)}`, sX + 4, y + 2.5);
+            }
+          } else if (zenobiProfileMode === 'DELTA') {
+            // Net Delta Volume: Green Buy vs Red Sell (Gabriel Zenobi Formula.Delta)
+            const netD = bn.ask - bn.bid;
+            const barW = Math.max(4, (Math.abs(netD) / Math.max(1, maxDelta)) * (sW * 0.80));
+            ctx.fillStyle = netD >= 0 ? '#00e676' : '#ff2a4b';
+            ctx.fillRect(sX + 2, y - barH / 2, barW, barH);
+
+            if (isPoc) {
+              ctx.strokeStyle = '#ffd700';
+              ctx.lineWidth = 1;
+              ctx.strokeRect(sX + 2, y - barH / 2, barW, barH);
+            }
+
+            // In-Bar Delta Text if maximized and wide enough
+            const isTpoMax = document.getElementById('cell-tpo') && document.getElementById('cell-tpo').classList.contains('maximized');
+            if (isTpoMax && barW >= 35) {
+              ctx.fillStyle = '#04070e';
+              ctx.font = 'bold 7px "JetBrains Mono"';
+              ctx.textAlign = 'left';
+              ctx.fillText(`${netD >= 0 ? '+' : ''}${Math.round(netD)}`, sX + 4, y + 2.5);
+            }
+          } else {
+            // Total Volume with Gradient (Gabriel Zenobi Formula.Total)
+            const barW = (bn.total / Math.max(1, maxBinVol)) * (sW * 0.85);
+            const grad = ctx.createLinearGradient(sX, 0, sX + barW, 0);
+            if (isPoc) {
+              grad.addColorStop(0, 'rgba(255, 214, 0, 0.95)');
+              grad.addColorStop(1, 'rgba(255, 214, 0, 0.25)');
+            } else if (inVA) {
+              grad.addColorStop(0, 'rgba(0, 229, 255, 0.75)');
+              grad.addColorStop(1, 'rgba(0, 229, 255, 0.15)');
+            } else {
+              grad.addColorStop(0, 'rgba(100, 116, 139, 0.55)');
+              grad.addColorStop(1, 'rgba(100, 116, 139, 0.08)');
+            }
+            ctx.fillStyle = grad;
+            ctx.fillRect(sX + 2, y - barH / 2, barW, barH);
+
+            // In-Bar Total Text if maximized and wide enough
+            const isTpoMax = document.getElementById('cell-tpo') && document.getElementById('cell-tpo').classList.contains('maximized');
+            if (isTpoMax && barW >= 35) {
+              ctx.fillStyle = inVA || isPoc ? '#04070e' : '#cbd5e1';
+              ctx.font = 'bold 7px "JetBrains Mono"';
+              ctx.textAlign = 'left';
+              ctx.fillText(`${Math.round(bn.total)}`, sX + 4, y + 2.5);
+            }
+          }
+        }
+
+        // 5. Session Boundary Lines: High Line (V: Vol) & Low Line (D: Delta) like Zenobi NT8
+        if (sHigh > -Infinity) {
+          const yHigh = priceToY(sHigh);
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(sX, yHigh); ctx.lineTo(sX + sW, yHigh);
+          ctx.stroke();
+
+          ctx.fillStyle = '#38bdf8';
+          ctx.font = 'bold 7.5px "JetBrains Mono"';
+          ctx.textAlign = 'right';
+          ctx.fillText(`V: ${Math.round(sTotalVol).toLocaleString()}L`, sX + sW - 4, yHigh - 3);
+        }
+
+        if (sLow < Infinity) {
+          const yLow = priceToY(sLow);
+          ctx.strokeStyle = sNetDelta >= 0 ? 'rgba(0, 230, 118, 0.35)' : 'rgba(255, 42, 75, 0.35)';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(sX, yLow); ctx.lineTo(sX + sW, yLow);
+          ctx.stroke();
+
+          ctx.fillStyle = sNetDelta >= 0 ? '#00e676' : '#ff2a4b';
+          ctx.font = 'bold 7.5px "JetBrains Mono"';
+          ctx.textAlign = 'right';
+          ctx.fillText(`D: ${sNetDelta >= 0 ? '+' : ''}${Math.round(sNetDelta).toLocaleString()}L`, sX + sW - 4, yLow + 9);
+        }
+
+        // Session Lines: POC, VAH, VAL
+        const yPoc = priceToY(sPoc);
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(sX, yPoc);
+        ctx.lineTo(isLiveSession ? width - 8 : sX + sW, yPoc);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(0, 229, 255, 0.7)';
+        ctx.lineWidth = 0.8;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(sX, yVah); ctx.lineTo(sX + sW, yVah);
+        ctx.moveTo(sX, yVal); ctx.lineTo(sX + sW, yVal);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Text Tag
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 8px "JetBrains Mono"';
+        ctx.textAlign = 'right';
+        ctx.fillText(`POC $${sPoc.toFixed(2)}`, sX + sW - 4, yPoc - 3);
+
+        // Session Header Tag
+        ctx.fillStyle = isLiveSession ? '#38bdf8' : '#94a3b8';
+        ctx.font = 'bold 8px "JetBrains Mono"';
+        ctx.textAlign = 'left';
+        const sName = isLiveSession ? 'SESSI 3 (LIVE)' : (sIdx === 0 ? 'SESSI 1 (ASIA)' : 'SESSI 2 (LONDON)');
+        ctx.fillText(`${sName}`, sX + 4, 15);
+      });
+
+      // 6. Fabio Testa Failed Auction Detection on Active Session
+      const recent4 = candlesM5.slice(-4);
+      let failedAuction = null;
+      if (recent4.length >= 2 && liveSessionVah > 0 && liveSessionVal > 0) {
+        const lastBar = recent4[recent4.length - 1];
+        const anyHighPierced = recent4.some(b => b.high > liveSessionVah + 0.15);
+        const anyLowPierced = recent4.some(b => b.low < liveSessionVal - 0.15);
+
+        if (anyHighPierced && lastBar.close < liveSessionVah) {
+          failedAuction = { type: 'BEAR_RECLAIM', label: 'FAILED AUCTION HIGH (VAH RECLAIM)', price: liveSessionVah, color: '#ff2a4b' };
+        } else if (anyLowPierced && lastBar.close > liveSessionVal) {
+          failedAuction = { type: 'BULL_RECLAIM', label: 'FAILED AUCTION LOW (VAL RECLAIM)', price: liveSessionVal, color: '#00e676' };
+        }
+      }
+
+      matrixMetrics.grid1 = {
+        vah: liveSessionVah,
+        val: liveSessionVal,
+        poc: liveSessionPoc,
+        failedAuction: failedAuction,
+        ibHigh: liveSessionIbHigh < Infinity ? liveSessionIbHigh : 0,
+        ibLow: liveSessionIbLow < Infinity ? liveSessionIbLow : 0
+      };
+
+      // Render Failed Auction Warning Banner on Canvas
+      if (failedAuction) {
+        ctx.save();
+        ctx.fillStyle = failedAuction.color === '#00e676' ? 'rgba(0, 230, 118, 0.20)' : 'rgba(255, 42, 75, 0.20)';
+        ctx.strokeStyle = failedAuction.color;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(width - 270, 6, 260, 22, [4]);
+        else ctx.rect(width - 270, 6, 260, 22);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = failedAuction.color;
+        ctx.font = 'bold 8.5px "JetBrains Mono"';
+        ctx.textAlign = 'center';
+        ctx.fillText(`⚡ ${failedAuction.label}`, width - 140, 20);
+        ctx.restore();
+      }
+
+      // 🧱 Render Synchronized Bookmap Wall Lines on Zenobi Profile
+      drawBookmapWalls(ctx, width, height, priceToY);
+
+      // Update HUD
+      const hud = document.getElementById('hud-tpo');
+      if (hud) {
+        const faTag = failedAuction ? (failedAuction.type === 'BULL_RECLAIM' ? '⚡ BULL RECLAIM | ' : '⚡ BEAR RECLAIM | ') : '';
+        hud.innerText = `${faTag}VAH: $${liveSessionVah.toFixed(2)} | POC: $${liveSessionPoc.toFixed(2)} | VAL: $${liveSessionVal.toFixed(2)} | FORMULA: ${zenobiProfileMode}`;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 🦶 GRID 2: FOOTPRINT CLUSTER LADDER & TRAPPED TRADERS
+    // ══════════════════════════════════════════════════════════
+    let footprintMode = 'BID_ASK'; // 'BID_ASK' | 'DELTA' | 'VOL'
+    window.setFootprintMode = function (mode) {
+      footprintMode = mode;
+      document.querySelectorAll('.btn-fp-mode').forEach(b => {
+        b.style.background = 'transparent';
+        b.style.borderColor = 'transparent';
+        b.style.color = '#94a3b8';
+      });
+      const activeBtn = document.getElementById(
+        mode === 'BID_ASK' ? 'btn-fp-bidask' : (mode === 'DELTA' ? 'btn-fp-delta' : 'btn-fp-vol')
+      );
+      if (activeBtn) {
+        activeBtn.style.background = mode === 'DELTA' ? 'rgba(0, 230, 118, 0.25)' : (mode === 'VOL' ? 'rgba(255, 215, 0, 0.25)' : 'rgba(0, 229, 255, 0.25)');
+        activeBtn.style.borderColor = mode === 'DELTA' ? '#00e676' : (mode === 'VOL' ? '#ffd700' : '#00e5ff');
+        activeBtn.style.color = mode === 'DELTA' ? '#00e676' : (mode === 'VOL' ? '#ffd700' : '#00e5ff');
+      }
+      const hud = document.getElementById('hud-footprint');
+      if (hud) {
+        hud.innerText = `FOOTPRINT: ${mode} MODE • TRAPPED TRADERS & 300% DIAGONAL RATIO`;
+      }
+    };
+
+    function renderFootprint(ctx, width, height) {
+      ctx.fillStyle = '#04070e';
+      ctx.fillRect(0, 0, width, height);
+
+      if (!candlesM5 || candlesM5.length === 0) return;
+
+      const isMaximized = width > 800;
+      const numBars = isMaximized ? Math.min(candlesM5.length, 14) : 7;
+      const recentBars = candlesM5.slice(-numBars);
+      const rightPad = 52;
+      const rightMarginFp = isMaximized ? 60 : 35;
+      const availW = width - 24 - rightPad - rightMarginFp;
+      const barSpacing = isMaximized ? 14 : 10;
+      const barWidth = Math.min(isMaximized ? 85 : 65, Math.max(48, Math.floor((availW - (recentBars.length - 1) * barSpacing) / recentBars.length)));
+      let minP = Infinity, maxP = -Infinity;
+
+      recentBars.forEach(b => {
+        if (b.low < minP) minP = b.low;
+        if (b.high > maxP) maxP = b.high;
+      });
+      const span = Math.max(1.5, maxP - minP);
+      const priceToY = (p) => height - 40 - ((p - minP) / span) * (height - 70);
+
+      // Right price axis background ladder
+      ctx.fillStyle = '#080d1a';
+      ctx.fillRect(width - rightPad, 0, rightPad, height);
+      ctx.strokeStyle = '#162035';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(width - rightPad, 0);
+      ctx.lineTo(width - rightPad, height);
+      ctx.stroke();
+
+      // Subtle Price grid lines and labels
+      const pGridStep = span > 6 ? 1.0 : 0.50;
+      const startP = Math.floor(minP / pGridStep) * pGridStep;
+      ctx.font = '8px "JetBrains Mono"';
+      ctx.textAlign = 'left';
+      for (let p = startP; p <= maxP; p += pGridStep) {
+        const y = priceToY(p);
+        if (y > 20 && y < height - 30) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(width - rightPad, y);
+          ctx.stroke();
+
+          ctx.fillStyle = '#475569';
+          ctx.fillText(p.toFixed(2), width - rightPad + 4, y + 3);
+        }
+      }
+
+      // Last Price Badge on right ladder
+      const lastCandle = recentBars[recentBars.length - 1];
+      if (lastCandle) {
+        const lastY = priceToY(lastCandle.close);
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(width - rightPad + 2, lastY - 7, rightPad - 4, 14);
+        ctx.fillStyle = '#000000';
+        ctx.font = 'bold 8px "JetBrains Mono"';
+        ctx.fillText(lastCandle.close.toFixed(2), width - rightPad + 4, lastY + 3.5);
+      }
+
+      let latestActiveImbalance = null;
+      let trappedTraderEvent = null;
+
+      recentBars.forEach((b, bIdx) => {
+        const x = 16 + bIdx * (barWidth + barSpacing);
+        const yO = priceToY(b.open);
+        const yC = priceToY(b.close);
+        const yH = priceToY(b.high);
+        const yL = priceToY(b.low);
+        const isBull = b.close >= b.open;
+
+        // Wick
+        ctx.strokeStyle = isBull ? 'rgba(0, 230, 118, 0.4)' : 'rgba(255, 42, 75, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + barWidth / 2, yH);
+        ctx.lineTo(x + barWidth / 2, yL);
+        ctx.stroke();
+
+        // Granular Price Rungs & Stacked Imbalance
+        const pStep = 0.50;
+        const p1 = Math.floor(b.low / pStep) * pStep;
+        const p2 = Math.ceil(b.high / pStep) * pStep;
+        
+        let curConsecutiveBuy = 0;
+        let curConsecutiveSell = 0;
+        let maxBuyImb = 0;
+        let maxSellImb = 0;
+        let bestBuyImbPrice = 0;
+        let bestSellImbPrice = 0;
+        let barMaxVol = 0;
+        let barPocPrice = p1;
+
+        // Pass 1: Compute true POC price and granular rungs from real candle order flow
+        const bRange = Math.max(0.10, b.high - b.low);
+        const bEff = (b.close - b.open) / bRange;
+        const bTotalVol = (b && typeof b.volume === 'number' && b.volume > 0) ? b.volume : 120;
+        const count = Math.max(1, Math.round((p2 - p1) / pStep) + 1);
+        const centerP = (b.open + b.close + b.high + b.low) / 4;
+
+        const rungData = {};
+        for (let p = p1; p <= p2; p += pStep) {
+          const normP = Math.max(0, Math.min(1, (p - b.low) / bRange));
+          const dist = Math.abs(p - centerP) / bRange;
+          const w = Math.exp(-2.5 * dist * dist);
+          const rungVol = Math.max(2, Math.round((bTotalVol / count) * (0.6 + 0.8 * w)));
+          const posBias = (normP - 0.5) * 0.40;
+          const effBias = bEff * 0.35;
+          const askRatio = Math.max(0.12, Math.min(0.88, 0.50 + effBias + posBias));
+          const askVol = Math.max(1, Math.round(rungVol * askRatio));
+          const bidVol = Math.max(1, rungVol - askVol);
+          const k = p.toFixed(2);
+          rungData[k] = { bidVol, askVol, total: bidVol + askVol, price: p };
+          if (bidVol + askVol > barMaxVol) {
+            barMaxVol = bidVol + askVol;
+            barPocPrice = p;
+          }
+        }
+
+        // Unfinished Auction / Trapped Traders Detection at Extremes
+        const topRungKey = p2.toFixed(2);
+        const botRungKey = p1.toFixed(2);
+        const topRung = rungData[topRungKey];
+        const botRung = rungData[botRungKey];
+        
+        let trappedBuyers = false;
+        let trappedSellers = false;
+        
+        // Trapped Buyers: aggressive buying at peak high, but bar reversed and closed bearish
+        if (topRung && topRung.askVol >= 15 && b.close < b.open && (b.high - Math.max(b.open, b.close)) >= 0.40) {
+          trappedBuyers = true;
+          if (bIdx >= recentBars.length - 2) {
+            trappedTraderEvent = { type: 'TRAPPED_BUYERS', price: p2, x: x + barWidth / 2, y: yH };
+          }
+        }
+        // Trapped Sellers: aggressive selling at trough low, but bar reversed and closed bullish
+        if (botRung && botRung.bidVol >= 15 && b.close > b.open && (Math.min(b.open, b.close) - b.low) >= 0.40) {
+          trappedSellers = true;
+          if (bIdx >= recentBars.length - 2) {
+            trappedTraderEvent = { type: 'TRAPPED_SELLERS', price: p1, x: x + barWidth / 2, y: yL };
+          }
+        }
+
+        // Pass 2: Render rungs according to footprintMode
+        for (let p = p1; p <= p2; p += pStep) {
+          const y = priceToY(p);
+          const rH = Math.max(12, Math.abs(priceToY(p - pStep) - y));
+          const k = p.toFixed(2);
+          const rd = rungData[k] || { bidVol: 1, askVol: 1, total: 2 };
+          const bidVol = rd.bidVol;
+          const askVol = rd.askVol;
+          const rungDelta = askVol - bidVol;
+          const rungTotal = bidVol + askVol;
+
+          // Diagonal Imbalance (300% rule: TysonWu / Zenobi / Mahmoud)
+          const isBuyImbalance = (askVol >= bidVol * 3.0 && askVol > 20);
+          const isSellImbalance = (bidVol >= askVol * 3.0 && bidVol > 20);
+
+          if (isBuyImbalance) {
+            curConsecutiveBuy++;
+            if (curConsecutiveBuy > maxBuyImb) {
+              maxBuyImb = curConsecutiveBuy;
+              bestBuyImbPrice = p;
+            }
+          } else {
+            curConsecutiveBuy = 0;
+          }
+
+          if (isSellImbalance) {
+            curConsecutiveSell++;
+            if (curConsecutiveSell > maxSellImb) {
+              maxSellImb = curConsecutiveSell;
+              bestSellImbPrice = p;
+            }
+          } else {
+            curConsecutiveSell = 0;
+          }
+
+          const isPocRung = Math.abs(p - barPocPrice) < 0.25;
+
+          // Background Fill
+          if (footprintMode === 'DELTA') {
+            const dRatio = Math.min(1.0, Math.abs(rungDelta) / Math.max(1, barMaxVol * 0.6));
+            ctx.fillStyle = isPocRung 
+              ? 'rgba(255, 214, 0, 0.25)' 
+              : (rungDelta >= 0 ? `rgba(0, 230, 118, ${0.12 + 0.35 * dRatio})` : `rgba(255, 42, 75, ${0.12 + 0.35 * dRatio})`);
+          } else if (footprintMode === 'VOL') {
+            ctx.fillStyle = isPocRung ? 'rgba(255, 214, 0, 0.25)' : 'rgba(15, 23, 42, 0.70)';
+          } else {
+            ctx.fillStyle = isPocRung
+              ? 'rgba(255, 214, 0, 0.25)'
+              : (isBuyImbalance ? 'rgba(0, 230, 118, 0.28)' : (isSellImbalance ? 'rgba(255, 42, 75, 0.28)' : 'rgba(15, 23, 42, 0.70)'));
+          }
+          ctx.fillRect(x, y - rH / 2, barWidth, rH - 1);
+
+          // In VOL mode: draw micro horizontal bar inside
+          if (footprintMode === 'VOL') {
+            const vBarW = (rungTotal / Math.max(1, barMaxVol)) * (barWidth - 4);
+            ctx.fillStyle = isPocRung ? 'rgba(255, 214, 0, 0.45)' : 'rgba(0, 229, 255, 0.22)';
+            ctx.fillRect(x + 2, y - rH / 2 + 1, vBarW, rH - 3);
+          }
+
+          // Rung Border: Glowing Gold border for POC rung
+          ctx.strokeStyle = isPocRung ? '#ffd600' : (isBuyImbalance ? '#00e676' : (isSellImbalance ? '#ff2a4b' : '#1e293b'));
+          ctx.lineWidth = isPocRung ? 1.5 : 0.7;
+          ctx.strokeRect(x, y - rH / 2, barWidth, rH - 1);
+
+          // Text Rendering according to mode
+          ctx.font = 'bold 7.5px "JetBrains Mono"';
+          ctx.textAlign = 'center';
+
+          if (footprintMode === 'DELTA') {
+            ctx.fillStyle = isPocRung ? '#ffd700' : (rungDelta >= 0 ? '#00e676' : '#ff2a4b');
+            ctx.fillText(`${rungDelta >= 0 ? '+' : ''}${rungDelta}`, x + barWidth / 2, y + 2.5);
+          } else if (footprintMode === 'VOL') {
+            ctx.fillStyle = isPocRung ? '#ffd700' : '#f8fafc';
+            ctx.fillText(`${rungTotal}`, x + barWidth / 2, y + 2.5);
+          } else {
+            // Default BID x ASK
+            ctx.fillStyle = isSellImbalance ? '#ff2a4b' : (isPocRung ? '#ffffff' : '#94a3b8');
+            ctx.fillText(`${bidVol}`, x + barWidth * 0.28, y + 2.5);
+
+            ctx.fillStyle = isPocRung ? '#ffd600' : '#475569';
+            ctx.fillText(isPocRung ? '★' : 'x', x + barWidth * 0.50, y + 2.5);
+
+            ctx.fillStyle = isBuyImbalance ? '#00e676' : (isPocRung ? '#ffffff' : '#94a3b8');
+            ctx.fillText(`${askVol}`, x + barWidth * 0.72, y + 2.5);
+          }
+        }
+
+        // Unfinished Auction Visual Flags on bar extreme
+        if (trappedBuyers) {
+          ctx.fillStyle = '#ff2a4b';
+          ctx.font = 'bold 7px "JetBrains Mono"';
+          ctx.textAlign = 'center';
+          ctx.fillText('🩸TRAP BUY', x + barWidth / 2, yH - 4);
+        }
+        if (trappedSellers) {
+          ctx.fillStyle = '#00e676';
+          ctx.font = 'bold 7px "JetBrains Mono"';
+          ctx.textAlign = 'center';
+          ctx.fillText('🟢TRAP SELL', x + barWidth / 2, yL + 22);
+        }
+
+        // Check if this bar established institutional stacked imbalance >= 3
+        if (bIdx >= recentBars.length - 2) {
+          if (maxBuyImb >= 3) {
+            latestActiveImbalance = { side: 'BUY', count: maxBuyImb, price: bestBuyImbPrice, startX: x + barWidth };
+          } else if (maxSellImb >= 3) {
+            latestActiveImbalance = { side: 'SELL', count: maxSellImb, price: bestSellImbPrice, startX: x + barWidth };
+          }
+        }
+
+        // Stacked Imbalance Flag on bar
+        if (maxBuyImb >= 2) {
+          ctx.fillStyle = '#00e676';
+          ctx.font = 'bold 8px "JetBrains Mono"';
+          ctx.textAlign = 'center';
+          ctx.fillText(`⚡${maxBuyImb}x BUY`, x + barWidth / 2, yL + 13);
+        } else if (maxSellImb >= 2) {
+          ctx.fillStyle = '#ff2a4b';
+          ctx.font = 'bold 8px "JetBrains Mono"';
+          ctx.textAlign = 'center';
+          ctx.fillText(`⚡${maxSellImb}x SELL`, x + barWidth / 2, yL + 13);
+        }
+
+        // Delta & Vol Footer Pill
+        const calcDelta = Object.values(rungData).reduce((sum, r) => sum + (r.askVol - r.bidVol), 0);
+        const bDelta = (typeof b.delta === 'number' && b.delta !== 0) ? Math.round(b.delta) : calcDelta;
+        const isPosDelta = bDelta >= 0;
+        ctx.fillStyle = isPosDelta ? 'rgba(0, 230, 118, 0.16)' : 'rgba(255, 42, 75, 0.16)';
+        ctx.strokeStyle = isPosDelta ? '#00e676' : '#ff2a4b';
+        ctx.lineWidth = 0.8;
+        if (ctx.roundRect) {
+          ctx.beginPath();
+          ctx.roundRect(x + 2, height - 24, barWidth - 4, 11, [2]);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.fillRect(x + 2, height - 24, barWidth - 4, 11);
+          ctx.strokeRect(x + 2, height - 24, barWidth - 4, 11);
+        }
+
+        ctx.font = 'bold 7.5px "JetBrains Mono"';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = isPosDelta ? '#00e676' : '#ff2a4b';
+        ctx.fillText(`Δ${isPosDelta ? '+' : ''}${bDelta}`, x + barWidth / 2, height - 15.5);
+
+        ctx.fillStyle = '#64748b';
+        ctx.font = '7px "JetBrains Mono"';
+        ctx.fillText(`V ${Math.round(bTotalVol)}`, x + barWidth / 2, height - 4);
+      });
+
+      // Forward Barrier Box for Stacked Imbalance (Institutional Zone)
+      if (latestActiveImbalance) {
+        const imbY = priceToY(latestActiveImbalance.price);
+        const isBuy = latestActiveImbalance.side === 'BUY';
+        ctx.save();
+        ctx.fillStyle = isBuy ? 'rgba(0, 230, 118, 0.12)' : 'rgba(255, 42, 75, 0.12)';
+        ctx.strokeStyle = isBuy ? '#00e676' : '#ff2a4b';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.rect(latestActiveImbalance.startX, imbY - 8, width - latestActiveImbalance.startX - 4, 16);
+        ctx.fill();
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = isBuy ? '#00e676' : '#ff2a4b';
+        ctx.font = 'bold 8px "JetBrains Mono"';
+        ctx.textAlign = 'right';
+        ctx.fillText(`⚡ STACKED ${latestActiveImbalance.side} IMB (${latestActiveImbalance.count}x) $${latestActiveImbalance.price.toFixed(2)}`, width - 10, imbY + 3);
+        ctx.restore();
+
+        matrixMetrics.grid2 = {
+          stackedImbalance: latestActiveImbalance.side,
+          count: latestActiveImbalance.count,
+          price: latestActiveImbalance.price,
+          trappedTrader: trappedTraderEvent
+        };
+      } else {
+        matrixMetrics.grid2 = { stackedImbalance: null, count: 0, price: 0, trappedTrader: trappedTraderEvent };
+      }
+
+      // Update HUD
+      const hudFp = document.getElementById('hud-footprint');
+      if (hudFp) {
+        const ttTag = trappedTraderEvent ? (trappedTraderEvent.type === 'TRAPPED_BUYERS' ? '🩸 TRAPPED BUYERS | ' : '🟢 TRAPPED SELLERS | ') : '';
+        if (latestActiveImbalance) {
+          hudFp.innerText = `${ttTag}⚡ ${latestActiveImbalance.side} IMB (${latestActiveImbalance.count}x) @ $${latestActiveImbalance.price.toFixed(2)} | MODE: ${footprintMode}`;
+        } else {
+          hudFp.innerText = `${ttTag}LADDER CLUSTER • POC RUNG HIGHLIGHTED • MODE: ${footprintMode}`;
+        }
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 🌊 GRID 3: CUMULATIVE VOLUME DELTA (CVD) & OFI OSCILLATOR
+    // ══════════════════════════════════════════════════════════
+    function renderCVD(ctx, width, height) {
+      ctx.fillStyle = '#04070e';
+      ctx.fillRect(0, 0, width, height);
+
+      const splitY = height * 0.65;
+
+      // Dividers
+      ctx.strokeStyle = '#141b2e';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, splitY);
+      ctx.lineTo(width, splitY);
+      ctx.stroke();
+
+      if (!candlesM5 || candlesM5.length < 2) return;
+
+      const numBarsCvd = Math.min(candlesM5.length, Math.max(40, Math.floor(width / 14)));
+      let bars = [];
+      if (panOffsetBars === 0) {
+        bars = candlesM5.slice(-numBarsCvd);
+      } else {
+        const endIdx = Math.max(numBarsCvd, candlesM5.length - panOffsetBars);
+        const startIdx = Math.max(0, endIdx - numBarsCvd);
+        bars = candlesM5.slice(startIdx, endIdx);
+      }
+      let runningCvd = 0;
+      const cvdPts = [];
+      const ofiPts = [];
+
+      bars.forEach(b => {
+        let d = (typeof b.delta === 'number' && b.delta !== 0) ? b.delta : 0;
+        if (d === 0) {
+          const range = Math.max(0.10, b.high - b.low);
+          const eff = (b.close - b.open) / range;
+          d = Math.round((b.volume || 120) * eff * 0.42);
+        }
+        runningCvd += d;
+        cvdPts.push(runningCvd);
+        // Order Flow Imbalance (OFI) proxy
+        const ofi = d * (b.close >= b.open ? 1.0 : -0.85);
+        ofiPts.push(ofi);
+      });
+
+      // Plot CVD (Upper Subplot) with True Zero Baseline
+      let minCvd = Math.min(0, ...cvdPts);
+      let maxCvd = Math.max(0, ...cvdPts);
+      const cvdSpan = Math.max(25, maxCvd - minCvd);
+      const cvdToY = (v) => splitY - 15 - ((v - minCvd) / cvdSpan) * (splitY - 30);
+      const cvdZeroY = cvdToY(0);
+
+      // Glowing Zero Baseline
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, cvdZeroY); ctx.lineTo(width, cvdZeroY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = '8px "JetBrains Mono"';
+      ctx.textAlign = 'right';
+      ctx.fillText('ZERO BASELINE (0L)', width - 12, cvdZeroY - 4);
+
+      // Dynamic Mountain Area Gradient Fill
+      const isBullCvd = runningCvd >= 0;
+      const grad = ctx.createLinearGradient(0, 0, 0, splitY);
+      if (isBullCvd) {
+        grad.addColorStop(0, 'rgba(0, 230, 118, 0.38)');
+        grad.addColorStop(1, 'rgba(0, 230, 118, 0.02)');
+      } else {
+        grad.addColorStop(0, 'rgba(255, 42, 75, 0.02)');
+        grad.addColorStop(1, 'rgba(255, 42, 75, 0.38)');
+      }
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      const rightMarginCvd = panOffsetBars === 0 ? Math.max(8, Math.floor(width / 75)) : 2;
+      const totalSlotsCvd = (bars.length - 1) + rightMarginCvd;
+      const xStep = width / totalSlotsCvd;
+      ctx.moveTo(0, cvdZeroY);
+      cvdPts.forEach((v, idx) => {
+        const x = idx * xStep;
+        const y = cvdToY(v);
+        ctx.lineTo(x, y);
+      });
+      ctx.lineTo(width, cvdZeroY);
+      ctx.closePath();
+      ctx.fill();
+
+      // Glowing CVD Line
+      ctx.strokeStyle = isBullCvd ? '#00e676' : '#ff2a4b';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      cvdPts.forEach((v, idx) => {
+        const x = idx * xStep;
+        const y = cvdToY(v);
+        if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // Labels Upper
+      ctx.fillStyle = isBullCvd ? '#00e676' : '#ff2a4b';
+      ctx.font = 'bold 9px "JetBrains Mono"';
+      ctx.textAlign = 'left';
+      ctx.fillText(`CVD CUMULATIVE DELTA: ${runningCvd >= 0 ? '+' : ''}${Math.round(runningCvd)}L ${isBullCvd ? '(BULL ACCUMULATION)' : '(BEAR DISTRIBUTION)'}`, 10, 16);
+
+      // Wyckoff Divergence Detection (Absorption & Exhaustion Microstructure)
+      let wyckoffDiv = null;
+      if (bars.length >= 15 && cvdPts.length >= 15) {
+        const pRecent = bars.slice(-15);
+        const cvdRecent = cvdPts.slice(-15);
+        const pFirst = pRecent[0].close;
+        const pLast = pRecent[pRecent.length - 1].close;
+        const cvdFirst = cvdRecent[0];
+        const cvdLast = cvdRecent[cvdRecent.length - 1];
+
+        // Bullish Absorption: Price drops/flat while CVD surges higher (Passive wall absorbs aggressive sales)
+        if (pLast <= pFirst - 0.35 && cvdLast > cvdFirst + 40) {
+          wyckoffDiv = { type: 'BULL_ABSORPTION', label: '▲ WYCKOFF BULL ABSORPTION (LIMIT WALL DEFENSE)', color: '#00e676' };
+        } else if (pLast >= pFirst + 0.35 && cvdLast < cvdFirst - 40) {
+          wyckoffDiv = { type: 'BEAR_EXHAUSTION', label: '▼ WYCKOFF BEAR EXHAUSTION (WALL REJECTION)', color: '#ff2a4b' };
+        }
+      }
+
+      matrixMetrics.grid3 = {
+        cvdValue: runningCvd,
+        divergence: wyckoffDiv ? wyckoffDiv.type : null,
+        ofi: ofiPts[ofiPts.length - 1] || 0
+      };
+
+      // Draw Wyckoff Divergence Badge on upper right
+      if (wyckoffDiv) {
+        ctx.save();
+        ctx.fillStyle = wyckoffDiv.color === '#00e676' ? 'rgba(0, 230, 118, 0.18)' : 'rgba(255, 42, 75, 0.18)';
+        ctx.strokeStyle = wyckoffDiv.color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(width - 290, 6, 280, 20, [4]);
+        else ctx.rect(width - 290, 6, 280, 20);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = wyckoffDiv.color;
+        ctx.font = 'bold 8px "JetBrains Mono"';
+        ctx.textAlign = 'center';
+        ctx.fillText(wyckoffDiv.label, width - 150, 19);
+        ctx.restore();
+
+        const badgeCvd = document.getElementById('badge-cvd-div');
+        if (badgeCvd) {
+          badgeCvd.innerText = wyckoffDiv.type === 'BULL_ABSORPTION' ? 'BULL ABSORPTION' : 'BEAR EXHAUSTION';
+          badgeCvd.style.color = wyckoffDiv.color;
+          badgeCvd.style.background = wyckoffDiv.color === '#00e676' ? 'rgba(0, 230, 118, 0.2)' : 'rgba(255, 42, 75, 0.2)';
+        }
+      } else {
+        const badgeCvd = document.getElementById('badge-cvd-div');
+        if (badgeCvd) {
+          badgeCvd.innerText = runningCvd >= 0 ? 'CVD BULL ACCUM' : 'CVD BEAR DISTRIB';
+          badgeCvd.style.color = runningCvd >= 0 ? '#00e676' : '#ff2a4b';
+          badgeCvd.style.background = runningCvd >= 0 ? 'rgba(0, 230, 118, 0.15)' : 'rgba(255, 42, 75, 0.15)';
+        }
+      }
+
+      // Plot OFI Oscillator (Lower Subplot)
+      const ofiH = height - splitY;
+      const ofiZeroY = splitY + ofiH / 2;
+      let maxOfi = Math.max(...ofiPts.map(Math.abs), 10);
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.setLineDash([2, 2]);
+      ctx.beginPath();
+      ctx.moveTo(0, ofiZeroY); ctx.lineTo(width, ofiZeroY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ofiPts.forEach((o, idx) => {
+        const x = idx * xStep;
+        const barH = (o / maxOfi) * (ofiH * 0.42);
+        ctx.fillStyle = o >= 0 ? '#00e676' : '#ff2a4b';
+        ctx.fillRect(x - 2, ofiZeroY - barH, 4, barH);
+      });
+
+      // Label Lower
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 8px "JetBrains Mono"';
+      ctx.fillText('OFI MOMENTUM OSCILLATOR (AGGRESSION SHIFT)', 10, splitY + 12);
+
+      // Update HUD
+      const hudCvd = document.getElementById('hud-cvd');
+      if (hudCvd) {
+        const divTag = wyckoffDiv ? `${wyckoffDiv.type === 'BULL_ABSORPTION' ? '▲ BULL ABSORPTION | ' : '▼ BEAR EXHAUSTION | '}` : '';
+        const lastOfi = ofiPts[ofiPts.length - 1] || 0;
+        hudCvd.innerText = `${divTag}CVD: ${runningCvd >= 0 ? '+' : ''}${Math.round(runningCvd)}L | OFI: ${lastOfi >= 0 ? '+' : ''}${lastOfi.toFixed(1)}`;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 👑 GRID 4: MULTI-TF CASCADE & CENTRAL EXECUTION ENGINE
+    // ══════════════════════════════════════════════════════════
+    let showVwapBands = true;
+    window.toggleVwapBands = function () {
+      showVwapBands = !showVwapBands;
+      const btn = document.getElementById('btn-toggle-vwap');
+      if (btn) {
+        btn.style.background = showVwapBands ? 'rgba(255, 215, 0, 0.20)' : 'transparent';
+        btn.style.borderColor = showVwapBands ? '#ffd700' : 'transparent';
+        btn.style.color = showVwapBands ? '#ffd700' : '#94a3b8';
+      }
+    };
+
+    function renderCascade(ctx, width, height) {
+      ctx.fillStyle = '#04070e';
+      ctx.fillRect(0, 0, width, height);
+
+      if (!candlesM5 || candlesM5.length < 2) return;
+
+      const chartW = Math.max(100, width - 62); // 62px right price ladder
+      const numBars = Math.min(candlesM5.length, Math.max(45, Math.floor(chartW / 12)));
+      let bars = [];
+      if (panOffsetBars === 0) {
+        bars = candlesM5.slice(-numBars);
+      } else {
+        const endIdx = Math.max(numBars, candlesM5.length - panOffsetBars);
+        const startIdx = Math.max(0, endIdx - numBars);
+        bars = candlesM5.slice(startIdx, endIdx);
+      }
+      let minP = Infinity, maxP = -Infinity;
+      bars.forEach(b => {
+        if (b.low < minP) minP = b.low;
+        if (b.high > maxP) maxP = b.high;
+      });
+
+      // Tightly scale to visible bars with elegant padding
+      const pad = Math.max(1.0, (maxP - minP) * 0.12);
+      minP -= pad;
+      maxP += pad;
+      const span = Math.max(3.0, maxP - minP);
+      const priceToY = (p) => height - 38 - ((p - minP) / span) * (height - 75);
+
+      // 👑 CHART SHIFT / RIGHT MARGIN (Biar candle live tidak mepet ke kanan & ada ruang baca proyeksi)
+      const rightMarginBars = panOffsetBars === 0 ? Math.max(8, Math.floor(chartW / 70)) : 2;
+      const totalSlots = bars.length + rightMarginBars;
+      const xStep = chartW / totalSlots;
+      const cWidth = Math.max(5, Math.floor(xStep * 0.72));
+
+      // Right price axis background ladder
+      ctx.fillStyle = '#080d1a';
+      ctx.fillRect(chartW, 0, 62, height);
+      ctx.strokeStyle = '#162035';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(chartW, 0); ctx.lineTo(chartW, height);
+      ctx.stroke();
+
+      // Horizontal price grid lines & right price tags
+      const pStep = span > 12 ? 2.0 : (span > 5 ? 1.0 : 0.50);
+      const firstP = Math.ceil(minP / pStep) * pStep;
+      for (let p = firstP; p <= maxP; p += pStep) {
+        const gy = priceToY(p);
+        if (gy < 12 || gy > height - 32) continue;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, gy); ctx.lineTo(chartW, gy);
+        ctx.stroke();
+
+        ctx.fillStyle = '#64748b';
+        ctx.font = '8px "JetBrains Mono"';
+        ctx.textAlign = 'right';
+        ctx.fillText(`$${p.toFixed(2)}`, width - 6, gy + 3);
+      }
+
+      // 1. Dynamic Fair Value Gap (FVG / Liquidity Void Boxes)
+      for (let idx = 2; idx < bars.length; idx++) {
+        const b0 = bars[idx - 2];
+        const b2 = bars[idx];
+        const x0 = (idx - 2) * xStep + xStep / 2;
+        const fvgW = Math.min(xStep * 5, chartW - x0);
+
+        // Bullish FVG (Gap between bar0 High and bar2 Low)
+        if (b2.low > b0.high + 0.20) {
+          const yTop = priceToY(b2.low);
+          const yBot = priceToY(b0.high);
+          const fvgH = Math.max(2, Math.abs(yBot - yTop));
+          ctx.fillStyle = 'rgba(0, 229, 255, 0.08)';
+          ctx.fillRect(x0, Math.min(yTop, yBot), fvgW, fvgH);
+          ctx.strokeStyle = 'rgba(0, 229, 255, 0.35)';
+          ctx.lineWidth = 0.8;
+          ctx.setLineDash([2, 2]);
+          ctx.strokeRect(x0, Math.min(yTop, yBot), fvgW, fvgH);
+          ctx.setLineDash([]);
+        }
+        // Bearish FVG (Gap between bar2 High and bar0 Low)
+        else if (b0.low > b2.high + 0.20) {
+          const yTop = priceToY(b0.low);
+          const yBot = priceToY(b2.high);
+          const fvgH = Math.max(2, Math.abs(yBot - yTop));
+          ctx.fillStyle = 'rgba(255, 42, 75, 0.08)';
+          ctx.fillRect(x0, Math.min(yTop, yBot), fvgW, fvgH);
+          ctx.strokeStyle = 'rgba(255, 42, 75, 0.35)';
+          ctx.lineWidth = 0.8;
+          ctx.setLineDash([2, 2]);
+          ctx.strokeRect(x0, Math.min(yTop, yBot), fvgW, fvgH);
+          ctx.setLineDash([]);
+        }
+      }
+
+      // 2. Session Anchored VWAP + Standard Deviation Bands (±1σ, ±2σ)
+      if (showVwapBands && bars.length >= 5) {
+        let cumV = 0;
+        let cumTypV = 0;
+        let cumDevV = 0;
+        const vwapPts = [];
+        const std1Up = [], std1Dn = [];
+        const std2Up = [], std2Dn = [];
+
+        bars.forEach(b => {
+          const typ = (b.high + b.low + b.close) / 3;
+          const v = (b && typeof b.volume === 'number' && b.volume > 0) ? b.volume : 120;
+          cumV += v;
+          cumTypV += typ * v;
+          const vwap = cumTypV / Math.max(1, cumV);
+          cumDevV += v * (typ - vwap) * (typ - vwap);
+          const dev = Math.sqrt(cumDevV / Math.max(1, cumV));
+
+          vwapPts.push(vwap);
+          std1Up.push(vwap + dev);
+          std1Dn.push(vwap - dev);
+          std2Up.push(vwap + 2 * dev);
+          std2Dn.push(vwap - 2 * dev);
+        });
+
+        // Fill ±1σ to ±2σ Shaded Band Channel
+        ctx.fillStyle = 'rgba(192, 132, 252, 0.035)';
+        ctx.beginPath();
+        std2Up.forEach((v, idx) => {
+          const px = idx * xStep + xStep / 2;
+          const py = priceToY(v);
+          if (idx === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        });
+        for (let idx = std2Dn.length - 1; idx >= 0; idx--) {
+          const px = idx * xStep + xStep / 2;
+          const py = priceToY(std2Dn[idx]);
+          ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw ±2σ Band Lines (Purple Extreme Overbought/Oversold)
+        ctx.strokeStyle = 'rgba(192, 132, 252, 0.60)';
+        ctx.lineWidth = 1.0;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        std2Up.forEach((v, idx) => {
+          const px = idx * xStep + xStep / 2;
+          const py = priceToY(v);
+          if (idx === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+        ctx.beginPath();
+        std2Dn.forEach((v, idx) => {
+          const px = idx * xStep + xStep / 2;
+          const py = priceToY(v);
+          if (idx === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+
+        // Draw ±1σ Band Lines (Cyan Value Area)
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.50)';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        std1Up.forEach((v, idx) => {
+          const px = idx * xStep + xStep / 2;
+          const py = priceToY(v);
+          if (idx === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+        ctx.beginPath();
+        std1Dn.forEach((v, idx) => {
+          const px = idx * xStep + xStep / 2;
+          const py = priceToY(v);
+          if (idx === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw Center VWAP Line (Gold Glowing)
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        vwapPts.forEach((v, idx) => {
+          const px = idx * xStep + xStep / 2;
+          const py = priceToY(v);
+          if (idx === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+
+        const lastVwap = vwapPts[vwapPts.length - 1];
+        const yLastVwap = priceToY(lastVwap);
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 7.5px "JetBrains Mono"';
+        ctx.textAlign = 'right';
+        ctx.fillText(`AVWAP $${lastVwap.toFixed(2)}`, chartW - 6, yLastVwap - 3);
+
+        // Right price axis VWAP badge
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.15)';
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 0.8;
+        if (ctx.roundRect) {
+          ctx.beginPath();
+          ctx.roundRect(chartW + 2, yLastVwap - 6, 56, 12, [2]);
+          ctx.fill(); ctx.stroke();
+        }
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 7.5px "JetBrains Mono"';
+        ctx.textAlign = 'center';
+        ctx.fillText(`$${lastVwap.toFixed(2)}`, chartW + 30, yLastVwap + 3);
+      }
+
+      // 3. Institutional Candlesticks (Linus Vivid Classification)
+      bars.forEach((b, idx) => {
+        const x = idx * xStep + xStep / 2;
+        const yO = priceToY(b.open);
+        const yC = priceToY(b.close);
+        const yH = priceToY(b.high);
+        const yL = priceToY(b.low);
+
+        const prevB = idx > 0 ? bars[idx - 1] : null;
+
+        // Vivid Bar Classification (Linus NTLVividBars.cs)
+        const isInside = prevB && (b.high <= prevB.high && b.low >= prevB.low);
+        const isOutside = prevB && (b.high >= prevB.high && b.low <= prevB.low);
+        const isAbsorption = (b.volume > 400 && Math.abs(b.close - b.open) <= 0.35);
+
+        const isBull = b.close >= b.open;
+        let barColor = isBull ? '#089981' : '#f23645';
+        let strokeColor = isBull ? '#00f090' : '#ff4d6d';
+        let wickColor = strokeColor;
+        let marker = null;
+
+        if (isInside) {
+          strokeColor = '#ffd700';
+          marker = { text: '●', color: '#ffd700' };
+        } else if (isOutside) {
+          strokeColor = '#c084fc';
+          marker = { text: '◆', color: '#c084fc' };
+        } else if (isAbsorption) {
+          strokeColor = '#ff6b81';
+          marker = { text: '🐋', color: '#ff6b81' };
+        }
+
+        // Razor-Sharp Wick
+        ctx.strokeStyle = wickColor;
+        ctx.lineWidth = 1.0;
+        ctx.beginPath();
+        ctx.moveTo(x, yH);
+        ctx.lineTo(x, yL);
+        ctx.stroke();
+
+        // Body with Modern 2px Rounded Corners
+        const bodyTop = Math.floor(Math.min(yO, yC));
+        const bodyH = Math.max(2.0, Math.floor(Math.abs(yO - yC)));
+        const bodyLeft = Math.floor(x - cWidth / 2);
+
+        ctx.fillStyle = barColor;
+        if (bodyH >= 5 && ctx.roundRect) {
+          ctx.beginPath();
+          ctx.roundRect(bodyLeft, bodyTop, cWidth, bodyH, [2]);
+          ctx.fill();
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 1.0;
+          ctx.stroke();
+        } else {
+          ctx.fillRect(bodyLeft, bodyTop, cWidth, bodyH);
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 1.0;
+          ctx.strokeRect(bodyLeft + 0.5, bodyTop + 0.5, cWidth - 1, bodyH - 1);
+        }
+
+        if (marker) {
+          ctx.fillStyle = marker.color;
+          ctx.font = 'bold 8px "JetBrains Mono"';
+          ctx.textAlign = 'center';
+          ctx.fillText(marker.text, x, yH - 4);
+        }
+      });
+
+      // 4. Tactical Execution Ghost Laser on Candlestick (Golden Setup Alert)
+      if (matrixMetrics.grid1 && matrixMetrics.grid1.failedAuction) {
+        const lastIdx = bars.length - 1;
+        const lx = lastIdx * xStep + xStep / 2;
+        const isBullFa = matrixMetrics.grid1.failedAuction.type === 'BULL_RECLAIM';
+        ctx.save();
+        ctx.fillStyle = isBullFa ? '#00e676' : '#ff2a4b';
+        ctx.font = 'bold 8px "JetBrains Mono"';
+        ctx.textAlign = 'center';
+        ctx.fillText(isBullFa ? '▲ GOLDEN #1 BUY' : '▼ GOLDEN #1 SELL', lx, isBullFa ? priceToY(bars[lastIdx].low) + 14 : priceToY(bars[lastIdx].high) - 8);
+        ctx.restore();
+      }
+
+      // 5. Multi-TF Fractal Alignment Ribbon (Bottom Status Bar)
+      const ribbonY = height - 22;
+      const ribbonH = 14;
+      ctx.fillStyle = '#060a14';
+      ctx.fillRect(0, ribbonY, chartW, ribbonH);
+      ctx.strokeStyle = '#141d30';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0, ribbonY, chartW, ribbonH);
+
+      const m1Bull = (bars[bars.length - 1].close >= bars[bars.length - 1].open);
+      const m5Bull = (bars[bars.length - 1].close >= bars[0].close);
+      const m15Bars = bars.slice(-3);
+      const m15Bull = m15Bars[m15Bars.length - 1].close >= m15Bars[0].open;
+      const h1Bars = bars.slice(-12);
+      const h1Bull = h1Bars[h1Bars.length - 1].close >= h1Bars[0].open;
+      const h4Bull = (typeof window.lastStatusData?.tf_matrix?.H4?.action === 'string') 
+        ? window.lastStatusData.tf_matrix.H4.action.includes('BUY') 
+        : (bars[bars.length - 1].close >= 4420);
+
+      const tfList = [
+        { name: 'M1', bull: m1Bull },
+        { name: 'M5', bull: m5Bull },
+        { name: 'M15', bull: m15Bull },
+        { name: 'H1', bull: h1Bull },
+        { name: 'H4', bull: h4Bull }
+      ];
+
+      const bullCount = tfList.filter(t => t.bull).length;
+      const isSuperConfluence = bullCount >= 4 || bullCount <= 1;
+
+      let chipX = 8;
+      tfList.forEach(tf => {
+        ctx.fillStyle = tf.bull ? 'rgba(0, 230, 118, 0.20)' : 'rgba(255, 42, 75, 0.20)';
+        ctx.strokeStyle = tf.bull ? '#00e676' : '#ff2a4b';
+        ctx.lineWidth = 0.8;
+        if (ctx.roundRect) {
+          ctx.beginPath();
+          ctx.roundRect(chipX, ribbonY + 2, 40, 10, [2]);
+          ctx.fill(); ctx.stroke();
+        } else {
+          ctx.fillRect(chipX, ribbonY + 2, 40, 10);
+        }
+        ctx.fillStyle = tf.bull ? '#00e676' : '#ff2a4b';
+        ctx.font = 'bold 7px "JetBrains Mono"';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${tf.name} ${tf.bull ? '▲' : '▼'}`, chipX + 20, ribbonY + 9.5);
+        chipX += 44;
+      });
+
+      ctx.font = 'bold 7.5px "JetBrains Mono"';
+      ctx.textAlign = 'right';
+      if (isSuperConfluence) {
+        ctx.fillStyle = bullCount >= 4 ? '#00e676' : '#ff2a4b';
+        ctx.fillText(bullCount >= 4 ? `⚡ CASCADE ${bullCount}/5 TF BULL ALIGNED` : `⚡ CASCADE ${5 - bullCount}/5 TF BEAR ALIGNED`, chartW - 10, ribbonY + 9.5);
+      } else {
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText(`⚖️ MIXED CASCADE (${bullCount}/5 BULL)`, chartW - 10, ribbonY + 9.5);
+      }
+
+      // 6. Live Spot Price Laser & Right Badge
+      const yLive = priceToY(visualSpotPrice);
+      if (yLive >= 0 && yLive <= height) {
+        ctx.strokeStyle = '#00e676';
+        ctx.lineWidth = 1.0;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(0, yLive); ctx.lineTo(chartW, yLive);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#00e676';
+        if (ctx.roundRect) {
+          ctx.beginPath();
+          ctx.roundRect(chartW + 2, yLive - 8, 56, 16, [3]);
+          ctx.fill();
+        } else {
+          ctx.fillRect(chartW + 2, yLive - 8, 56, 16);
+        }
+        ctx.fillStyle = '#000000';
+        ctx.font = 'bold 8.5px "JetBrains Mono"';
+        ctx.textAlign = 'center';
+        ctx.fillText(`$${visualSpotPrice.toFixed(2)}`, chartW + 30, yLive + 4);
+      }
+
+      // Update Grid 4 Institutional State
+      const lastBar = bars[bars.length - 1];
+      const prevBar = bars.length > 1 ? bars[bars.length - 2] : null;
+      const isInside = prevBar && (lastBar.high <= prevBar.high && lastBar.low >= prevBar.low);
+      const isOutside = prevBar && (lastBar.high >= prevBar.high && lastBar.low <= prevBar.low);
+      const isAbsorption = (lastBar.volume > 350 && Math.abs(lastBar.close - lastBar.open) <= 0.35);
+      const trend = (lastBar.close >= bars[0].close) ? 'BULL' : 'BEAR';
+
+      matrixMetrics.grid4 = { trend, isInside, isOutside, isAbsorption, bullCount };
+
+      // Update badge-vivid-status
+      const badgeVivid = document.getElementById('badge-vivid-status');
+      if (badgeVivid) {
+        if (isAbsorption) {
+          badgeVivid.innerText = '🐋 WHALE ABSORPTION';
+          badgeVivid.style.color = '#ff6b81';
+          badgeVivid.style.background = 'rgba(255, 107, 129, 0.2)';
+        } else if (isOutside) {
+          badgeVivid.innerText = '◆ OUTSIDE SWEEP';
+          badgeVivid.style.color = '#c084fc';
+          badgeVivid.style.background = 'rgba(192, 132, 252, 0.2)';
+        } else if (isInside) {
+          badgeVivid.innerText = '● INSIDE COIL';
+          badgeVivid.style.color = '#ffd700';
+          badgeVivid.style.background = 'rgba(255, 215, 0, 0.2)';
+        } else {
+          badgeVivid.innerText = trend === 'BULL' ? '▲ CASCADE BULL' : '▼ CASCADE BEAR';
+          badgeVivid.style.color = trend === 'BULL' ? '#00e676' : '#ff2a4b';
+          badgeVivid.style.background = trend === 'BULL' ? 'rgba(0, 230, 118, 0.15)' : 'rgba(255, 42, 75, 0.15)';
+        }
+      }
+
+      // Update HUD
+      const hudCascade = document.getElementById('hud-cascade');
+      if (hudCascade) {
+        hudCascade.innerText = `M5 CENTRAL EXECUTION • MULTI-TF ALIGNED • ${trend} BIAS`;
+      }
+
+      // Legend in top-left
+      ctx.font = '8px "JetBrains Mono"';
+      ctx.fillStyle = '#ffd700'; ctx.fillText('■ INSIDE COIL', 10, 15);
+      ctx.fillStyle = '#c084fc'; ctx.fillText('■ OUTSIDE SWEEP', 90, 15);
+      ctx.fillStyle = '#ff6b81'; ctx.fillText('■ WHALE ABSORPTION', 180, 15);
+
+      // 🧱 Render Synchronized Bookmap Wall Lines on Cascade
+      drawBookmapWalls(ctx, width, height, priceToY);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // ⚡ PURE ORDER FLOW CONFLUENCE & DUAL-TERMINAL SIGNAL BRIDGE
+    // ══════════════════════════════════════════════════════════
+    function evaluatePureOrderFlowSignal() {
+      let buyScore = 0;
+      let sellScore = 0;
+      const buyReasons = [];
+      const sellReasons = [];
+
+      // Grid 1: Failed Auction (25 pts)
+      if (matrixMetrics.grid1.failedAuction) {
+        if (matrixMetrics.grid1.failedAuction.type === 'BULL_RECLAIM') {
+          buyScore += 25;
+          buyReasons.push('VAL Failed Auction Reclaim');
+        } else if (matrixMetrics.grid1.failedAuction.type === 'BEAR_RECLAIM') {
+          sellScore += 25;
+          sellReasons.push('VAH Failed Auction Reclaim');
+        }
+      }
+
+      // Grid 2: Stacked Imbalance (35 pts)
+      if (matrixMetrics.grid2.stackedImbalance === 'BUY') {
+        buyScore += 35;
+        buyReasons.push(`Stacked Buy Imbalance (${matrixMetrics.grid2.count}x)`);
+      } else if (matrixMetrics.grid2.stackedImbalance === 'SELL') {
+        sellScore += 35;
+        sellReasons.push(`Stacked Sell Imbalance (${matrixMetrics.grid2.count}x)`);
+      }
+
+      // Grid 3: Wyckoff Divergence (25 pts)
+      if (matrixMetrics.grid3.divergence === 'BULL_ABSORPTION') {
+        buyScore += 25;
+        buyReasons.push('Wyckoff Bull Absorption (Limit Wall Defense)');
+      } else if (matrixMetrics.grid3.divergence === 'BEAR_EXHAUSTION') {
+        sellScore += 25;
+        sellReasons.push('Wyckoff Bear Exhaustion (Passive Wall Defense)');
+      }
+
+      // Grid 4: Institutional Vivid Bar (15 pts)
+      if (matrixMetrics.grid4.isAbsorption) {
+        buyScore += 10; sellScore += 10;
+        buyReasons.push('Whale Absorption Bar');
+        sellReasons.push('Whale Absorption Bar');
+      } else if (matrixMetrics.grid4.isOutside) {
+        if (matrixMetrics.grid4.trend === 'BULL') { buyScore += 15; buyReasons.push('Outside Sweep Bull'); }
+        else { sellScore += 15; sellReasons.push('Outside Sweep Bear'); }
+      } else if (matrixMetrics.grid4.isInside) {
+        if (matrixMetrics.grid4.trend === 'BULL') { buyScore += 10; buyReasons.push('Inside Coil Bull'); }
+        else { sellScore += 10; sellReasons.push('Inside Coil Bear'); }
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // 🏆 OFFICIAL CME GC GOLD BACKTESTED GOLDEN SETUPS EVALUATOR
+      // ══════════════════════════════════════════════════════════════════════
+      const spot = liveSpotPrice || 4432.50;
+      const uHour = new Date().getUTCHours();
+      const isPrimeSession = (uHour >= 7 && uHour <= 19); // London 07:00 UTC - NY 19:00 UTC
+      
+      let isGolden = false;
+      let goldenRank = 0;
+      let goldenName = '';
+      let goldenWR = '';
+      let goldenPF = '';
+      let goldenSL = 1.30;
+      let goldenTP1 = 2.20; // 50% partial close + Lock BE +0.20
+      let goldenTP2 = 5.00; // 50% runner target
+
+      // SETUP 1: Fabio Testa VAL/VAH Reclaim + 3 VETOs + Session Law (Juara 1: WR 85.7%, PF 5.54)
+      if (matrixMetrics.grid1.failedAuction) {
+        const faType = matrixMetrics.grid1.failedAuction.type;
+        const poc = matrixMetrics.grid1.poc || spot;
+        const runway = Math.abs(spot - poc);
+        
+        if (faType === 'BULL_RECLAIM' && runway >= 1.50 && isPrimeSession) {
+          isGolden = true;
+          goldenRank = 1;
+          goldenName = 'Fabio Testa Reclaim + 3 VETOs';
+          goldenWR = '85.7%';
+          goldenPF = '5.54';
+          buyScore = Math.max(buyScore, 95);
+          buyReasons.unshift('👑 GOLDEN #1: VAL Reclaim + 3 VETOs (WR 85.7%, PF 5.54)');
+        } else if (faType === 'BEAR_RECLAIM' && runway >= 1.50 && isPrimeSession) {
+          isGolden = true;
+          goldenRank = 1;
+          goldenName = 'Fabio Testa Reclaim + 3 VETOs';
+          goldenWR = '85.7%';
+          goldenPF = '5.54';
+          sellScore = Math.max(sellScore, 95);
+          sellReasons.unshift('👑 GOLDEN #1: VAH Reclaim + 3 VETOs (WR 85.7%, PF 5.54)');
+        }
+      }
+
+      // SETUP 2: Whale Absorption Pinbar Reversal (Juara 2: WR 75.0% - 91.7%, PF 2.77 - 9.31)
+      if (!isGolden && matrixMetrics.grid4.isAbsorption && isPrimeSession) {
+        isGolden = true;
+        goldenRank = 2;
+        goldenName = 'Whale Absorption Pinbar Reversal';
+        goldenWR = '91.7%';
+        goldenPF = '9.31';
+        if (buyScore >= sellScore) {
+          buyScore = Math.max(buyScore, 90);
+          buyReasons.unshift('🐋 GOLDEN #2: Whale Absorption Pinbar (WR 91.7%, PF 9.31)');
+        } else {
+          sellScore = Math.max(sellScore, 90);
+          sellReasons.unshift('🐋 GOLDEN #2: Whale Absorption Pinbar (WR 91.7%, PF 9.31)');
+        }
+      }
+
+      // SETUP 3: 3x Stacked Imbalance + Linus Outside Sweep Breakout (Juara 3: WR 67.7%, PF 1.94)
+      if (!isGolden && matrixMetrics.grid2.stackedImbalance && matrixMetrics.grid4.isOutside && isPrimeSession) {
+        isGolden = true;
+        goldenRank = 3;
+        goldenName = '3x Stacked Imbalance + Outside Sweep';
+        goldenWR = '67.7%';
+        goldenPF = '1.94';
+        if (matrixMetrics.grid2.stackedImbalance === 'BUY') {
+          buyScore = Math.max(buyScore, 88);
+          buyReasons.unshift('⚡ GOLDEN #3: 3x Imbalance + Outside Sweep (WR 67.7%, PF 1.94)');
+        } else {
+          sellScore = Math.max(sellScore, 88);
+          sellReasons.unshift('⚡ GOLDEN #3: 3x Imbalance + Outside Sweep (WR 67.7%, PF 1.94)');
+        }
+      }
+
+      const totalBuy = Math.min(99, buyScore);
+      const totalSell = Math.min(99, sellScore);
+      const isBuy = totalBuy >= totalSell;
+      const topScore = isBuy ? totalBuy : totalSell;
+      const direction = isBuy ? 'BUY' : 'SELL';
+      const reasons = isBuy ? buyReasons : sellReasons;
+
+      const sigChip = document.getElementById('hdr-chip-signal');
+      if (sigChip) {
+        if (isGolden) {
+          sigChip.style.display = 'inline-flex';
+          sigChip.className = 'hdr-chip ' + (isBuy ? 'chip-signal-buy' : 'chip-signal-sell');
+          sigChip.style.borderColor = '#ffd700';
+          sigChip.innerHTML = `<span style="color:#ffd700;">👑 GOLDEN #${goldenRank}:</span> <span>${direction} ${goldenWR}</span>`;
+        } else if (topScore >= 70) {
+          sigChip.style.display = 'inline-flex';
+          sigChip.className = 'hdr-chip ' + (isBuy ? 'chip-signal-buy' : 'chip-signal-sell');
+          sigChip.style.borderColor = '';
+          sigChip.innerHTML = `<span>⚡ OF RADAR:</span> <span>${direction} ${topScore}%</span>`;
+        } else {
+          sigChip.style.display = 'inline-flex';
+          sigChip.className = 'hdr-chip';
+          sigChip.style.borderColor = '';
+          sigChip.innerHTML = `<span>⚡ OF RADAR:</span> <span style="color:#94a3b8;">STANDBY (${topScore}%)</span>`;
+        }
+      }
+
+      // Auto-broadcast if score >= 70% and throttled to 60s
+      const now = Date.now();
+      if (topScore >= 70 && (now - lastSignalBroadcastTime > 60000)) {
+        lastSignalBroadcastTime = now;
+        const slPrice = direction === 'BUY' ? (spot - goldenSL) : (spot + goldenSL);
+        const tp1Price = direction === 'BUY' ? (spot + goldenTP1) : (spot - goldenTP1);
+        const tp2Price = direction === 'BUY' ? (spot + goldenTP2) : (spot - goldenTP2);
+
+        const voiceMsg = isGolden
+          ? `Commander Dadang! Golden Setup Juara ${goldenRank === 1 ? 'Satu' : (goldenRank === 2 ? 'Dua' : 'Tiga')} terkonfirmasi: ${goldenName} dengan Win Rate ${goldenWR} di harga ${spot.toFixed(2)}. Target satu di ${tp1Price.toFixed(2)} langsung kunci Break Even, Target dua di ${tp2Price.toFixed(2)}.`
+          : `Institutional Order Flow Alert: Pure 4-Grid Engine detects high probability ${direction} setup with ${topScore} percent confidence. ${reasons.slice(0, 2).join(', ')}.`;
+
+        const payload = {
+          type: 'ORDER_FLOW_SIGNAL',
+          source: '4GRID_MATRIX_ENGINE',
+          isGoldenSetup: isGolden,
+          setupRank: goldenRank,
+          setupName: goldenName || 'Pure 4-Grid Confluence',
+          winRate: goldenWR || `${topScore}%`,
+          profitFactor: goldenPF || '2.0',
+          direction: direction,
+          score: topScore,
+          price: spot,
+          sl: slPrice,
+          tp: tp1Price,
+          tp1: tp1Price,
+          tp2: tp2Price,
+          reasons: reasons,
+          timestamp: now,
+          voiceText: voiceMsg
+        };
+        if (orderFlowBus) {
+          orderFlowBus.postMessage(payload);
+        }
+        console.log('⚡ [MATRIX ENGINE] Broadcasted Pure Order Flow Signal:', payload);
+      }
+    }
+
+    // Wire up Test Signal Bridge Button
+    const btnTestBridge = document.getElementById('btn-test-signal-bridge');
+    if (btnTestBridge) {
+      btnTestBridge.onclick = function () {
+        const spot = liveSpotPrice || 4432.50;
+        const testPayload = {
+          type: 'ORDER_FLOW_SIGNAL',
+          source: '4GRID_MATRIX_ENGINE',
+          isGoldenSetup: true,
+          setupRank: 1,
+          setupName: 'Fabio Testa Reclaim + 3 VETOs',
+          winRate: '85.7%',
+          profitFactor: '5.54',
+          direction: 'BUY',
+          score: 95,
+          price: spot,
+          sl: spot - 1.30,
+          tp: spot + 2.20,
+          tp1: spot + 2.20,
+          tp2: spot + 5.00,
+          reasons: [
+            '👑 GOLDEN #1: VAL Reclaim + 3 VETOs (WR 85.7%, PF 5.54)',
+            'Runway to POC >= 1.5 USD Terbuka Lebar',
+            'Delta Dominance Aggressive Buyer Influx',
+            'Prime Session Liquidity (London/NY Overlap)'
+          ],
+          timestamp: Date.now(),
+          voiceText: `Commander Dadang! Golden Setup Juara Satu terkonfirmasi: Fabio Testa Value Area Reclaim dengan Tiga Veto aktif di harga ${spot.toFixed(2)}. Target satu di ${(spot + 2.20).toFixed(2)} langsung kunci Break Even, Target dua di ${(spot + 5.00).toFixed(2)}.`
+        };
+        if (orderFlowBus) {
+          orderFlowBus.postMessage(testPayload);
+        }
+        console.log('⚡ Golden Test Signal Broadcasted:', testPayload);
+        window.lastMatrixSignalPayload = testPayload;
+        const sigChip = document.getElementById('hdr-chip-signal');
+        if (sigChip) {
+          sigChip.className = 'hdr-chip chip-signal-buy';
+          sigChip.style.borderColor = '#ffd700';
+          sigChip.innerHTML = `<span style="color:#ffd700;">👑 GOLDEN #1:</span> <span>BUY 85.7% WR</span>`;
+        }
+      };
+    }
+
+    // 📡 TELEGRAM BROADCASTER & USER BADGE
+    window.lastMatrixSignalPayload = null;
+
+    window.broadcastMatrixSignalToTelegram = async function (customPayload) {
+      const btn = document.getElementById('btn-broadcast-matrix-telegram');
+      const spot = liveSpotPrice || 4432.50;
+      const payload = customPayload || window.lastMatrixSignalPayload || {
+        type: 'GOLDEN_SETUP',
+        source: '4GRID_MATRIX_ENGINE',
+        action: 'BUY',
+        direction: 'BUY',
+        setup_name: 'Fabio Testa Reclaim + 3 VETOs',
+        win_rate: '85.7%',
+        profit_factor: '5.54',
+        entry_price: spot.toFixed(2),
+        stop_loss: (spot - 1.30).toFixed(2),
+        take_profit_1: (spot + 2.20).toFixed(2),
+        take_profit_2: (spot + 5.00).toFixed(2),
+        risk_reward: '1:3.85',
+        lot: '0.38 Lot',
+        institutional_rationale: [
+          '👑 GOLDEN #1: VAL Reclaim + 3 VETOs (WR 85.7%, PF 5.54)',
+          'Runway to POC >= 1.5 USD Terbuka Lebar',
+          'Delta Dominance Aggressive Influx Sponsoring Breakout',
+          'Prime Session Liquidity (London/NY Overlap)'
+        ],
+        voice_briefing_id: `Commander Dadang! Golden Setup Juara Satu terkonfirmasi: Fabio Testa Value Area Reclaim dengan Tiga Veto aktif di harga ${spot.toFixed(2)}.`
+      };
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>📡 MENGIRIM...</span>';
+      }
+
+      try {
+        const r = await fetch('/api/telegram/broadcast_signal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const res = await r.json();
+        if (res && res.ok) {
+          if (btn) {
+            btn.innerHTML = '<span>✅ TERKIRIM KE TELEGRAM!</span>';
+            btn.style.borderColor = '#00e676';
+            btn.style.color = '#00e676';
+            btn.style.background = 'rgba(0, 230, 118, 0.2)';
+            setTimeout(() => {
+              btn.disabled = false;
+              btn.innerHTML = '<span>📡</span><span>TELEGRAM</span>';
+              btn.style.borderColor = '#0088cc';
+              btn.style.color = '#38bdf8';
+              btn.style.background = 'rgba(0, 136, 204, 0.15)';
+            }, 3500);
+          }
+        } else {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span>⚠️ GAGAL</span>';
+          }
+        }
+      } catch (err) {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>⚠️ ERROR</span>';
+        }
+      }
+    };
+
+    function updateMatrixUserBadge() {
+      const badge = document.getElementById('matrix-user-badge');
+      const u = localStorage.getItem('cr_auth_user') || sessionStorage.getItem('cr_auth_user');
+      if (badge && u) {
+        badge.style.display = 'inline-flex';
+        const isMaster = (u.toLowerCase() === 'commander' || u.toLowerCase() === 'comander');
+        if (isMaster) {
+          badge.innerHTML = '👑 <b>COMMANDER</b>';
+          badge.style.color = '#fbbf24';
+          badge.style.borderColor = 'rgba(251, 191, 36, 0.5)';
+          badge.style.background = 'rgba(251, 191, 36, 0.15)';
+        } else {
+          badge.innerHTML = `👤 <b>${u.toUpperCase()}</b>`;
+          badge.style.color = '#00e5ff';
+          badge.style.borderColor = 'rgba(0, 229, 255, 0.4)';
+          badge.style.background = 'rgba(0, 229, 255, 0.12)';
+        }
+      }
+    }
+    window.handleCommanderLogout = function() {
+      localStorage.removeItem('cr_auth_user');
+      sessionStorage.removeItem('cr_auth_user');
+      localStorage.removeItem('cr_auth_expires');
+      sessionStorage.removeItem('cr_auth_expires');
+      window.location.replace('/heatmap.html');
+    };
+    updateMatrixUserBadge();
+
+    // ══════════════════════════════════════════════════════════
+    // 🎯 SYNCHRONIZED CROSSHAIR OVERLAY
+    // ══════════════════════════════════════════════════════════
+    function renderCrosshairs() {
+      if (syncCursor.xRatio < 0 || syncCursor.yRatio < 0) return;
+
+      for (const key in canvases) {
+        const c = canvases[key];
+        const ctx = contexts[key];
+        const rect = c.getBoundingClientRect();
+        const x = syncCursor.xRatio * rect.width;
+        const y = syncCursor.yRatio * rect.height;
+
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.lineWidth = 0.8;
+        ctx.setLineDash([3, 3]);
+
+        // Vertical line
+        ctx.beginPath();
+        ctx.moveTo(x, 0); ctx.lineTo(x, rect.height);
+        ctx.stroke();
+
+        // Horizontal line
+        ctx.beginPath();
+        ctx.moveTo(0, y); ctx.lineTo(rect.width, y);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 🚀 MAIN 60 FPS RENDER LOOP
+    // ══════════════════════════════════════════════════════════
+    function mainRenderLoop() {
+      // Sub-Tick LERP for buttery smooth price
+      visualSpotPrice += (liveSpotPrice - visualSpotPrice) * 0.22;
+
+      // Real-time tick breathing for live forming candle bar
+      if (candlesM5 && candlesM5.length > 0 && panOffsetBars === 0) {
+        const last = candlesM5[candlesM5.length - 1];
+        last.close = visualSpotPrice;
+        last.high = Math.max(last.high, visualSpotPrice);
+        last.low = Math.min(last.low, visualSpotPrice);
+      }
+
+      for (const key in canvases) {
+        const c = canvases[key];
+        const ctx = contexts[key];
+        const rect = c.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+
+        if (w <= 0 || h <= 0) continue;
+
+        if (key === 'tpo') renderTPO(ctx, w, h);
+        else if (key === 'footprint') renderFootprint(ctx, w, h);
+        else if (key === 'cvd') renderCVD(ctx, w, h);
+        else if (key === 'cascade') renderCascade(ctx, w, h);
+      }
+
+      renderCrosshairs();
+      evaluatePureOrderFlowSignal();
+      requestAnimationFrame(mainRenderLoop);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 📡 DATA INGESTION & LIVE SYNC
+    // ══════════════════════════════════════════════════════════
+    async function loadCandles() {
+      try {
+        const res = await fetch('/api/chart/candles?tf=M5&count=500&t=' + Date.now());
+        if (res.ok) {
+          const data = await res.json();
+          if (data.candles && data.candles.length > 0) {
+            let allBars = data.candles;
+            // Filter out duplicate zero-range weekend trailing bars when market is closed
+            let lastActiveIdx = -1;
+            for (let k = allBars.length - 1; k >= 0; k--) {
+              if (allBars[k].high !== allBars[k].low) {
+                lastActiveIdx = k;
+                break;
+              }
+            }
+            let bars = allBars;
+            if (lastActiveIdx !== -1) {
+              bars = allBars.slice(0, lastActiveIdx + 2);
+            }
+            candlesM5 = bars.slice(-150);
+            const last = candlesM5[candlesM5.length - 1];
+            if (last && last.close) {
+              liveSpotPrice = last.close;
+              document.getElementById('hdr-spot').innerText = `$${liveSpotPrice.toFixed(2)}`;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Matrix loadCandles err:', e);
+      }
+    }
+
+    async function pollLiveStatus() {
+      try {
+        const res = await fetch('/sultan_status.json?t=' + Date.now());
+        if (res.ok) {
+          const data = await res.json();
+          const spot = parseFloat(data.current_price_xauusd || data.spot || data.current_price || data.price);
+          if (!isNaN(spot) && spot > 1000) {
+            liveSpotPrice = spot;
+            document.getElementById('hdr-spot').innerText = `$${liveSpotPrice.toFixed(2)}`;
+            if (candlesM5 && candlesM5.length > 0) {
+              const last = candlesM5[candlesM5.length - 1];
+              last.close = liveSpotPrice;
+              last.high = Math.max(last.high, liveSpotPrice);
+              last.low = Math.min(last.low, liveSpotPrice);
+            }
+          }
+
+          if (data.regime && data.regime.label) {
+            document.getElementById('hdr-auction').innerText = data.regime.label;
+          }
+
+          if (data.tf_matrix && data.tf_matrix.H4) {
+            document.getElementById('hdr-h4').innerText = `${data.tf_matrix.H4.cmp} (${data.tf_matrix.H4.action})`;
+          }
+
+          // Ingest Bookmap Wall Ladder & Major Resting Liquidity Walls
+          if (data.wall_ladder) {
+            bookmapWalls.asks = (data.wall_ladder.asks || []).map(a => Array.isArray(a) ? a : (a.value || []));
+            bookmapWalls.bids = (data.wall_ladder.bids || []).map(b => Array.isArray(b) ? b : (b.value || []));
+          }
+          if (data.liquidity) {
+            if (data.liquidity.ask_wall_price && !bookmapWalls.asks.some(x => Math.abs(x[0] - data.liquidity.ask_wall_price) < 0.5)) {
+              bookmapWalls.asks.push([data.liquidity.ask_wall_price, 25.0]);
+            }
+            if (data.liquidity.bid_wall_price && !bookmapWalls.bids.some(x => Math.abs(x[0] - data.liquidity.bid_wall_price) < 0.5)) {
+              bookmapWalls.bids.push([data.liquidity.bid_wall_price, 25.0]);
+            }
+          }
+          if (data.order_book) {
+            (data.order_book.asks || []).forEach(a => {
+              if (a[1] >= 1 && !bookmapWalls.asks.some(x => Math.abs(x[0] - a[0]) < 0.2)) {
+                bookmapWalls.asks.push(a);
+              }
+            });
+            (data.order_book.bids || []).forEach(b => {
+              if (b[1] >= 1 && !bookmapWalls.bids.some(x => Math.abs(x[0] - b[0]) < 0.2)) {
+                bookmapWalls.bids.push(b);
+              }
+            });
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Start everything
+    resizeCanvases();
+    pollLiveStatus();
+    loadCandles().then(() => {
+      pollLiveStatus();
+      mainRenderLoop();
+    });
+    setInterval(loadCandles, 2500);
+    setInterval(pollLiveStatus, 500);
+
+  })();
+  </script>
+</body>
+</html>

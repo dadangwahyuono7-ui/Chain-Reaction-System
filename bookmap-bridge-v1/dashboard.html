@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chain Reaction Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Custom Scrollbar for dark theme */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        .glow-red { text-shadow: 0 0 10px rgba(244,63,94,0.5); }
+        .glow-green { text-shadow: 0 0 10px rgba(16,185,129,0.5); }
+        .glow-amber { text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+    </style>
+</head>
+<body class="h-screen bg-slate-950 text-slate-100 p-2 flex flex-col space-y-2 overflow-hidden">
+
+  <!-- Header -->
+  <header class="flex justify-between items-center bg-slate-900 border border-slate-800 p-3 rounded-lg shrink-0">
+    <div>
+      <h1 class="text-xl font-bold tracking-wider text-slate-200">CHAIN REACTION</h1>
+      <p class="text-[10px] text-slate-400">Decision Recommendation Engine</p>
+    </div>
+    <div class="text-center">
+      <div class="text-[10px] font-semibold text-slate-400" id="header-instrument">XAUUSD • MT5</div>
+      <div class="flex items-center justify-center space-x-2">
+        <span class="text-2xl font-bold font-mono text-white" id="header-price">0.00</span>
+        <span class="text-[10px] text-slate-400">USD/OZ</span>
+        <span class="text-[11px] font-mono font-semibold" id="header-change">0.00 (0.00%)</span>
+      </div>
+    </div>
+    <div class="flex items-center space-x-6 text-xs">
+      <!-- v52.18: Dadang - "di panel harus ada tulisan yang menyatakan sydeway
+           atau trending bro karena ini penting baget bagi gw trader breakout"
+           + "lo taruh juga di WEB gw dan webpy gw bro" - same regime badge as
+           the MT5 panel and Sultan web, this dashboard's own source
+           (live_status.json's new "regime" field, see udp_listener.py). -->
+      <div class="flex items-center space-x-2">
+        <span class="text-slate-400">REGIME</span>
+        <span class="font-mono font-semibold" id="header-regime">-</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <span class="text-slate-400">MARKET STATUS</span>
+        <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
+        <span class="text-emerald-400 font-semibold">OPEN</span>
+      </div>
+      <div class="font-mono text-base font-semibold text-slate-200" id="header-time">00:00:00</div>
+    </div>
+  </header>
+
+  <!-- Main Grid (3 Columns) -->
+  <main class="grid grid-cols-12 gap-2 flex-1 min-h-0">
+    
+    <!-- Left Column (3/12 width) -->
+    <div class="col-span-3 flex flex-col space-y-2 min-h-0 overflow-y-auto pr-1">
+      
+      <!-- DECISION Panel -->
+      <section class="bg-slate-900 border border-slate-800 p-3 rounded-lg flex flex-col space-y-3 shrink-0">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">DECISION</div>
+        <div class="text-center py-1" id="dec-banner">
+          <div class="text-3xl font-extrabold tracking-tight flex items-center justify-center space-x-2" id="dec-title">
+            <span>WAITING</span>
+          </div>
+          <div class="text-[10px] font-semibold mt-1" id="dec-bias">BIAS : -</div>
+        </div>
+        <div>
+          <div class="flex justify-between text-[10px] font-semibold text-slate-400 mb-1">
+            <span>MARKET PULSE</span>
+            <span id="dec-pct">0%</span>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-1.5">
+            <div class="h-1.5 rounded-full transition-all duration-300 bg-emerald-500" id="dec-bar" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-1 text-center text-[9px]">
+          <div class="bg-slate-950 border border-slate-800 p-1.5 rounded">
+            <div class="text-slate-500 uppercase">Signal</div>
+            <div class="font-bold mt-0.5" id="dec-pos">-</div>
+          </div>
+          <div class="bg-slate-950 border border-slate-800 p-1.5 rounded">
+            <div class="text-slate-500 uppercase">Last Update</div>
+            <div class="font-bold font-mono text-white mt-0.5" id="dec-upd">-</div>
+          </div>
+          <div class="bg-slate-950 border border-slate-800 p-1.5 rounded">
+            <div class="text-slate-500 uppercase">Feed</div>
+            <div class="font-bold font-mono text-cyan-400 mt-0.5" id="dec-next">-</div>
+          </div>
+        </div>
+        <!-- POSISI AKTIF - hidden until there's an open position. No TP shown by
+             design (Dadang: "JANGAN TP KECUALI ADA SIGNAL SELL" - exit is
+             doctrine-driven, SL here is just a wide financial backstop). -->
+        <div class="grid grid-cols-3 gap-1 text-center text-[9px]" id="position-strip" style="display:none">
+        </div>
+      </section>
+
+      <!-- CHAIN REACTION Panel - always exactly TF_ORDER.length (7) rows
+           (see dashboard_logic.js), so this is sized to its natural content
+           height (shrink-0) instead of flex-1+overflow-auto - guarantees no
+           row ever gets clipped/overlapping the panel below it, regardless
+           of window size. -->
+      <section class="bg-slate-900 border border-slate-800 p-3 rounded-lg shrink-0 flex flex-col">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center justify-between shrink-0">
+          <span>◆ CHAIN REACTION</span>
+        </div>
+        <div class="text-[10px]">
+          <table class="w-full text-left">
+            <thead>
+              <tr class="text-slate-500 border-b border-slate-800">
+                <th class="pb-1 font-semibold">TF</th>
+                <th class="pb-1 font-semibold">CMP</th>
+                <th class="pb-1 font-semibold">VR</th>
+                <th class="pb-1 font-semibold">CF</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/50 font-mono" id="matrix-tbody">
+              <!-- JS rendered -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ALASAN & KESIMPULAN Panel -->
+      <section class="bg-slate-900 border border-slate-800 p-3 rounded-lg flex flex-col space-y-2 shrink-0">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">ALASAN & KESIMPULAN</div>
+        <div class="text-[10px] text-slate-300 space-y-1 font-mono leading-relaxed h-20 overflow-y-auto" id="alasan-list">
+          <!-- JS rendered -->
+        </div>
+      </section>
+    </div>
+
+    <!-- Middle Column (6/12 width) -->
+    <div class="col-span-6 flex flex-col space-y-2 min-h-0">
+      
+      <!-- ORDER FLOW SNAPSHOT Panel -->
+      <section class="bg-slate-900 border border-slate-800 p-3 rounded-lg shrink-0">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">ORDER FLOW SNAPSHOT</div>
+        <div class="grid grid-cols-4 gap-2 text-center">
+          <div class="bg-slate-950 border border-slate-800 p-2 rounded-lg">
+             <div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">Market Pulse</div>
+             <div class="text-sm font-bold font-mono" id="ofs-pulse">-</div>
+          </div>
+          <div class="bg-slate-950 border border-slate-800 p-2 rounded-lg">
+             <div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">CVD (session)</div>
+             <div class="text-sm font-bold font-mono" id="ofs-delta">-</div>
+          </div>
+          <div class="bg-slate-950 border border-slate-800 p-2 rounded-lg">
+             <div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">Absorption</div>
+             <div class="text-sm font-bold font-mono text-slate-500" id="ofs-absorp">NONE</div>
+          </div>
+          <div class="bg-slate-950 border border-slate-800 p-2 rounded-lg">
+             <div class="text-[9px] text-slate-500 uppercase font-semibold mb-1">Footprint @ Wall</div>
+             <div class="text-sm font-bold font-mono text-slate-500" id="ofs-vol">-</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PRICE ACTION (M5) Panel -->
+      <section class="bg-slate-900 border border-slate-800 p-3 rounded-lg relative flex-1 flex flex-col min-h-0">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 shrink-0">PRICE ACTION (M5)</div>
+        <div class="flex-1 border border-slate-800/80 rounded bg-slate-950/40 relative min-h-[150px]">
+           <canvas id="chart-canvas" class="absolute inset-0 w-full h-full"></canvas>
+        </div>
+      </section>
+
+      <!-- v52.25: WALL WATCHLIST - was "LIQUIDITY WALL (NEAREST)", capped to
+           5/side. Dadang: "kalo memang ada wal di sana dan belm keload dan
+           datanya sudah ada kenapa nunggu load bro... buat kan dhasboar
+           kusus wal2 itu biar keliatan price nya meski tidak garis belum
+           muncul" -> "yang penting kan real time aja kalo misal sampai di
+           wall 200 lot itu kalo memang spoofing kan akan hilang" - he wants
+           to see EVERY currently-tracked wall immediately, un-gated by the
+           1-hour persistence rule that governs the MT5 chart LINES/decision
+           logic (InpWallMinAgeSec stays untouched there - this is display
+           only, judged live by Dadang himself, not pre-filtered by us).
+           Uncapped (scrollable) instead of slice(0,5), prices converted to
+           MT5/XAUUSD terms (was raw GCZ6) - see dashboard_logic.js. -->
+      <section class="bg-slate-900 border border-slate-800 p-3 rounded-lg flex flex-col shrink-0 max-h-64">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center justify-between">
+          <span>WALL WATCHLIST · REAL-TIME</span>
+          <span class="text-slate-600 normal-case tracking-normal font-normal">harga MT5, semua wall ≥10 lot</span>
+        </div>
+        <div class="grid grid-cols-2 gap-4 overflow-y-auto min-h-0">
+          <div>
+            <div class="text-[9px] text-slate-500 mb-1 flex justify-between sticky top-0 bg-slate-900">
+              <span>RESISTANCE (ASK)</span><span>SIZE (LOT)</span>
+            </div>
+            <div class="space-y-1" id="wall-asks"></div>
+          </div>
+          <div>
+            <div class="text-[9px] text-slate-500 mb-1 flex justify-between sticky top-0 bg-slate-900">
+              <span>SUPPORT (BID)</span><span>SIZE (LOT)</span>
+            </div>
+            <div class="space-y-1" id="wall-bids"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Right Column (3/12 width) -->
+    <div class="col-span-3 flex flex-col space-y-2 min-h-0 pr-1">
+      
+      <!-- ORDER BOOK Panel -->
+      <section class="bg-slate-900 border border-slate-800 p-3 rounded-lg flex-1 flex flex-col min-h-0">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex justify-between shrink-0">
+          <span>ORDER BOOK</span>
+          <span class="text-emerald-400">L2 DATA</span>
+        </div>
+        <div class="flex-1 min-h-0 bg-slate-950 border border-slate-800 rounded p-1 overflow-y-auto font-mono text-[10px]" id="dom-ladder">
+          <!-- JS Rendered Ladder -->
+        </div>
+      </section>
+
+      <!-- CVD Panel -->
+      <section class="bg-slate-900 border border-slate-800 p-3 rounded-lg flex flex-col shrink-0 h-40">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">CUMULATIVE VOLUME DELTA</div>
+        <div class="flex-1 border border-slate-800/80 rounded bg-slate-950/40 relative">
+          <canvas id="cvd-canvas" class="absolute inset-0 w-full h-full"></canvas>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Horizontal Status Strip -->
+  <div class="flex justify-between items-center bg-slate-900 border border-slate-800 py-2 px-4 rounded-lg text-[10px] font-mono shrink-0">
+    <div class="flex space-x-6">
+       <div><span class="text-slate-500">SPREAD:</span> <span class="text-white font-bold ml-1" id="strip-spread">-</span></div>
+       <div><span class="text-slate-500">TOTAL PTS:</span> <span class="text-white font-bold ml-1" id="strip-vol">-</span></div>
+       <div><span class="text-slate-500">SOURCE:</span> <span class="text-white font-bold ml-1" id="strip-speed">-</span></div>
+       <div><span class="text-slate-500">BIAS:</span> <span class="text-emerald-400 font-bold ml-1" id="strip-bias">-</span></div>
+    </div>
+    <div class="flex items-center space-x-2">
+       <span class="text-slate-500">MT5 AUTO-EXEC</span>
+       <span class="text-emerald-400 font-bold" id="strip-mt5">-</span>
+    </div>
+  </div>
+
+  <!-- Bottom Panel (Grid 75% - 25%) - h-32 was too tight for a table header
+       + rows + stats footer (content overflowed to ~337px vs 128px given),
+       forcing an awkward 1-2-row scroll window even though overflow-y-auto
+       was technically working. Bumped to h-48. Also added overflow-hidden:
+       shrink-0 + h-X alone does NOT cap height (it's just the flex-basis -
+       content can still push the row taller since nothing was forcing it
+       back down), so the inner flex-1 overflow-y-auto trade-log table
+       never actually got a bounded box to clip against. overflow-hidden
+       here is the hard backstop that makes the inner scroll area real. -->
+  <div class="grid grid-cols-12 gap-2 shrink-0 h-48 overflow-hidden">
+    <section class="col-span-9 bg-slate-900 border border-slate-800 p-3 rounded-lg flex flex-col space-y-2 min-h-0">
+      <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">TRADE LOG (DATABASE)</div>
+      <div class="flex-1 min-h-0 overflow-y-auto border border-slate-800 rounded">
+        <table class="w-full text-left text-[10px] font-mono">
+          <thead class="bg-slate-950 border-b border-slate-800 text-slate-500 sticky top-0">
+            <tr>
+              <th class="py-1 px-2">TIME</th>
+              <th class="py-1 px-2">TYPE</th>
+              <th class="py-1 px-2">PRICE</th>
+              <th class="py-1 px-2">SIZE</th>
+              <th class="py-1 px-2 text-right">PNL</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/50 bg-slate-900/50" id="trade-log">
+             <!-- JS Rendered -->
+          </tbody>
+        </table>
+      </div>
+      <div class="flex justify-end space-x-4 text-[10px] font-mono pt-1 shrink-0">
+         <div><span class="text-slate-500">TOTAL TRADES:</span> <span class="text-white font-bold ml-1" id="stat-total">0</span></div>
+         <div><span class="text-slate-500">WIN RATE:</span> <span class="text-white font-bold ml-1" id="stat-wr">0%</span></div>
+         <div><span class="text-slate-500">NET PNL:</span> <span class="text-emerald-400 font-bold ml-1" id="stat-pnl">$0.00</span></div>
+      </div>
+    </section>
+
+    <section class="col-span-3 bg-slate-900 border border-slate-800 p-3 rounded-lg flex flex-col space-y-2 min-h-0">
+      <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">SYSTEM STATUS</div>
+      <div class="flex flex-col justify-center flex-1 space-y-2 text-[10px] font-mono" id="sys-status">
+         <div class="flex justify-between items-center"><span class="text-slate-300">Bookmap Bridge</span><span class="text-emerald-400">CONNECTED</span></div>
+         <div class="flex justify-between items-center"><span class="text-slate-300">Data Feed</span><span class="text-emerald-400">REALTIME</span></div>
+         <div class="flex justify-between items-center"><span class="text-slate-300">Decision Engine</span><span class="text-emerald-400">ACTIVE</span></div>
+         <div class="flex justify-between items-center"><span class="text-slate-300">Order Executor</span><span class="text-slate-500">STANDBY</span></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Main JS Integration -->
+  <script src="dashboard_logic.js"></script>
+</body>
+</html>

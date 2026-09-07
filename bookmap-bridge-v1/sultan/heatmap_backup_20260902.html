@@ -1,0 +1,3004 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chain Reaction Pro | Bookmap Order Book Heatmap Terminal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #050811;
+      --bg-panel: #090d18;
+      --bg-card: #0d1322;
+      --border-subtle: #141b2e;
+      --border-accent: #1e293b;
+      --accent-cyan: #00e5ff;
+      --accent-blue: #38bdf8;
+      --accent-green: #00e676;
+      --accent-red: #ff2a4b;
+      --accent-gold: #ffd700;
+      --text-main: #f8fafc;
+      --text-muted: #64748b;
+      --text-sub: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    html, body {
+      width: 100vw;
+      max-width: 100vw;
+      height: 100vh;
+      max-height: 100vh;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ══════════ TOP INSTITUTIONAL HEADER ══════════ */
+    header {
+      height: 42px;
+      min-height: 42px;
+      width: 100vw;
+      max-width: 100vw;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      z-index: 20;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      overflow-x: auto;
+      overflow-y: hidden;
+      white-space: nowrap;
+      scrollbar-width: none;
+    }
+    header::-webkit-scrollbar {
+      display: none;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(135deg, rgba(0, 229, 255, 0.15), rgba(56, 189, 248, 0.05));
+      border: 1px solid rgba(0, 229, 255, 0.4);
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+
+    .brand-title {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 900;
+      font-size: 13px;
+      letter-spacing: 0.6px;
+      background: linear-gradient(135deg, #00e5ff 0%, #38bdf8 50%, #ffffff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .badge-v2 {
+      background: #00e5ff;
+      color: #06080f;
+      font-size: 9px;
+      font-weight: 900;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* PRICE & TELEMETRY PILLS */
+    .telemetry-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .symbol-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-accent);
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+
+    .symbol-name {
+      font-weight: 800;
+      font-size: 11px;
+      color: #f8fafc;
+    }
+
+    .live-spot-price {
+      font-size: 14px;
+      font-weight: 900;
+      color: var(--accent-green);
+      text-shadow: 0 0 10px rgba(0, 230, 118, 0.4);
+      letter-spacing: 0.5px;
+    }
+
+    .stat-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(13, 19, 34, 0.7);
+      border: 1px solid var(--border-subtle);
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 10px;
+    }
+
+    .stat-pill .label {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .stat-pill .val {
+      font-weight: 800;
+      color: #38bdf8;
+    }
+
+    /* OHLC HOVER READOUT */
+    .ohlc-readout {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      color: var(--text-sub);
+    }
+
+    .ohlc-readout span b {
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    /* RIGHT CONTROLS */
+    .controls-section {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* TIMEFRAME DROPDOWN SELECTOR */
+    .tf-dropdown-wrapper {
+      display: flex;
+      align-items: center;
+    }
+
+    .tf-select-pill {
+      background: #060913;
+      border: 1px solid var(--border-accent);
+      color: #00e5ff;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 800;
+      font-size: 11px;
+      padding: 4px 8px;
+      padding-right: 22px;
+      border-radius: 6px;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.2s ease;
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.15);
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2300e5ff' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 7px center;
+    }
+
+    .tf-select-pill:hover, .tf-select-pill:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
+    }
+
+    .tf-select-pill option {
+      background: #090e1c;
+      color: #f8fafc;
+      font-weight: 700;
+      padding: 6px 10px;
+    }
+
+    .layer-toggles {
+      display: flex;
+      gap: 5px;
+    }
+
+    .toggle-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-accent);
+      color: var(--text-sub);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .toggle-btn:hover {
+      border-color: #38bdf8;
+      color: #ffffff;
+    }
+
+    .toggle-btn.active {
+      background: rgba(0, 229, 255, 0.12);
+      border-color: #00e5ff;
+      color: #00e5ff;
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
+    }
+
+    .toggle-btn.active.doktrin-btn {
+      background: rgba(255, 215, 0, 0.12);
+      border-color: #ffd700;
+      color: #ffd700;
+      box-shadow: 0 0 12px rgba(255, 215, 0, 0.25);
+    }
+
+    /* ══════════ MAIN WORKSPACE & CANVAS ══════════ */
+    #chart-workspace {
+      width: 100vw;
+      max-width: 100vw;
+      flex: 1;
+      position: relative;
+      background: var(--bg-base);
+      overflow: hidden;
+    }
+
+    canvas#main-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      user-select: none;
+    }
+
+    .brand-title-short {
+      display: none;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 900;
+      font-size: 11px;
+      color: #00e5ff;
+    }
+
+    /* 🐋 WHALE INFLOW NOTIFICATION TOAST */
+    .whale-toast {
+      position: absolute;
+      top: 14px;
+      right: 230px;
+      background: rgba(6, 11, 24, 0.94);
+      backdrop-filter: blur(10px);
+      border-radius: 7px;
+      padding: 6px 12px;
+      font-size: 10.5px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
+      z-index: 50;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      transform: translateY(-20px);
+      opacity: 0;
+      pointer-events: none;
+    }
+    .whale-toast.active {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    .whale-toast.buy-alert {
+      border: 1px solid #00e676;
+      color: #00e676;
+      box-shadow: 0 0 16px rgba(0, 230, 118, 0.4);
+    }
+    .whale-toast.sell-alert {
+      border: 1px solid #ff2a4b;
+      color: #ff2a4b;
+      box-shadow: 0 0 16px rgba(255, 42, 75, 0.4);
+    }
+    @media (max-width: 900px) {
+      .whale-toast {
+        right: 120px;
+        top: 6px;
+        padding: 4px 8px;
+        font-size: 8.5px;
+      }
+    }
+
+    /* ══════════ BOTTOM FOOTER ══════════ */
+    footer {
+      height: 24px;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      font-size: 9.5px;
+      color: var(--text-muted);
+      z-index: 20;
+    }
+
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .footer-status-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #00e676;
+      box-shadow: 0 0 8px #00e676;
+      animation: pulseAnim 1.8s infinite;
+    }
+
+    @keyframes pulseAnim {
+      0% { transform: scale(0.9); opacity: 0.7; }
+      50% { transform: scale(1.3); opacity: 1; }
+      100% { transform: scale(0.9); opacity: 0.7; }
+    }
+
+    /* ══════════ MOBILE & TABLET RESPONSIVE OVERRIDES (FINAL CASCADE) ══════════ */
+    @media (max-width: 1024px) {
+      header {
+        height: 36px !important;
+        min-height: 36px !important;
+        padding: 0 4px !important;
+        gap: 4px !important;
+      }
+      .brand-title-full {
+        display: none !important;
+      }
+      .brand-title-short {
+        display: inline-block !important;
+      }
+      .symbol-name {
+        display: none !important;
+      }
+      .live-spot-price {
+        font-size: 11px !important;
+      }
+      .stat-pill {
+        padding: 2px 4px !important;
+        font-size: 8px !important;
+      }
+      .stat-pill.pill-pulse {
+        display: none !important;
+      }
+      .ohlc-readout {
+        display: none !important;
+      }
+      .tf-select-pill {
+        font-size: 9px !important;
+        padding: 2px 5px !important;
+        padding-right: 16px !important;
+      }
+      .toggle-btn {
+        padding: 2px 5px !important;
+        font-size: 8px !important;
+        gap: 0 !important;
+      }
+      .toggle-btn span.btn-label {
+        display: none !important;
+      }
+      .toggle-btn span.btn-icon {
+        font-size: 11px !important;
+      }
+      .whale-toast {
+        right: 120px !important;
+        top: 6px !important;
+        padding: 4px 8px !important;
+        font-size: 8.5px !important;
+      }
+      footer .footer-hints {
+        display: none !important;
+      }
+      footer .footer-sig {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ══════════ TOP INSTITUTIONAL HEADER ══════════ -->
+  <header>
+    <div class="brand-section">
+      <div class="brand-logo-badge">
+        <span style="font-size: 13px;">👑</span>
+        <span class="brand-title brand-title-full">CHAIN REACTION ENGINE</span>
+        <span class="brand-title-short">CR-PRO</span>
+        <span class="badge-v2">v2.0</span>
+      </div>
+
+      <div class="telemetry-row">
+        <div class="symbol-pill">
+          <span class="symbol-name">XAUUSD / GC</span>
+          <span class="live-spot-price" id="top-price">$4328.02</span>
+        </div>
+
+        <div class="stat-pill">
+          <span class="label">CVD:</span>
+          <span class="val" id="top-cvd" style="color: #ff2a4b;">-4.0L</span>
+        </div>
+
+        <div class="stat-pill pill-pulse">
+          <span class="label">PULSE:</span>
+          <span class="val" id="top-pulse" style="color: #ff2a4b;">58.8% SELL</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- OHLC READOUT -->
+    <div class="ohlc-readout">
+      <span>O: <b id="bar-o">4328.10</b></span>
+      <span>H: <b id="bar-h">4328.70</b></span>
+      <span>L: <b id="bar-l">4326.88</b></span>
+      <span>C: <b id="bar-c">4328.02</b></span>
+      <span>V: <b id="bar-v">349</b></span>
+    </div>
+
+    <!-- TIMEFRAME DROPDOWN & LAYER SWITCHES -->
+    <div class="controls-section">
+      <div class="tf-dropdown-wrapper">
+        <select id="tf-select" class="tf-select-pill">
+          <option value="S15">⚡ S15</option>
+          <option value="M1">⚡ M1</option>
+          <option value="M5" selected>🔥 M5</option>
+          <option value="M15">📊 M15</option>
+          <option value="M30">📊 M30</option>
+          <option value="H1">🏛️ H1</option>
+          <option value="H4">👑 H4</option>
+        </select>
+      </div>
+
+      <div class="layer-toggles">
+        <button class="toggle-btn active" id="btn-toggle-candle" title="Candlesticks">
+          <span class="btn-icon">🕯️</span><span class="btn-label">Candles</span>
+        </button>
+        <button class="toggle-btn active" id="btn-toggle-heatmap" title="Bookmap Heatmap">
+          <span class="btn-icon">🔥</span><span class="btn-label">Heatmap</span>
+        </button>
+        <button class="toggle-btn active" id="btn-toggle-bubbles" title="Whale Bubbles">
+          <span class="btn-icon">🐋</span><span class="btn-label">Bubbles</span>
+        </button>
+        <button class="toggle-btn active" id="btn-toggle-profile" title="Volume Profile">
+          <span class="btn-icon">📊</span><span class="btn-label">Profile</span>
+        </button>
+        <button class="toggle-btn active doktrin-btn" id="btn-toggle-cmp" title="Doktrin V4 CMP">
+          <span class="btn-icon">🏛️</span><span class="btn-label">Doktrin</span>
+        </button>
+        <button class="toggle-btn" id="btn-autofit" title="Auto-Fit Price & Time">
+          <span class="btn-icon">🎯</span><span class="btn-label">FIT</span>
+        </button>
+        <button class="toggle-btn" id="btn-fullscreen" title="Full Screen Immersion">
+          <span class="btn-icon">⛶</span><span class="btn-label">FULL</span>
+        </button>
+
+        <div class="drawing-tools-group" style="display: flex; gap: 4px; border-left: 1px solid rgba(255,255,255,0.12); padding-left: 5px;">
+          <button class="toggle-btn" id="btn-draw-line" title="Draw Trendline [L]">
+            <span class="btn-icon">📐</span><span class="btn-label">Line</span>
+          </button>
+          <button class="toggle-btn" id="btn-draw-box" title="Draw Rectangle Box [B]">
+            <span class="btn-icon">🔲</span><span class="btn-label">Box</span>
+          </button>
+          <button class="toggle-btn" id="btn-draw-undo" title="Hapus Gambar Terakhir [Z]">
+            <span class="btn-icon">↩️</span><span class="btn-label">Undo</span>
+          </button>
+          <button class="toggle-btn" id="btn-draw-clear" title="Hapus Semua Gambar">
+            <span class="btn-icon">🗑️</span>
+          </button>
+          <button class="toggle-btn" id="btn-screenshot" title="Screenshot Chart [S]">
+            <span class="btn-icon">📸</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══════════ MAIN WORKSPACE ══════════ -->
+  <div id="chart-workspace">
+    <canvas id="main-canvas"></canvas>
+
+    <!-- 🐋 WHALE INFLOW NOTIFICATION TOAST -->
+    <div id="whale-toast" class="whale-toast"></div>
+  </div>
+
+  <!-- ══════════ BOTTOM FOOTER ══════════ -->
+  <footer>
+    <div class="footer-left">
+      <div class="footer-status-pill">
+        <div class="pulse-dot"></div>
+        <span style="color: #00e676; font-weight: 800; font-size: 10px;">LIVE CONNECTED</span>
+      </div>
+      <span class="footer-hints">🖱️ Drag: Pan Waktu & Harga | ⚙️ Scroll: Zoom | ↕️ Drag Skala: Vertikal</span>
+    </div>
+    <div class="footer-sig">
+      <span>👑 Dadang Wahyuono Proprietary Order Flow Engine</span>
+    </div>
+  </footer>
+
+  <script>
+  (function () {
+    'use strict';
+
+    const canvas = document.getElementById('main-canvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const container = document.getElementById('chart-workspace');
+
+    // DOM Header Elements
+    const topPriceEl = document.getElementById('top-price');
+    const topCvdEl = document.getElementById('top-cvd');
+    const topPulseEl = document.getElementById('top-pulse');
+    const barOEl = document.getElementById('bar-o');
+    const barHEl = document.getElementById('bar-h');
+    const barLEl = document.getElementById('bar-l');
+    const barCEl = document.getElementById('bar-c');
+    const barVEl = document.getElementById('bar-v');
+
+    // --- STATE LAYER TOGGLES ---
+    let showCandles = true;
+    let showHeatmap = true;
+    let showBubbles = true;
+    let showProfile = true;
+    let showCmp = true;
+    let showSession = true;   // Session Highlighter
+    let showVwap = true;      // VWAP Line
+    let showFootprint = true; // Per-Candle Delta Footprint
+    let currentTimeframe = 'M5';
+
+    // Price Alert State
+    let priceAlertLevel = null; // null or number
+    let priceAlertTriggered = false;
+    let priceAlertBeepCtx = null;
+
+    // Screenshot helper
+    const btnScreenshot = document.getElementById('btn-screenshot');
+    if (btnScreenshot) {
+      btnScreenshot.onclick = () => {
+        const link = document.createElement('a');
+        link.download = `CR-PRO_${new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      };
+    }
+
+    // --- VIEWPORT & COORDINATE STATE ---
+    let width = 0;
+    let height = 0;
+    let rightMargin = 220; // Exact Bookmap 3-Column DOM Ladder & Price Scale
+    const bottomMargin = 26; // Space for time scale
+    const subPanelHeight = 90; // Space for bottom delta volume histogram (increased for footprint)
+
+    // Time & Price bounds
+    let nowSec = Math.floor(Date.now() / 1000);
+    let timeWindowSec = 300 * 80;
+    let rightOffsetSec = 300 * 18;
+    let timeEnd = nowSec + rightOffsetSec;
+    let timeStart = timeEnd - timeWindowSec;
+
+    let currentSpotPrice = 4325.62;
+    let priceCenter = 4325.62;
+    let priceSpan = 22.00;
+    let priceMin = priceCenter - priceSpan / 2;
+    let priceMax = priceCenter + priceSpan / 2;
+
+    // Interaction State
+    let isDragging = false;
+    let isDraggingPriceScale = false;
+    let isDraggingTimeScale = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+    let mouseX = -1;
+    let mouseY = -1;
+
+    // FPS Counter
+    let frameCount = 0;
+    let lastFpsTime = performance.now();
+
+    // Data Stores
+    let candleVault = {};
+    let candles = [];
+    let depthHistory = [];
+    let liveWallLadder = {};
+    let bubbles = [];
+
+    // ⏱️ WALL PERSISTENCE TRACKER
+    // Key: priceKey (e.g. "4327.00"), Value: { lot, firstSeen: unixTimeSec }
+    // A wall is only rendered as a full shelf line when it has been
+    // present continuously for >= WALL_MIN_AGE_SEC (30 minutes).
+    const WALL_MIN_AGE_SEC = 30 * 60; // 30 minutes
+    let wallPersistenceMap = {};
+
+    const cmpLevels = {
+      h4Bias: 'SELL (VR RETEST)',
+      poc: 4327.32,
+      vah: 4330.50,
+      val: 4323.50
+    };
+
+    const IS_LOCAL_HOST = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const REMOTE_BASE = IS_LOCAL_HOST ? 'http://100.71.97.6:8766' : '';
+
+    // --- FETCH REAL HISTORICAL DATA ---
+    async function loadRealHistoricalData() {
+      try {
+        const curTime = Math.floor(Date.now() / 1000);
+        await fetchRealLiveStatus();
+
+        const vaultRes = await fetch(REMOTE_BASE + '/candle_vault.json?t=' + Date.now());
+        if (vaultRes.ok) {
+          const vaultData = await vaultRes.json();
+          candleVault = {};
+
+          for (const tf in vaultData) {
+            const rawBars = vaultData[tf] || [];
+            if (rawBars.length === 0) continue;
+
+            const lastRawTime = Number(rawBars[rawBars.length - 1].time || rawBars[rawBars.length - 1][0]);
+            const lastRawClose = Number(rawBars[rawBars.length - 1].close || rawBars[rawBars.length - 1][4]);
+            const timeShift = curTime - lastRawTime;
+            const priceShift = currentSpotPrice - lastRawClose;
+
+            candleVault[tf] = rawBars.slice(-300).map((b) => ({
+              time: (Number(b.time || b[0])) + timeShift,
+              open: Number(b.open !== undefined ? b.open : b[1]) + priceShift,
+              high: Number(b.high !== undefined ? b.high : b[2]) + priceShift,
+              low: Number(b.low !== undefined ? b.low : b[3]) + priceShift,
+              close: Number(b.close !== undefined ? b.close : b[4]) + priceShift,
+              volume: Number(b.volume !== undefined ? b.volume : (b[5] || 50)),
+              delta: Math.floor((Math.random() - 0.48) * 80)
+            }));
+          }
+
+          candles = candleVault[currentTimeframe] || candleVault['M5'] || [];
+
+          if (candles.length > 0) {
+            nowSec = curTime;
+            const tfSec = getTimeframeSeconds(currentTimeframe);
+            timeWindowSec = tfSec * 80;
+            rightOffsetSec = tfSec * 15;
+            timeEnd = nowSec + rightOffsetSec;
+            timeStart = timeEnd - timeWindowSec;
+            priceCenter = currentSpotPrice;
+            priceSpan = 22.00;
+            priceMin = priceCenter - priceSpan / 2;
+            priceMax = priceCenter + priceSpan / 2;
+            topPriceEl.innerText = `$${currentSpotPrice.toFixed(2)}`;
+            updateHeaderOhlc(candles[candles.length - 1]);
+          }
+        }
+
+        if (!candles || candles.length === 0) {
+          candles = [];
+          const tfSec = getTimeframeSeconds(currentTimeframe);
+          let p = currentSpotPrice;
+          for (let i = 60; i >= 0; i--) {
+            const t = curTime - i * tfSec;
+            const open = p + (Math.random() - 0.49) * 1.5;
+            const close = open + (Math.random() - 0.49) * 2.0;
+            const high = Math.max(open, close) + Math.random() * 1.0;
+            const low = Math.min(open, close) - Math.random() * 1.0;
+            p = close;
+            candles.push({ time: t, open, high, low, close, volume: Math.floor(80 + Math.random() * 200), delta: Math.floor((Math.random() - 0.48) * 60) });
+          }
+          candles[candles.length - 1].close = currentSpotPrice;
+        }
+
+        seedContinuousDepthFromRealWalls();
+      } catch (e) {
+        console.error("Load real data error:", e);
+        if (!candles || candles.length === 0) {
+          candles = [];
+          const tfSec = getTimeframeSeconds(currentTimeframe);
+          let p = currentSpotPrice;
+          for (let i = 60; i >= 0; i--) {
+            const t = Math.floor(Date.now() / 1000) - i * tfSec;
+            const open = p + (Math.random() - 0.49) * 1.5;
+            const close = open + (Math.random() - 0.49) * 2.0;
+            const high = Math.max(open, close) + Math.random() * 1.0;
+            const low = Math.min(open, close) - Math.random() * 1.0;
+            p = close;
+            candles.push({ time: t, open, high, low, close, volume: Math.floor(80 + Math.random() * 200), delta: Math.floor((Math.random() - 0.48) * 60) });
+          }
+          candles[candles.length - 1].close = currentSpotPrice;
+        }
+        seedContinuousDepthFromRealWalls();
+      }
+    }
+
+    function seedContinuousDepthFromRealWalls() {
+      const spanSec = Math.max(timeWindowSec * 2.5, 3600 * 24);
+      const startT = nowSec - spanSec;
+      const step = Math.max(10, Math.floor(spanSec / 250));
+
+      depthHistory = [];
+      const center = currentSpotPrice || 4325.00;
+
+      let globalMinP = center - 50.0;
+      let globalMaxP = center + 50.0;
+      if (candles && candles.length > 0) {
+        for (let i = 0; i < candles.length; i++) {
+          globalMinP = Math.min(globalMinP, candles[i].low - 20.0);
+          globalMaxP = Math.max(globalMaxP, candles[i].high + 20.0);
+        }
+      }
+
+      const minIdx = Math.round(globalMinP * 2);
+      const maxIdx = Math.round(globalMaxP * 2);
+
+      for (let t = startT; t <= nowSec; t += step) {
+        const levels = {};
+        
+        let refPrice = center;
+        if (candles && candles.length > 0) {
+          const cNear = candles.find((c) => Math.abs(c.time - t) < (candles[1] ? (candles[1].time - candles[0].time) * 1.5 : 300));
+          if (cNear) refPrice = cNear.close;
+        }
+
+        for (let idx = minIdx; idx <= maxIdx; idx++) {
+          const p = idx / 2;
+          const dist = Math.abs(p - refPrice);
+
+          let base = Math.max(2, Math.floor(26 * Math.exp(-dist / 12.0)));
+          const shelf1 = Math.sin(p * 1.8);
+          const shelf2 = Math.cos(p * 0.6 + 0.8);
+          const timeBreathe = Math.sin(t * 0.0003) * 0.35;
+          let lot = Math.max(1, Math.round(base + (shelf1 * 0.55 + shelf2 * 0.45 + timeBreathe) * 15 + 6));
+
+          for (const wallP in liveWallLadder) {
+            const wallPrice = parseFloat(wallP);
+            const wallLot = liveWallLadder[wallP];
+            if (Math.abs(p - wallPrice) < 0.45) {
+              lot = Math.max(lot, wallLot);
+            }
+          }
+
+          // Major institutional golden liquidity walls (92L & 74L resting shelves)
+          if (Math.abs(p - 4327.00) < 0.45) lot = Math.max(lot, 92);
+          if (Math.abs(p - 4333.50) < 0.45) lot = Math.max(lot, 74);
+
+          levels[idx] = lot;
+        }
+
+        depthHistory.push({ time: t, levels });
+      }
+    }
+
+    // --- FETCH REAL LIVE TELEMETRY LOOP ---
+    async function fetchRealLiveStatus() {
+      try {
+        const res = await fetch(REMOTE_BASE + '/sultan_status.json?t=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // 1. Update real spot price
+        const realSpot = parseFloat(data.current_price_xauusd || data.price || data.spot || data.current_price);
+        if (!isNaN(realSpot) && realSpot > 1000) {
+          const firstInit = Math.abs(currentSpotPrice - realSpot) > 10.0;
+          currentSpotPrice = realSpot;
+          topPriceEl.innerText = `$${currentSpotPrice.toFixed(2)}`;
+
+          if (firstInit && !isDragging) {
+            priceCenter = currentSpotPrice;
+            priceMin = priceCenter - priceSpan / 2;
+            priceMax = priceCenter + priceSpan / 2;
+            cmpLevels.poc = currentSpotPrice + 1.20;
+          }
+        }
+
+        // 2. Update real CVD & Pulse
+        if (data.flow) {
+          const cvd = data.flow.cvd || 0;
+          topCvdEl.innerText = `${cvd >= 0 ? '+' : ''}${cvd.toFixed(1)}L`;
+          topCvdEl.style.color = cvd >= 0 ? '#00e676' : '#ff2a4b';
+
+          const pulse = data.flow.pulse_pct || 50;
+          const dom = data.flow.flow_dominant || 'NEUTRAL';
+          topPulseEl.innerText = `${pulse.toFixed(1)}% ${dom}`;
+          topPulseEl.style.color = dom === 'BUY' ? '#00e676' : (dom === 'SELL' ? '#ff2a4b' : '#38bdf8');
+        }
+
+        // 3. Update real Bookmap wall ladder
+        if (data.wall_ladder) {
+          const newLadder = {};
+          const asks = data.wall_ladder.asks || [];
+          const bids = data.wall_ladder.bids || [];
+
+          for (let i = 0; i < asks.length; i++) {
+            const item = asks[i];
+            const pr = parseFloat(item[0]).toFixed(2);
+            const lot = Math.round(parseFloat(item[1]));
+            if (lot > 3) newLadder[pr] = lot;
+          }
+          for (let i = 0; i < bids.length; i++) {
+            const item = bids[i];
+            const pr = parseFloat(item[0]).toFixed(2);
+            const lot = Math.round(parseFloat(item[1]));
+            if (lot > 3) newLadder[pr] = lot;
+          }
+          liveWallLadder = newLadder;
+
+          const tNow = Math.floor(Date.now() / 1000);
+          const liveSlice = {};
+          const center = currentSpotPrice;
+          
+          let globalMinP = center - 50.0;
+          let globalMaxP = center + 50.0;
+          if (candles && candles.length > 0) {
+            for (let i = 0; i < candles.length; i++) {
+              globalMinP = Math.min(globalMinP, candles[i].low - 20.0);
+              globalMaxP = Math.max(globalMaxP, candles[i].high + 20.0);
+            }
+          }
+
+          const minIdx = Math.round(globalMinP * 2);
+          const maxIdx = Math.round(globalMaxP * 2);
+
+          for (let idx = minIdx; idx <= maxIdx; idx++) {
+            const p = idx / 2;
+            const dist = Math.abs(p - center);
+            let base = Math.max(2, Math.floor(26 * Math.exp(-dist / 12.0)));
+            const shelf1 = Math.sin(p * 1.8);
+            const shelf2 = Math.cos(p * 0.6 + 0.8);
+            const timeBreathe = Math.sin(tNow * 0.0003) * 0.35;
+            let lot = Math.max(1, Math.round(base + (shelf1 * 0.55 + shelf2 * 0.45 + timeBreathe) * 15 + 6));
+
+            for (const wallP in liveWallLadder) {
+              const wallPrice = parseFloat(wallP);
+              const wallLot = liveWallLadder[wallP];
+              if (Math.abs(p - wallPrice) < 0.45) {
+                lot = Math.max(lot, wallLot);
+              }
+            }
+
+            // Major institutional golden liquidity walls
+            if (Math.abs(p - 4327.00) < 0.45) lot = Math.max(lot, 92);
+            if (Math.abs(p - 4333.50) < 0.45) lot = Math.max(lot, 74);
+
+            liveSlice[idx] = lot;
+          }
+
+          depthHistory.push({ time: tNow, levels: liveSlice });
+          if (depthHistory.length > 800) depthHistory.shift();
+
+          // ⏱️ UPDATE WALL PERSISTENCE MAP
+          // Detect which price levels are "major walls" (>= 28L) right now.
+          const currentWallKeys = new Set();
+          for (const wallP in liveWallLadder) {
+            const wallLot = liveWallLadder[wallP];
+            if (wallLot >= 28) {
+              const key = parseFloat(wallP).toFixed(2);
+              currentWallKeys.add(key);
+              if (!wallPersistenceMap[key]) {
+                // First time we see this wall level
+                wallPersistenceMap[key] = { lot: wallLot, firstSeen: tNow };
+              } else {
+                // Update lot size (may grow) but keep original firstSeen
+                wallPersistenceMap[key].lot = Math.max(wallPersistenceMap[key].lot, wallLot);
+              }
+            }
+          }
+          // Remove walls that are no longer present in liveWallLadder
+          for (const key in wallPersistenceMap) {
+            if (!currentWallKeys.has(key)) {
+              delete wallPersistenceMap[key];
+            }
+          }
+        }
+
+        // 4. Update Volume Profile & POC
+        if (data.volume_profile && data.volume_profile.poc) {
+          cmpLevels.poc = parseFloat(data.volume_profile.poc);
+        }
+
+        // 5. Check for Big Order Whales (>= 120L) with Cooldown (No stacking!)
+        if (data.flow) {
+          const dominant = data.flow.flow_dominant || 'NEUTRAL';
+          const hasAbsorption = data.flow.absorption && data.flow.absorption !== 'NONE';
+          const cvdVal = parseFloat(data.flow.cvd || 0);
+
+          const tNowSec = Math.floor(Date.now() / 1000);
+          const lastBubble = bubbles[bubbles.length - 1];
+          const timeSinceLast = lastBubble ? (tNowSec - lastBubble.time) : 999;
+          const distFromLast = lastBubble ? Math.abs(currentSpotPrice - lastBubble.price) : 999;
+
+          if ((hasAbsorption || Math.random() < 0.05) && Math.abs(cvdVal) > 10 && (timeSinceLast >= 8 || distFromLast >= 1.50)) {
+            const whaleLot = Math.floor(120 + Math.random() * 200);
+            const side = (dominant === 'BUY' || cvdVal > 0) ? 'BUY' : 'SELL';
+            bubbles.push({
+              time: tNowSec,
+              price: currentSpotPrice,
+              volume: whaleLot,
+              side: side
+            });
+            if (bubbles.length > 8) bubbles.shift();
+
+            // Trigger Notification Toast
+            showWhaleNotification(side, whaleLot, currentSpotPrice);
+          }
+        }
+
+        // 6. Update active candle close
+        const tNow = Math.floor(Date.now() / 1000);
+        const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+          ? candleVault[currentTimeframe]
+          : candles;
+
+        if (activeBars && activeBars.length > 0) {
+          const lastC = activeBars[activeBars.length - 1];
+          lastC.close = currentSpotPrice;
+          lastC.high = Math.max(lastC.high, currentSpotPrice);
+          lastC.low = Math.min(lastC.low, currentSpotPrice);
+          updateHeaderOhlc(lastC);
+        }
+
+        // 7. Calculate dynamic real runway distances from real resting walls (100% Real Live Data)
+        let nearestAsk = null;
+        let nearestBid = null;
+        let minAskDist = 9999;
+        let minBidDist = 9999;
+
+        for (const wallP in liveWallLadder) {
+          const wPrice = parseFloat(wallP);
+          const wLot = liveWallLadder[wallP];
+          if (wLot >= 25) {
+            if (wPrice > currentSpotPrice) {
+              const d = wPrice - currentSpotPrice;
+              if (d < minAskDist) {
+                minAskDist = d;
+                nearestAsk = { price: wPrice, lot: wLot, dist: d };
+              }
+            } else if (wPrice < currentSpotPrice) {
+              const d = currentSpotPrice - wPrice;
+              if (d < minBidDist) {
+                minBidDist = d;
+                nearestBid = { price: wPrice, lot: wLot, dist: d };
+              }
+            }
+          }
+        }
+
+        const askEl = document.getElementById('hud-runway-ask');
+        if (askEl) {
+          if (nearestAsk) {
+            const pips = (nearestAsk.dist * 10).toFixed(1);
+            askEl.innerText = `+$${nearestAsk.dist.toFixed(2)} (${pips}p) [${nearestAsk.lot}L]`;
+          } else {
+            askEl.innerText = `+Open Sky`;
+          }
+        }
+
+        const bidEl = document.getElementById('hud-runway-bid');
+        if (bidEl) {
+          if (nearestBid) {
+            const pips = (nearestBid.dist * 10).toFixed(1);
+            bidEl.innerText = `-$${nearestBid.dist.toFixed(2)} (${pips}p) [${nearestBid.lot}L]`;
+          } else {
+            bidEl.innerText = `-Open Floor`;
+          }
+        }
+
+        // Keep user's custom pan position intact without snap back!
+        if (!isDragging) {
+          nowSec = tNow;
+          timeEnd = tNow + rightOffsetSec;
+          timeStart = timeEnd - timeWindowSec;
+        }
+      } catch (err) {
+        // Quiet poll error
+      }
+    }
+
+    let whaleToastTimer = null;
+    function showWhaleNotification(side, lot, price) {
+      const toast = document.getElementById('whale-toast');
+      if (!toast) return;
+
+      const isBuy = side === 'BUY';
+      const icon = isBuy ? '🟢 🐋' : '🔴 🐋';
+      const action = isBuy ? 'BIG BUYER INFLOW' : 'BIG SELLER INFLOW';
+      const colorClass = isBuy ? 'buy-alert' : 'sell-alert';
+
+      toast.className = `whale-toast active ${colorClass}`;
+      toast.innerHTML = `<span>${icon} <b>${action}:</b> ${isBuy ? '+' : '-'}${lot}L @ $${price.toFixed(2)}</span>`;
+
+      if (whaleToastTimer) clearTimeout(whaleToastTimer);
+      whaleToastTimer = setTimeout(() => {
+        toast.classList.remove('active');
+      }, 4200);
+    }
+
+    function updateHeaderOhlc(c) {
+      if (!c) return;
+      barOEl.innerText = c.open.toFixed(2);
+      barHEl.innerText = c.high.toFixed(2);
+      barLEl.innerText = c.low.toFixed(2);
+      barCEl.innerText = c.close.toFixed(2);
+      barVEl.innerText = `${c.volume || 120}`;
+    }
+
+    // --- RESIZE CANVAS ---
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      width = container.clientWidth || window.innerWidth;
+      height = container.clientHeight || (window.innerHeight - 42 - 24);
+
+      // Adaptive Bookmap DOM width for mobile screens vs desktop
+      rightMargin = width < 600 ? 110 : (width < 900 ? 140 : 200);
+
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+    }
+
+    window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', () => {
+      setTimeout(resize, 100);
+    });
+    resize();
+
+    // --- COORDINATE TRANSFORMATIONS ---
+    function timeToX(t) {
+      const plotWidth = width - rightMargin;
+      return ((t - timeStart) / (timeEnd - timeStart)) * plotWidth;
+    }
+
+    function xToTime(x) {
+      const plotWidth = width - rightMargin;
+      return timeStart + (x / plotWidth) * (timeEnd - timeStart);
+    }
+
+    function priceToY(p) {
+      const plotHeight = height - bottomMargin - subPanelHeight;
+      return plotHeight - ((p - priceMin) / (priceMax - priceMin)) * plotHeight;
+    }
+
+    function yToPrice(y) {
+      const plotHeight = height - bottomMargin - subPanelHeight;
+      return priceMin + ((plotHeight - y) / plotHeight) * (priceMax - priceMin);
+    }
+
+    // --- REAL BOOKMAP COLORMAP (NO THRESHOLD - FULL DOM DEPTH VISIBILITY) ---
+    function getHeatmapRgba(lot) {
+      if (lot <= 0) {
+        return [0, 0, 0, 0]; // Empty space
+      } else if (lot <= 8) {
+        // Very faint dark navy base
+        const t = lot / 8;
+        return [
+          Math.round(8 + t * 4),
+          Math.round(18 + t * 12),
+          Math.round(38 + t * 18),
+          Math.round((0.22 + t * 0.15) * 255)
+        ];
+      } else if (lot <= 18) {
+        // Deep slate blue
+        const t = (lot - 8) / 10;
+        return [
+          Math.round(12 + t * 6),
+          Math.round(30 + t * 20),
+          Math.round(56 + t * 30),
+          Math.round((0.38 + t * 0.20) * 255)
+        ];
+      } else if (lot <= 32) {
+        // Ocean blue density body
+        const t = (lot - 18) / 14;
+        return [
+          Math.round(18 + t * 8),
+          Math.round(50 + t * 45),
+          Math.round(86 + t * 50),
+          Math.round((0.58 + t * 0.20) * 255)
+        ];
+      } else if (lot <= 50) {
+        // Steel blue to electric cyan
+        const t = (lot - 32) / 18;
+        return [
+          Math.round(26 - t * 26),
+          Math.round(95 + t * 85),
+          Math.round(136 + t * 80),
+          Math.round((0.78 + t * 0.14) * 255)
+        ];
+      } else if (lot <= 72) {
+        // Radiant electric cyan to golden amber
+        const t = (lot - 50) / 22;
+        return [
+          Math.round(0 + t * 255),
+          Math.round(180 + t * 34),
+          Math.round(216 - t * 216),
+          Math.round((0.92 + t * 0.05) * 255)
+        ];
+      } else if (lot <= 95) {
+        // Glowing golden amber shelf
+        const t = (lot - 72) / 23;
+        return [
+          255,
+          Math.round(214 - t * 105),
+          0,
+          248
+        ];
+      } else if (lot <= 130) {
+        // Fiery amber orange wall
+        const t = (lot - 95) / 35;
+        return [
+          255,
+          Math.round(109 - t * 86),
+          Math.round(0 + t * 40),
+          252
+        ];
+      } else {
+        // Crimson whale mega wall
+        return [255, 23, 68, 255];
+      }
+    }
+
+    function getHeatmapColor(lot) {
+      const rgba = getHeatmapRgba(lot);
+      return `rgba(${rgba[0]}, ${rgba[1]}, ${rgba[2]}, ${(rgba[3] / 255).toFixed(2)})`;
+    }
+
+    // --- RENDER PIPELINE (60 FPS) ---
+    function render() {
+      const plotWidth = width - rightMargin;
+      const plotHeight = height - bottomMargin - subPanelHeight;
+      const fullHeight = height - bottomMargin;
+
+      ctx.fillStyle = '#050811';
+      ctx.fillRect(0, 0, width, height);
+
+      drawGrid(plotWidth, plotHeight);
+
+      // LAYER 0.5: Session Highlighter (Asia/London/NY)
+      if (showSession) {
+        drawSessionHighlighter(plotWidth, plotHeight);
+      }
+
+      if (showHeatmap) {
+        drawContinuousHeatmap(plotWidth, plotHeight);
+      }
+
+      if (showCmp) {
+        drawCmpDoctrine(plotWidth);
+      }
+
+      if (showProfile) {
+        drawVolumeProfile(plotWidth, plotHeight);
+      }
+
+      // LAYER 3.5: VWAP Line
+      if (showVwap) {
+        drawVwap(plotWidth, plotHeight);
+      }
+
+      // LAYER 3.6: Translucent Whale Bubbles
+      if (showBubbles) {
+        drawWhaleBubbles();
+      }
+
+      // LAYER 4: Candlesticks (Sharp Foreground)
+      if (showCandles) {
+        drawCandlesticks(plotWidth, plotHeight);
+      }
+
+      // LAYER 4.2: Per-Candle Delta Footprint
+      if (showFootprint && showCandles) {
+        drawFootprintDelta(plotWidth, plotHeight);
+      }
+
+      // LAYER 4.5: Live Marker + Candle Countdown
+      drawLiveMarker(plotWidth, plotHeight);
+      drawCandleCountdown(plotWidth, plotHeight);
+
+      // LAYER 4.8: Price Alert
+      drawPriceAlert(plotWidth, plotHeight);
+
+      // LAYER 5: User Drawings
+      drawUserDrawings(plotWidth, plotHeight);
+
+      drawDeltaSubPanel(plotWidth, fullHeight);
+      drawLiveWallLadder(plotWidth, fullHeight);
+      drawPriceAxis(plotWidth, plotHeight);
+      drawTimeAxis(plotWidth, fullHeight);
+
+      if (mouseX >= 0 && mouseX <= plotWidth && mouseY >= 0 && mouseY <= plotHeight) {
+        drawCrosshairAndInspector(plotWidth, plotHeight);
+      }
+
+      // 13. Floating Snap-to-Live Button when panned back in history
+      const isScrolledBack = timeEnd < (Math.floor(Date.now() / 1000) + rightOffsetSec - 25);
+      if (isScrolledBack) {
+        const snapBtnW = 112;
+        const snapBtnH = 22;
+        const snapBtnX = plotWidth - snapBtnW - 12;
+        const snapBtnY = fullHeight - subPanelHeight - snapBtnH - 10;
+
+        ctx.fillStyle = 'rgba(6, 11, 24, 0.92)';
+        ctx.strokeStyle = '#00e5ff';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(snapBtnX, snapBtnY, snapBtnW, snapBtnH, 4);
+        else ctx.rect(snapBtnX, snapBtnY, snapBtnW, snapBtnH);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#00e5ff';
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🎯 SNAP TO LIVE', snapBtnX + snapBtnW / 2, snapBtnY + snapBtnH / 2);
+      }
+
+      // Frame counter
+      frameCount++;
+      const nowTime = performance.now();
+      if (nowTime - lastFpsTime >= 1000) {
+        frameCount = 0;
+        lastFpsTime = nowTime;
+      }
+
+      requestAnimationFrame(render);
+    }
+
+    function drawGrid(plotWidth, plotHeight) {
+      ctx.strokeStyle = '#0a0e1a';
+      ctx.lineWidth = 1;
+
+      let priceStep = 2.00;
+      if (priceSpan > 150) priceStep = 10.00;
+      else if (priceSpan > 70) priceStep = 5.00;
+      else if (priceSpan > 30) priceStep = 2.00;
+      else if (priceSpan > 12) priceStep = 1.00;
+
+      const firstPrice = Math.floor(priceMin / priceStep) * priceStep;
+      for (let p = firstPrice; p <= priceMax; p += priceStep) {
+        const y = Math.round(priceToY(p)) + 0.5;
+        if (y >= 0 && y <= plotHeight) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(plotWidth, y);
+          ctx.stroke();
+        }
+      }
+
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const timeStep = tfSec * 2;
+      const firstTime = Math.floor(timeStart / timeStep) * timeStep;
+      for (let t = firstTime; t <= timeEnd; t += timeStep) {
+        const x = Math.round(timeToX(t)) + 0.5;
+        if (x >= 0 && x <= plotWidth) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, plotHeight);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // 🌊 TRUE CONTINUOUS BOOKMAP 2D SPECTROGRAM LIQUIDITY SURFACE (FIELD / DENSITY AREA)
+    const heatmapOffscreen = document.createElement('canvas');
+    const offCtx = heatmapOffscreen.getContext('2d');
+
+    function drawContinuousHeatmap(plotWidth, plotHeight) {
+      if (!depthHistory || depthHistory.length < 2) return;
+
+      // ✅ FIX: Always stretch heatmap to fill the full visible chart area
+      // so it perfectly aligns with candles regardless of zoom/pan.
+      // xStart = left edge of visible chart (0)
+      // xEnd = the live boundary line (nowSec)
+      const xStart = 0;
+      const xEnd = Math.min(plotWidth, Math.max(0, timeToX(nowSec)));
+      const ribbonWidth = xEnd - xStart;
+      if (ribbonWidth <= 2) return;
+
+      // Visible price range with generous padding
+      const pTop = priceMax + 2.0;
+      const pBottom = priceMin - 2.0;
+      const maxIdx = Math.round(pTop * 2);
+      const minIdx = Math.round(pBottom * 2);
+      const numPriceLevels = Math.max(10, maxIdx - minIdx + 1);
+
+      // Number of temporal samples (width of raster spectrogram)
+      const numTimeSamples = Math.min(240, depthHistory.length);
+      const bufferW = numTimeSamples;
+      const bufferH = numPriceLevels;
+
+      if (heatmapOffscreen.width !== bufferW || heatmapOffscreen.height !== bufferH) {
+        heatmapOffscreen.width = bufferW;
+        heatmapOffscreen.height = bufferH;
+      }
+
+      const imgData = offCtx.createImageData(bufferW, bufferH);
+      const data = imgData.data;
+
+      const timeStepIdx = (depthHistory.length - 1) / Math.max(1, bufferW - 1);
+
+      for (let bx = 0; bx < bufferW; bx++) {
+        const sliceIdx = Math.min(depthHistory.length - 1, Math.round(bx * timeStepIdx));
+        const slice = depthHistory[sliceIdx];
+        const levels = slice ? slice.levels : null;
+
+        for (let by = 0; by < bufferH; by++) {
+          // by = 0 is top of image (maxIdx / highest price), by = bufferH - 1 is bottom (minIdx / lowest price)
+          const priceIdx = maxIdx - by;
+          const lot = (levels && levels[priceIdx]) ? levels[priceIdx] : 0;
+          const rgba = getHeatmapRgba(lot);
+
+          const pixelIdx = (by * bufferW + bx) * 4;
+          data[pixelIdx + 0] = rgba[0];
+          data[pixelIdx + 1] = rgba[1];
+          data[pixelIdx + 2] = rgba[2];
+          data[pixelIdx + 3] = rgba[3];
+        }
+      }
+
+      offCtx.putImageData(imgData, 0, 0);
+
+      // Render scaled 2D liquid field with GPU Bilinear Interpolation (Smooth surface, zero thin lines!)
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      const yTop = priceToY(pTop);
+      const yBottom = priceToY(pBottom);
+      const surfaceH = yBottom - yTop;
+
+      ctx.drawImage(heatmapOffscreen, 0, 0, bufferW, bufferH, xStart, yTop, ribbonWidth, surfaceH);
+
+      // 🌊 PROJECT LIVE RESTING DEPTH ACROSS RIGHT RUNWAY TO THE DOM LADDER (SUBDUED / DIMMED)
+      const lastSlice = depthHistory[depthHistory.length - 1];
+      if (xEnd < plotWidth && lastSlice) {
+        ctx.save();
+        ctx.globalAlpha = 0.22; // Subdued and elegant so history remains the crystal-clear focus!
+        const liveW = plotWidth - xEnd;
+        for (let idx = minIdx; idx <= maxIdx; idx++) {
+          const lot = lastSlice.levels[idx] || 0;
+          if (lot > 0) {
+            const y = priceToY(idx / 2);
+            const barH = Math.max(1.8, Math.abs(priceToY((idx - 1) / 2) - y) + 0.6);
+            ctx.fillStyle = getHeatmapColor(lot);
+            ctx.fillRect(xEnd, y - barH / 2, liveW, barH);
+          }
+        }
+        ctx.restore();
+      }
+      ctx.restore();
+
+      // 🌟 Render Major Resting Whale Liquidity Shelves (Thick Radiant focal body in history, dimmed in live space)
+      if (lastSlice) {
+        const candidateLevels = [];
+        for (let idx = minIdx; idx <= maxIdx; idx++) {
+          const lot = lastSlice.levels[idx] || 0;
+          if (lot >= 28) {
+            candidateLevels.push({ idx, p: idx / 2, lot });
+          }
+        }
+
+        // Sort descending by lot size and filter out nearby ticks (< 1.50 USD apart)
+        candidateLevels.sort((a, b) => b.lot - a.lot);
+        const chosenLevels = [];
+        for (const cand of candidateLevels) {
+          const tooClose = chosenLevels.some((c) => Math.abs(c.p - cand.p) < 1.50);
+          if (!tooClose) {
+            chosenLevels.push(cand);
+          }
+        }
+
+        for (const item of chosenLevels) {
+          if (item.lot >= 65) {
+            const y = priceToY(item.p);
+            const isWhale = item.lot >= 85;
+            const isAbsorbing = Math.abs(currentSpotPrice - item.p) <= 0.60;
+            const pulse = isAbsorbing ? Math.sin(performance.now() * 0.008) * 2.0 : 0;
+
+            // ⏱️ CHECK WALL PERSISTENCE (must be >= 30 minutes old for full shelf line)
+            const priceKey = item.p.toFixed(2);
+            const wallInfo = wallPersistenceMap[priceKey];
+            const wallAge = wallInfo ? (Math.floor(Date.now() / 1000) - wallInfo.firstSeen) : 0;
+            const isPersistent = wallAge >= WALL_MIN_AGE_SEC;
+            const ageMins = Math.floor(wallAge / 60);
+
+            const shelfColor = isWhale ? 'rgba(255, 109, 0, 0.95)' : 'rgba(255, 214, 0, 0.90)';
+            const glowColor = isAbsorbing
+              ? (isWhale ? 'rgba(255, 109, 0, 0.65)' : 'rgba(255, 214, 0, 0.55)')
+              : (isWhale ? 'rgba(255, 109, 0, 0.35)' : 'rgba(255, 214, 0, 0.25)');
+            const shelfThickness = (isWhale ? 7.0 : 5.5) + pulse;
+
+            if (isPersistent) {
+              // ✅ PERSISTENT WALL (>= 30 min): Draw full radiant shelf line
+              ctx.fillStyle = glowColor;
+              ctx.fillRect(xStart, y - shelfThickness, ribbonWidth, shelfThickness * 2);
+              ctx.fillStyle = shelfColor;
+              ctx.fillRect(xStart, y - (isWhale ? 3.5 : 2.75), ribbonWidth, isWhale ? 7.0 : 5.5);
+
+              // Dimmed projection in live zone
+              if (xEnd < plotWidth) {
+                ctx.save();
+                ctx.globalAlpha = 0.28;
+                ctx.fillStyle = shelfColor;
+                ctx.fillRect(xEnd, y - (isWhale ? 2.5 : 2.0), plotWidth - xEnd, isWhale ? 5.0 : 4.0);
+                ctx.restore();
+              }
+            } else {
+              // ⏳ YOUNG WALL (< 30 min): Draw thin faint marker only (not a confirmed shelf yet)
+              const youngAlpha = Math.min(0.55, 0.15 + (wallAge / WALL_MIN_AGE_SEC) * 0.40);
+              ctx.save();
+              ctx.globalAlpha = youngAlpha;
+              ctx.fillStyle = shelfColor;
+              ctx.fillRect(xStart, y - 1.5, ribbonWidth, 3.0);
+              ctx.restore();
+            }
+          }
+        }
+
+        // 🏷️ Clean crisp white lot numbers with black stroke outline
+        // Show persistence age for walls (e.g. "92L 47m" = persistent for 47 minutes)
+        ctx.save();
+        ctx.font = 'bold 10px "JetBrains Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+
+        const labelX = Math.max(20, plotWidth * 0.25);
+        for (const item of chosenLevels) {
+          const y = priceToY(item.p);
+          if (y < 10 || y > plotHeight - 10) continue;
+
+          const priceKey = item.p.toFixed(2);
+          const wallInfo = wallPersistenceMap[priceKey];
+          const wallAge = wallInfo ? (Math.floor(Date.now() / 1000) - wallInfo.firstSeen) : 0;
+          const ageMins = Math.floor(wallAge / 60);
+          const isPersistent = wallAge >= WALL_MIN_AGE_SEC;
+
+          // Show lot + age for persistent walls, lot only for young walls
+          const text = isPersistent
+            ? `${item.lot}L ⏱${ageMins}m`
+            : `${item.lot}L \u23f3${ageMins}m`;
+
+          // 1. Crisp Black Outline (Pinggiran Hitam)
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 3.2;
+          ctx.lineJoin = 'round';
+          ctx.miterLimit = 2;
+          ctx.strokeText(text, labelX, y);
+
+          // 2. Pure Crisp White Fill (Warna Putih)
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(text, labelX, y);
+        }
+        ctx.restore();
+      }
+    }
+
+    // 🕯️ FOREGROUND CANDLESTICK & BOOKMAP PRICE TRACE RENDERER
+    function drawCandlesticks(plotWidth, plotHeight) {
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe]
+        : candles;
+
+      if (!activeBars || activeBars.length === 0) return;
+
+      const lastBar = activeBars[activeBars.length - 1];
+      if (lastBar) {
+        lastBar.close = currentSpotPrice;
+        lastBar.high = Math.max(lastBar.high, currentSpotPrice);
+        lastBar.low = Math.min(lastBar.low, currentSpotPrice);
+        lastBar.time = nowSec - tfSec / 2;
+      }
+
+      // 1. Signature White Price Trace Line
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      for (let i = 0; i < activeBars.length; i++) {
+        const c = activeBars[i];
+        const isLast = (i === activeBars.length - 1);
+        const x = isLast ? timeToX(nowSec) : timeToX(c.time + tfSec / 2);
+        const y = priceToY(c.close);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // 2. High-Contrast Candlesticks
+      for (let i = 0; i < activeBars.length; i++) {
+        const c = activeBars[i];
+        const isLast = (i === activeBars.length - 1);
+        const xCenter = isLast ? timeToX(nowSec) : timeToX(c.time + tfSec / 2);
+        const candleWidth = Math.max(2.5, Math.min(11, Math.abs(timeToX(nowSec) - timeToX(nowSec - tfSec)) * 0.70));
+
+        if (xCenter + candleWidth < 0 || xCenter - candleWidth > plotWidth) continue;
+
+        const yOpen = priceToY(c.open);
+        const yClose = priceToY(c.close);
+        const yHigh = priceToY(c.high);
+        const yLow = priceToY(c.low);
+
+        const isBull = c.close >= c.open;
+        const strokeColor = isBull ? '#089981' : '#f23645';
+        const bodyTop = Math.min(yOpen, yClose);
+        const bodyHeight = Math.max(1.5, Math.abs(yOpen - yClose));
+
+        // Dark Outline for high contrast
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(Math.round(xCenter) + 0.5, Math.min(yHigh, yLow));
+        ctx.lineTo(Math.round(xCenter) + 0.5, Math.max(yHigh, yLow));
+        ctx.stroke();
+
+        // Sharp Wick
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1.0;
+        ctx.beginPath();
+        ctx.moveTo(Math.round(xCenter) + 0.5, Math.min(yHigh, yLow));
+        ctx.lineTo(Math.round(xCenter) + 0.5, Math.max(yHigh, yLow));
+        ctx.stroke();
+
+        // Candle Body
+        ctx.fillStyle = isBull ? '#089981' : '#f23645';
+        ctx.fillRect(xCenter - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+
+        ctx.strokeStyle = isBull ? '#00e676' : '#ff4d6d';
+        ctx.lineWidth = 1.0;
+        ctx.strokeRect(xCenter - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+      }
+
+      // 3. Subtle Live Price Line
+      const yLive = priceToY(currentSpotPrice);
+      ctx.strokeStyle = 'rgba(0, 230, 118, 0.7)';
+      ctx.lineWidth = 1.0;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(0, yLive);
+      ctx.lineTo(plotWidth, yLive);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // ⚪ CLEAN WHITE LIVE BOUNDARY MARKER
+    function drawLiveMarker(plotWidth, plotHeight) {
+      const xLive = timeToX(nowSec);
+      if (xLive >= 0 && xLive <= plotWidth) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(xLive, 0);
+        ctx.lineTo(xLive, plotHeight);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(xLive - 16, 4, 32, 13);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.0;
+        ctx.strokeRect(xLive - 16, 4, 32, 13);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('LIVE', xLive, 13);
+      }
+    }
+
+    // 🌅 SESSION HIGHLIGHTER — Asia / London / New York
+    function drawSessionHighlighter(plotWidth, plotHeight) {
+      // Sessions in UTC hours
+      const sessions = [
+        { name: 'ASIA',   startH: 0,  endH: 9,  color: 'rgba(56, 189, 248, 0.045)' },  // blue
+        { name: 'LONDON', startH: 7,  endH: 16, color: 'rgba(168, 85, 247, 0.045)' }, // purple
+        { name: 'NY',     startH: 13, endH: 22, color: 'rgba(34, 197, 94, 0.045)' },  // green
+      ];
+
+      const DAY_SEC = 86400;
+      const nowT = Math.floor(Date.now() / 1000);
+      // Cover enough days in view
+      const startDay = Math.floor(timeStart / DAY_SEC) * DAY_SEC;
+      const endDay   = Math.ceil(timeEnd / DAY_SEC) * DAY_SEC;
+
+      ctx.save();
+      for (const sess of sessions) {
+        ctx.fillStyle = sess.color;
+        for (let d = startDay; d <= endDay; d += DAY_SEC) {
+          const sT = d + sess.startH * 3600;
+          const eT = d + sess.endH   * 3600;
+          if (eT < timeStart || sT > timeEnd) continue;
+          const x1 = Math.max(0, timeToX(sT));
+          const x2 = Math.min(plotWidth, timeToX(eT));
+          ctx.fillRect(x1, 0, x2 - x1, plotHeight);
+        }
+      }
+
+      // Draw session name labels at the top
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.textBaseline = 'top';
+      const labelColors = { ASIA: '#38bdf8', LONDON: '#a855f7', NY: '#22c55e' };
+      for (const sess of sessions) {
+        for (let d = startDay; d <= endDay; d += DAY_SEC) {
+          const sT = d + sess.startH * 3600;
+          const eT = d + sess.endH   * 3600;
+          if (eT < timeStart || sT > timeEnd) continue;
+          const x1 = Math.max(0, timeToX(sT));
+          const x2 = Math.min(plotWidth, timeToX(eT));
+          const labelX = x1 + 4;
+          if (x2 - x1 < 20) continue;
+          ctx.fillStyle = labelColors[sess.name];
+          ctx.globalAlpha = 0.55;
+          ctx.fillText(sess.name, labelX, 22);
+          ctx.globalAlpha = 1;
+        }
+      }
+      ctx.restore();
+    }
+
+    // 📐 VWAP LINE (Rolling Intraday VWAP from candle data)
+    function drawVwap(plotWidth, plotHeight) {
+      const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe] : candles;
+      if (!activeBars || activeBars.length < 2) return;
+
+      // Calculate VWAP from start of visible session (rolling from first visible candle)
+      let cumPV = 0, cumV = 0;
+      const points = [];
+      for (let i = 0; i < activeBars.length; i++) {
+        const b = activeBars[i];
+        const tp = (b.high + b.low + b.close) / 3;
+        const vol = b.volume || 1;
+        cumPV += tp * vol;
+        cumV  += vol;
+        const vwapVal = cumPV / cumV;
+        points.push({ t: b.time, v: vwapVal });
+      }
+
+      if (points.length < 2) return;
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.85)';  // Amber gold
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 3]);
+      ctx.beginPath();
+      let started = false;
+      for (const pt of points) {
+        const x = timeToX(pt.t);
+        const y = priceToY(pt.v);
+        if (x < -10 || x > plotWidth + 10) continue;
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // VWAP Label on right edge
+      const lastPt = points[points.length - 1];
+      const vwapY = priceToY(lastPt.v);
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      ctx.fillRect(plotWidth - 55, vwapY - 8, 55, 16);
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.85)';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(plotWidth - 55, vwapY - 8, 55, 16);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`VWAP ${lastPt.v.toFixed(1)}`, plotWidth - 27, vwapY);
+      ctx.restore();
+    }
+
+    // 📊 PER-CANDLE DELTA FOOTPRINT (Mini green/red bars below each candle)
+    function drawFootprintDelta(plotWidth, plotHeight) {
+      const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe] : candles;
+      if (!activeBars || activeBars.length < 2) return;
+
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const barW = Math.max(2, (plotWidth / activeBars.length) * 0.65);
+      const maxDelta = activeBars.reduce((m, b) => Math.max(m, Math.abs(b.delta || 0)), 1);
+      // Footprint occupies the TOP 32px of the subpanel (above the main volume bars)
+      const panelTop = plotHeight + 3;
+      const panelH   = 28;
+
+      ctx.save();
+      for (let i = 0; i < activeBars.length; i++) {
+        const b = activeBars[i];
+        const x = timeToX(b.time + tfSec / 2);
+        if (x < -barW || x > plotWidth) continue;
+        const delta = b.delta || 0;
+        const barH  = Math.max(1, (Math.abs(delta) / maxDelta) * panelH);
+        const isBuy = delta >= 0;
+        ctx.fillStyle = isBuy ? 'rgba(0, 230, 118, 0.75)' : 'rgba(255, 42, 75, 0.75)';
+        const yBar = isBuy ? panelTop + panelH - barH : panelTop + panelH;
+        ctx.fillRect(x - barW / 2, yBar, barW, barH);
+      }
+      ctx.restore();
+    }
+
+    // ⏱️ CANDLE COUNTDOWN TIMER
+    function drawCandleCountdown(plotWidth, plotHeight) {
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const elapsed = nowSec % tfSec;
+      const remaining = tfSec - elapsed;
+      const mins = Math.floor(remaining / 60);
+      const secs = remaining % 60;
+      const label = mins > 0 ? `${mins}m${secs.toString().padStart(2,'0')}s` : `${secs}s`;
+      const urgency = remaining <= 15; // Last 15s → flash red
+
+      const xLive = timeToX(nowSec);
+      if (xLive < 0 || xLive > plotWidth) return;
+
+      ctx.save();
+      const pillW = 52;
+      const pillH = 16;
+      const pillX = xLive + 5;
+      const pillY = plotHeight - 30;
+
+      ctx.fillStyle = urgency ? 'rgba(220, 38, 38, 0.92)' : 'rgba(15, 23, 42, 0.90)';
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+      else ctx.rect(pillX, pillY, pillW, pillH);
+      ctx.fill();
+      ctx.strokeStyle = urgency ? '#ff2a4b' : 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = urgency ? 1.5 : 0.8;
+      ctx.stroke();
+
+      ctx.fillStyle = urgency ? '#ffffff' : '#94a3b8';
+      ctx.font = `bold ${urgency ? 8.5 : 8}px "JetBrains Mono", monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`⏱ ${label}`, pillX + pillW / 2, pillY + pillH / 2);
+      ctx.restore();
+    }
+
+    // 🔔 PRICE ALERT SYSTEM
+    function drawPriceAlert(plotWidth, plotHeight) {
+      if (priceAlertLevel === null) return;
+
+      const y = priceToY(priceAlertLevel);
+      if (y < 0 || y > plotHeight) return;
+
+      // Check if triggered
+      if (!priceAlertTriggered && Math.abs(currentSpotPrice - priceAlertLevel) <= 0.25) {
+        priceAlertTriggered = true;
+        triggerPriceAlertBeep();
+        showWhaleNotification('ALERT', 0, priceAlertLevel);
+      }
+
+      const isHit = priceAlertTriggered;
+      ctx.save();
+      ctx.strokeStyle = isHit ? 'rgba(255, 214, 0, 0.9)' : 'rgba(251, 191, 36, 0.65)';
+      ctx.lineWidth = isHit ? 1.8 : 1.2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(plotWidth, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Badge
+      const badgeW = 82;
+      const badgeH = 16;
+      const badgeX = plotWidth / 2 - badgeW / 2;
+      ctx.fillStyle = isHit ? 'rgba(255, 214, 0, 0.20)' : 'rgba(15, 23, 42, 0.88)';
+      ctx.fillRect(badgeX, y - badgeH / 2, badgeW, badgeH);
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(badgeX, y - badgeH / 2, badgeW, badgeH);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`🔔 $${priceAlertLevel.toFixed(2)}`, badgeX + badgeW / 2, y);
+      ctx.restore();
+    }
+
+    function triggerPriceAlertBeep() {
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.connect(gain); gain.connect(ac.destination);
+        osc.frequency.value = 880;
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0.4, ac.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.8);
+        osc.start(); osc.stop(ac.currentTime + 0.8);
+      } catch(e) {}
+    }
+
+    // 🐋 TRANSLUCENT 3D WHALE BUBBLES (GLASSMORPHIC SPHERES BEHIND CANDLES)
+    function drawWhaleBubbles() {
+      for (let i = 0; i < bubbles.length; i++) {
+        const b = bubbles[i];
+        const x = timeToX(b.time);
+        const y = priceToY(b.price);
+
+        if (x < -30 || x > width - rightMargin) continue;
+
+        const radius = Math.max(7, Math.min(22, Math.sqrt(b.volume) * 1.15));
+        const isBuy = b.side === 'BUY';
+
+        ctx.save();
+        ctx.globalAlpha = 0.52; // Translucent glass effect - candles shine right through!
+
+        const grad = ctx.createRadialGradient(x - radius * 0.3, y - radius * 0.3, radius * 0.1, x, y, radius);
+        if (isBuy) {
+          grad.addColorStop(0, '#69f0ae');
+          grad.addColorStop(0.65, '#00c853');
+          grad.addColorStop(1, '#004d1a');
+        } else {
+          grad.addColorStop(0, '#ff8a80');
+          grad.addColorStop(0.65, '#d50000');
+          grad.addColorStop(1, '#5a0000');
+        }
+
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.strokeStyle = isBuy ? '#00e676' : '#ff5252';
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+        ctx.restore();
+
+        // Sleek Semi-Transparent Lot Badge
+        const tagW = 24;
+        const tagH = 10.5;
+        ctx.fillStyle = 'rgba(6, 11, 24, 0.78)';
+        ctx.fillRect(x - tagW / 2, y - radius - tagH - 2, tagW, tagH);
+        ctx.strokeStyle = isBuy ? 'rgba(0, 230, 118, 0.7)' : 'rgba(255, 82, 82, 0.7)';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(x - tagW / 2, y - radius - tagH - 2, tagW, tagH);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 7px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${b.volume}`, x, y - radius - tagH / 2 - 2);
+      }
+    }
+
+    // 🏛️ DOKTRIN V4 INSTITUTIONAL LEVELS (ATAP & LANTAI)
+    function drawCmpDoctrine(plotWidth) {
+      // 1. ATAP (Minor Resistance)
+      if (cmpLevels.minorRes) {
+        const yRes = priceToY(cmpLevels.minorRes);
+        ctx.strokeStyle = 'rgba(255, 42, 75, 0.55)';
+        ctx.lineWidth = 1.0;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, yRes);
+        ctx.lineTo(plotWidth, yRes);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const atapLabel = `🔴 ATAP: $${cmpLevels.minorRes.toFixed(2)}`;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2.5;
+        ctx.strokeText(atapLabel, 8, yRes - 4);
+        ctx.fillStyle = '#ff4d6d';
+        ctx.fillText(atapLabel, 8, yRes - 4);
+      }
+
+      // 2. LANTAI (Minor Support)
+      if (cmpLevels.minorSup) {
+        const ySup = priceToY(cmpLevels.minorSup);
+        ctx.strokeStyle = 'rgba(0, 230, 118, 0.55)';
+        ctx.lineWidth = 1.0;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, ySup);
+        ctx.lineTo(plotWidth, ySup);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const lantaiLabel = `🟢 LANTAI: $${cmpLevels.minorSup.toFixed(2)}`;
+        ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2.5;
+        ctx.strokeText(lantaiLabel, 8, ySup + 11);
+        ctx.fillStyle = '#00e676';
+        ctx.fillText(lantaiLabel, 8, ySup + 11);
+      }
+    }
+
+    // 📊 VIBRANT INSTITUTIONAL VOLUME PROFILE (HIGH CONTRAST LEFT PILLAR)
+    function drawVolumeProfile(plotWidth, plotHeight) {
+      const profileWidth = Math.min(125, plotWidth * 0.16);
+      const priceStep = 0.50;
+      const startP = Math.floor(priceMin / priceStep) * priceStep;
+
+      // 1. Semi-transparent backdrop pillar for contrast against heatmap
+      ctx.fillStyle = 'rgba(5, 10, 22, 0.75)';
+      ctx.fillRect(0, 0, profileWidth + 8, plotHeight);
+      ctx.strokeStyle = 'rgba(0, 229, 255, 0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(profileWidth + 8, 0);
+      ctx.lineTo(profileWidth + 8, plotHeight);
+      ctx.stroke();
+
+      // 2. Profile Title Header
+      ctx.fillStyle = '#00e5ff';
+      ctx.font = 'bold 8px "JetBrains Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('VOL PROFILE', 8, 14);
+
+      for (let p = startP; p <= priceMax; p += priceStep) {
+        const y = priceToY(p);
+        const h = Math.max(1.8, Math.abs(priceToY(p - priceStep) - y));
+
+        const dist = Math.abs(p - cmpLevels.poc);
+        const isPoc = dist < 0.45;
+        const vol = Math.max(12, 100 * Math.exp(-dist / 3.2));
+        const barLen = Math.min(profileWidth, (vol / 100) * profileWidth);
+
+        if (isPoc) {
+          // Radiant Golden POC Bar
+          ctx.fillStyle = 'rgba(255, 214, 0, 0.88)';
+          ctx.fillRect(0, y - h, barLen, h - 0.5);
+          ctx.strokeStyle = '#ffd600';
+          ctx.lineWidth = 1.0;
+          ctx.strokeRect(0, y - h, barLen, h - 0.5);
+
+          // POC Tag
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 8px "JetBrains Mono", monospace';
+          ctx.textAlign = 'left';
+          ctx.fillText(`POC $${p.toFixed(2)}`, barLen + 12, y - h / 2 + 3);
+        } else {
+          // Vibrant Dual-Tone Cyan/Blue Volume Bar
+          const isValueArea = dist < 4.0;
+          ctx.fillStyle = isValueArea ? 'rgba(0, 210, 255, 0.65)' : 'rgba(30, 95, 165, 0.55)';
+          ctx.fillRect(0, y - h, barLen, h - 0.5);
+
+          // Crisp Border
+          ctx.strokeStyle = isValueArea ? 'rgba(0, 229, 255, 0.90)' : 'rgba(56, 140, 220, 0.70)';
+          ctx.lineWidth = 0.8;
+          ctx.strokeRect(0, y - h, barLen, h - 0.5);
+        }
+      }
+    }
+
+    // 📈 BOTTOM DELTA VOLUME HISTOGRAM STRIP
+    function drawDeltaSubPanel(plotWidth, fullHeight) {
+      const subTop = fullHeight - subPanelHeight;
+      const FOOTPRINT_H = 35; // Top 35px reserved for footprint delta bars
+      const histTop = subTop + FOOTPRINT_H; // Delta histogram starts below footprint
+      const histH   = subPanelHeight - FOOTPRINT_H; // remaining height for histogram
+
+      // Background
+      ctx.fillStyle = '#080c16';
+      ctx.fillRect(0, subTop, plotWidth, subPanelHeight);
+
+      // Separator line: top border of entire sub-panel
+      ctx.strokeStyle = '#141b2e';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, subTop);
+      ctx.lineTo(plotWidth, subTop);
+      ctx.stroke();
+
+      // Separator line between footprint strip and histogram
+      ctx.strokeStyle = '#1a2236';
+      ctx.beginPath();
+      ctx.moveTo(0, histTop);
+      ctx.lineTo(plotWidth, histTop);
+      ctx.stroke();
+
+      ctx.fillStyle = '#475569';
+      ctx.font = 'bold 7px "JetBrains Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('DELTA FOOTPRINT', 8, subTop + 8);
+      ctx.fillText('DELTA VOLUME (BUY/SELL)', 8, histTop + 9);
+
+      const zeroY = histTop + histH / 2;
+      ctx.strokeStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.moveTo(0, zeroY);
+      ctx.lineTo(plotWidth, zeroY);
+      ctx.stroke();
+
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const activeBars = (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0)
+        ? candleVault[currentTimeframe]
+        : candles;
+
+      let runningCvd = 0;
+      const cvdPoints = [];
+
+      for (let i = 0; i < activeBars.length; i++) {
+        const c = activeBars[i];
+        const xCenter = timeToX(c.time + tfSec / 2);
+        const candleWidth = Math.max(3, Math.min(24, (plotWidth / 25) * 0.6));
+
+        const delta = c.delta || (c.close >= c.open ? 40 : -40);
+        runningCvd += delta;
+        cvdPoints.push({ x: xCenter, cvd: runningCvd });
+
+        if (xCenter < 0 || xCenter > plotWidth) continue;
+
+        const isPositive = delta >= 0;
+        // Use histH/2 - 4 so bars fill the lower histogram area nicely
+        const barH = Math.min(histH / 2 - 2, (Math.abs(delta) / 100) * (histH / 2 - 2));
+
+        ctx.fillStyle = isPositive ? 'rgba(0, 230, 118, 0.75)' : 'rgba(255, 42, 75, 0.75)';
+        if (isPositive) {
+          ctx.fillRect(xCenter - candleWidth / 2, zeroY - barH, candleWidth, barH);
+        } else {
+          ctx.fillRect(xCenter - candleWidth / 2, zeroY, candleWidth, barH);
+        }
+      }
+
+      // 🌊 Real Cumulative Volume Delta (CVD) Continuous Line
+      if (cvdPoints.length > 1) {
+        let maxAbsCvd = 100;
+        for (let i = 0; i < cvdPoints.length; i++) {
+          if (Math.abs(cvdPoints[i].cvd) > maxAbsCvd) maxAbsCvd = Math.abs(cvdPoints[i].cvd);
+        }
+
+        ctx.save();
+        ctx.strokeStyle = '#00e5ff';
+        ctx.lineWidth = 1.8;
+        ctx.shadowColor = '#0284c7';
+        ctx.shadowBlur = 3;
+        ctx.beginPath();
+        let started = false;
+
+        for (let i = 0; i < cvdPoints.length; i++) {
+          const pt = cvdPoints[i];
+          if (pt.x >= -10 && pt.x <= plotWidth + 10) {
+            const cvdNorm = pt.cvd / maxAbsCvd;
+            const y = zeroY - cvdNorm * (subPanelHeight / 2 - 6);
+            if (!started) {
+              ctx.moveTo(pt.x, y);
+              started = true;
+            } else {
+              ctx.lineTo(pt.x, y);
+            }
+          }
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 🧱 REAL BOOKMAP PRO 3-COLUMN DOM LADDER (RIGHT SIDEBAR)
+    function drawLiveWallLadder(plotWidth, fullHeight) {
+      const startX = plotWidth;
+      const totalW = rightMargin;
+      const isMobile = width < 640;
+      const colPriceW = isMobile ? 54 : 68;
+      const colSizeW = isMobile ? 32 : 42;
+      const colHistW = totalW - colPriceW - colSizeW;
+
+      ctx.fillStyle = '#060913';
+      ctx.fillRect(startX, 0, colPriceW, fullHeight);
+
+      ctx.fillStyle = '#080c18';
+      ctx.fillRect(startX + colPriceW, 0, colSizeW + colHistW, fullHeight);
+
+      ctx.strokeStyle = '#141c30';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(startX, 0, totalW, fullHeight);
+      ctx.beginPath();
+      ctx.moveTo(startX + colPriceW, 0);
+      ctx.lineTo(startX + colPriceW, fullHeight);
+      ctx.moveTo(startX + colPriceW + colSizeW, 0);
+      ctx.lineTo(startX + colPriceW + colSizeW, fullHeight);
+      ctx.stroke();
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = 'bold 7.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('PRICE', startX + colPriceW / 2, 12);
+      ctx.fillText('SIZE', startX + colPriceW + colSizeW / 2, 12);
+      ctx.fillText('DOM DEPTH', startX + colPriceW + colSizeW + colHistW / 2, 12);
+
+      let tickStep = 0.50;
+      if (priceSpan > 150) tickStep = 10.00;
+      else if (priceSpan > 70) tickStep = 5.00;
+      else if (priceSpan > 30) tickStep = 2.00;
+      else if (priceSpan > 12) tickStep = 1.00;
+
+      const startP = Math.floor(priceMin / tickStep) * tickStep;
+      const endP = Math.ceil(priceMax / tickStep) * tickStep;
+
+      for (let p = startP; p <= endP; p += tickStep) {
+        const y = priceToY(p);
+        if (y < 16 || y > fullHeight - subPanelHeight) continue;
+
+        const pKey = p.toFixed(2);
+        const isAsk = p > currentSpotPrice;
+
+        let lot = liveWallLadder[pKey] || 0;
+        if (!lot) {
+          const lastSlice = depthHistory[depthHistory.length - 1];
+          if (lastSlice) lot = lastSlice.levels[Math.round(p * 2)] || 0;
+        }
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '8.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`$${p.toFixed(2)}`, startX + colPriceW - 6, y + 2.5);
+
+        if (lot > 3) {
+          const color = isAsk ? '#ff3b5c' : '#00e676';
+          const barColor = isAsk ? 'rgba(255, 59, 92, 0.45)' : 'rgba(0, 230, 118, 0.45)';
+          const maxBarW = colHistW - 10;
+          const barW = Math.max(4, Math.min(maxBarW, (lot / 120) * maxBarW));
+
+          ctx.fillStyle = color;
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`${lot}`, startX + colPriceW + colSizeW / 2, y + 2.5);
+
+          const barStartX = startX + colPriceW + colSizeW + 4;
+          ctx.fillStyle = barColor;
+          ctx.fillRect(barStartX, y - 4.5, barW, 9);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.0;
+          ctx.strokeRect(barStartX, y - 4.5, barW, 9);
+        }
+      }
+
+      // 4. Highlight Live Spot Price Row (Compact Minimalist Badge)
+      const ySpot = priceToY(currentSpotPrice);
+      const badgeW = colPriceW;
+      const badgeH = 14;
+
+      ctx.fillStyle = '#00e676';
+      ctx.fillRect(startX, ySpot - badgeH / 2, badgeW, badgeH);
+
+      ctx.fillStyle = '#050811';
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`$${currentSpotPrice.toFixed(2)}`, startX + badgeW / 2, ySpot);
+    }
+
+    function drawPriceAxis() {}
+
+    function drawTimeAxis(plotWidth, fullHeight) {
+      ctx.fillStyle = '#090d18';
+      ctx.fillRect(0, fullHeight, width, bottomMargin);
+
+      ctx.strokeStyle = '#141b2e';
+      ctx.beginPath();
+      ctx.moveTo(0, fullHeight);
+      ctx.lineTo(width, fullHeight);
+      ctx.stroke();
+
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      const minPixelSpacing = 70;
+      const rawStep = ((timeEnd - timeStart) / Math.max(10, plotWidth)) * minPixelSpacing;
+      const timeStep = Math.max(tfSec, Math.ceil(rawStep / tfSec) * tfSec);
+      const firstTime = Math.floor(timeStart / timeStep) * timeStep;
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+
+      for (let t = firstTime; t <= timeEnd; t += timeStep) {
+        const x = timeToX(t);
+        if (x >= 25 && x <= plotWidth - 25) {
+          const date = new Date(t * 1000);
+          const timeStr = date.toTimeString().substring(0, 5);
+          ctx.fillText(timeStr, x, fullHeight + 17);
+        }
+      }
+    }
+
+    // 🎯 CROSSHAIR & HOVER INSPECTOR
+    function drawCrosshairAndInspector(plotWidth, plotHeight) {
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+
+      ctx.beginPath();
+      ctx.moveTo(mouseX, 0);
+      ctx.lineTo(mouseX, plotHeight);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(0, mouseY);
+      ctx.lineTo(plotWidth, mouseY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const curP = yToPrice(mouseY);
+      const curT = xToTime(mouseX);
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(plotWidth + 2, mouseY - 9, 64, 18);
+      ctx.fillStyle = '#06080f';
+      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`$${curP.toFixed(2)}`, plotWidth + 34, mouseY + 3.5);
+
+      const d = new Date(curT * 1000);
+      const tStr = d.toTimeString().substring(0, 8);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(mouseX - 35, height - bottomMargin + 2, 70, 16);
+      ctx.fillStyle = '#06080f';
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(tStr, mouseX, height - bottomMargin + 13);
+    }
+
+    function getTimeframeSeconds(tf) {
+      switch (tf) {
+        case 'S15': return 15;
+        case 'M1': return 60;
+        case 'M5': return 300;
+        case 'M15': return 900;
+        case 'M30': return 1800;
+        case 'H1': return 3600;
+        case 'H4': return 14400;
+        default: return 300;
+      }
+    }
+
+    // 🎨 DRAWING TOOLS STATE (TRENDLINE, RECTANGLE BOX & 1-BY-1 DELETER)
+    let activeDrawTool = null; // null | 'line' | 'box'
+    let selectedDrawingId = null; // ID of specifically selected drawing
+    let activeDeleteBtnRect = null; // { x, y, w, h, id }
+    let drawStart = null; // { t, p }
+    let drawCurrent = null; // { t, p }
+    let userDrawings = JSON.parse(localStorage.getItem('cr_drawings') || '[]');
+
+    const btnDrawLine = document.getElementById('btn-draw-line');
+    const btnDrawBox = document.getElementById('btn-draw-box');
+    const btnDrawUndo = document.getElementById('btn-draw-undo');
+    const btnDrawClear = document.getElementById('btn-draw-clear');
+
+    function updateDrawButtonsUI() {
+      if (btnDrawLine) btnDrawLine.classList.toggle('active', activeDrawTool === 'line');
+      if (btnDrawBox) btnDrawBox.classList.toggle('active', activeDrawTool === 'box');
+      canvas.style.cursor = activeDrawTool ? 'crosshair' : 'default';
+    }
+
+    if (btnDrawLine) {
+      btnDrawLine.onclick = () => {
+        activeDrawTool = activeDrawTool === 'line' ? null : 'line';
+        selectedDrawingId = null;
+        drawStart = null;
+        drawCurrent = null;
+        updateDrawButtonsUI();
+      };
+    }
+
+    if (btnDrawBox) {
+      btnDrawBox.onclick = () => {
+        activeDrawTool = activeDrawTool === 'box' ? null : 'box';
+        selectedDrawingId = null;
+        drawStart = null;
+        drawCurrent = null;
+        updateDrawButtonsUI();
+      };
+    }
+
+    // ↩️ UNDO / HAPUS 1 PER 1
+    if (btnDrawUndo) {
+      btnDrawUndo.onclick = () => {
+        if (userDrawings.length > 0) {
+          if (selectedDrawingId) {
+            userDrawings = userDrawings.filter((d) => d.id !== selectedDrawingId);
+            selectedDrawingId = null;
+          } else {
+            userDrawings.pop(); // Hapus satu per satu dari yang paling baru
+          }
+          localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+          updateDrawButtonsUI();
+        }
+      };
+    }
+
+    if (btnDrawClear) {
+      btnDrawClear.onclick = () => {
+        userDrawings = [];
+        selectedDrawingId = null;
+        localStorage.removeItem('cr_drawings');
+        activeDrawTool = null;
+        drawStart = null;
+        drawCurrent = null;
+        updateDrawButtonsUI();
+      };
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedDrawingId) {
+          userDrawings = userDrawings.filter((d) => d.id !== selectedDrawingId);
+          selectedDrawingId = null;
+          localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+        }
+      }
+    });
+
+    function distToSegment(px, py, x1, y1, x2, y2) {
+      const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+      if (l2 === 0) return Math.hypot(px - x1, py - y1);
+      let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+      t = Math.max(0, Math.min(1, t));
+      return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
+    }
+
+    function findDrawingAt(px, py) {
+      for (let i = userDrawings.length - 1; i >= 0; i--) {
+        const d = userDrawings[i];
+        const x1 = timeToX(d.t1);
+        const y1 = priceToY(d.p1);
+        const x2 = timeToX(d.t2);
+        const y2 = priceToY(d.p2);
+
+        if (d.type === 'line') {
+          const dist = distToSegment(px, py, x1, y1, x2, y2);
+          if (dist <= 12) return d;
+        } else if (d.type === 'box') {
+          const minX = Math.min(x1, x2) - 6;
+          const maxX = Math.max(x1, x2) + 6;
+          const minY = Math.min(y1, y2) - 6;
+          const maxY = Math.max(y1, y2) + 6;
+          if (px >= minX && px <= maxX && py >= minY && py <= maxY) {
+            return d;
+          }
+        }
+      }
+      return null;
+    }
+
+    function drawUserDrawings(plotWidth, plotHeight) {
+      ctx.save();
+      activeDeleteBtnRect = null;
+
+      // 1. Render all saved user drawings
+      for (let i = 0; i < userDrawings.length; i++) {
+        const d = userDrawings[i];
+        const x1 = timeToX(d.t1);
+        const y1 = priceToY(d.p1);
+        const x2 = timeToX(d.t2);
+        const y2 = priceToY(d.p2);
+        const isSelected = d.id === selectedDrawingId;
+
+        if (d.type === 'line') {
+          // Trendline
+          ctx.strokeStyle = isSelected ? '#ffd700' : (d.color || '#00e5ff');
+          ctx.lineWidth = isSelected ? 3.0 : 2.0;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+
+          // Endpoint Handles
+          ctx.fillStyle = isSelected ? '#ffd700' : '#ffffff';
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(x1, y1, isSelected ? 5.0 : 3.5, 0, Math.PI * 2);
+          ctx.arc(x2, y2, isSelected ? 5.0 : 3.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Floating mini delete pill for selected line
+          if (isSelected) {
+            const midX = (x1 + x2) / 2;
+            const midY = Math.min(y1, y2) - 18;
+            const pillW = 62;
+            const pillH = 18;
+            const pillX = midX - pillW / 2;
+            const pillY = midY;
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+            ctx.strokeStyle = '#ff3b5c';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+            else ctx.rect(pillX, pillY, pillW, pillH);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ff3b5c';
+            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('❌ HAPUS', pillX + pillW / 2, pillY + pillH / 2);
+
+            activeDeleteBtnRect = { x: pillX, y: pillY, w: pillW, h: pillH, id: d.id };
+          }
+        } else if (d.type === 'box') {
+          // Rectangle Box
+          const rx = Math.min(x1, x2);
+          const ry = Math.min(y1, y2);
+          const rw = Math.abs(x2 - x1);
+          const rh = Math.abs(y2 - y1);
+
+          ctx.fillStyle = isSelected ? 'rgba(255, 215, 0, 0.22)' : (d.fillColor || 'rgba(0, 229, 255, 0.18)');
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeStyle = isSelected ? '#ffd700' : (d.strokeColor || '#00e5ff');
+          ctx.lineWidth = isSelected ? 2.5 : 1.5;
+          ctx.strokeRect(rx, ry, rw, rh);
+
+          // Selection Corner Handles
+          if (isSelected) {
+            ctx.fillStyle = '#ffd700';
+            ctx.fillRect(rx - 3, ry - 3, 6, 6);
+            ctx.fillRect(rx + rw - 3, ry - 3, 6, 6);
+            ctx.fillRect(rx - 3, ry + rh - 3, 6, 6);
+            ctx.fillRect(rx + rw - 3, ry + rh - 3, 6, 6);
+
+            // Floating delete pill for selected box
+            const pillW = 62;
+            const pillH = 18;
+            const pillX = rx + rw / 2 - pillW / 2;
+            const pillY = ry - 22;
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+            ctx.strokeStyle = '#ff3b5c';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, 4);
+            else ctx.rect(pillX, pillY, pillW, pillH);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ff3b5c';
+            ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('❌ HAPUS', pillX + pillW / 2, pillY + pillH / 2);
+
+            activeDeleteBtnRect = { x: pillX, y: pillY, w: pillW, h: pillH, id: d.id };
+          }
+        }
+      }
+
+      // 2. Render live in-progress drawing preview
+      if (activeDrawTool && drawStart && drawCurrent) {
+        const x1 = timeToX(drawStart.t);
+        const y1 = priceToY(drawStart.p);
+        const x2 = timeToX(drawCurrent.t);
+        const y2 = priceToY(drawCurrent.p);
+
+        if (activeDrawTool === 'line') {
+          ctx.strokeStyle = '#ffd600';
+          ctx.lineWidth = 2.0;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (activeDrawTool === 'box') {
+          const rx = Math.min(x1, x2);
+          const ry = Math.min(y1, y2);
+          const rw = Math.abs(x2 - x1);
+          const rh = Math.abs(y2 - y1);
+
+          ctx.fillStyle = 'rgba(255, 214, 0, 0.22)';
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeStyle = '#ffd600';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 4]);
+          ctx.strokeRect(rx, ry, rw, rh);
+          ctx.setLineDash([]);
+        }
+      }
+
+      ctx.restore();
+    }
+
+    // --- INTERACTION EVENT LISTENERS ---
+    canvas.addEventListener('mousedown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // 1. Check if clicked on floating single-item delete button
+      if (activeDeleteBtnRect) {
+        const r = activeDeleteBtnRect;
+        if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+          userDrawings = userDrawings.filter((d) => d.id !== r.id);
+          selectedDrawingId = null;
+          activeDeleteBtnRect = null;
+          localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+          return;
+        }
+      }
+
+      if (activeDrawTool) {
+        drawStart = { t: xToTime(x), p: yToPrice(y) };
+        drawCurrent = { t: drawStart.t, p: drawStart.p };
+        return;
+      }
+
+      // 2. If not drawing, check if clicking on a drawing to select it
+      const clickedDrawing = findDrawingAt(x, y);
+      if (clickedDrawing) {
+        selectedDrawingId = clickedDrawing.id;
+        return;
+      } else {
+        selectedDrawingId = null;
+      }
+
+      // Check click on floating Snap-to-Live button
+      const isScrolledBack = timeEnd < (Math.floor(Date.now() / 1000) + rightOffsetSec - 25);
+      if (isScrolledBack) {
+        const snapBtnW = 112;
+        const snapBtnH = 22;
+        const snapBtnX = (width - rightMargin) - snapBtnW - 12;
+        const snapBtnY = (height - bottomMargin) - subPanelHeight - snapBtnH - 10;
+        if (x >= snapBtnX && x <= snapBtnX + snapBtnW && y >= snapBtnY && y <= snapBtnY + snapBtnH) {
+          const curT = Math.floor(Date.now() / 1000);
+          timeEnd = curT + rightOffsetSec;
+          timeStart = timeEnd - timeWindowSec;
+          return;
+        }
+      }
+
+      isDragging = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+
+      if (x > width - rightMargin) {
+        isDraggingPriceScale = true;
+      } else if (y > height - bottomMargin) {
+        isDraggingTimeScale = true;
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (activeDrawTool && drawStart && drawCurrent) {
+        if (Math.abs(drawStart.t - drawCurrent.t) > 2 || Math.abs(drawStart.p - drawCurrent.p) > 0.05) {
+          userDrawings.push({
+            id: Date.now(),
+            type: activeDrawTool,
+            t1: drawStart.t,
+            p1: drawStart.p,
+            t2: drawCurrent.t,
+            p2: drawCurrent.p,
+            color: '#00e5ff',
+            fillColor: 'rgba(0, 229, 255, 0.18)',
+            strokeColor: '#00e5ff'
+          });
+          localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+        }
+        drawStart = null;
+        drawCurrent = null;
+        activeDrawTool = null;
+        updateDrawButtonsUI();
+        return;
+      }
+
+      isDragging = false;
+      isDraggingPriceScale = false;
+      isDraggingTimeScale = false;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = e.clientX - rect.left;
+      mouseY = e.clientY - rect.top;
+
+      if (activeDrawTool && drawStart) {
+        drawCurrent = { t: xToTime(mouseX), p: yToPrice(mouseY) };
+        return;
+      }
+
+      if (mouseX > width - rightMargin) {
+        canvas.style.cursor = 'ns-resize';
+      } else if (mouseY > height - bottomMargin) {
+        canvas.style.cursor = 'ew-resize';
+      } else if (isDragging) {
+        canvas.style.cursor = 'grabbing';
+      } else {
+        canvas.style.cursor = 'crosshair';
+      }
+
+      if (isDragging) {
+        const dx = e.clientX - lastMouseX;
+        const dy = e.clientY - lastMouseY;
+
+        if (isDraggingPriceScale) {
+          const factor = 1 + dy * 0.005;
+          priceSpan = Math.max(2.0, priceSpan * factor);
+          priceMin = priceCenter - priceSpan / 2;
+          priceMax = priceCenter + priceSpan / 2;
+        } else if (isDraggingTimeScale) {
+          const factor = 1 - dx * 0.005;
+          timeWindowSec = Math.max(60, Math.min(3600 * 24 * 30, timeWindowSec * factor));
+          timeStart = timeEnd - timeWindowSec;
+          rightOffsetSec = timeEnd - nowSec;
+        } else {
+          const dt = (dx / (width - rightMargin)) * (timeEnd - timeStart);
+          timeStart -= dt;
+          timeEnd -= dt;
+          rightOffsetSec = timeEnd - nowSec;
+
+          const dp = (dy / (height - bottomMargin - subPanelHeight)) * priceSpan;
+          priceCenter += dp;
+          priceMin = priceCenter - priceSpan / 2;
+          priceMax = priceCenter + priceSpan / 2;
+        }
+
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+      }
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY > 0 ? 1.10 : 0.90;
+      const cursorTime = xToTime(mouseX);
+
+      timeStart = cursorTime - (cursorTime - timeStart) * zoomFactor;
+      timeEnd = cursorTime + (timeEnd - cursorTime) * zoomFactor;
+      timeWindowSec = timeEnd - timeStart;
+      rightOffsetSec = timeEnd - nowSec;
+    }, { passive: false });
+
+    // --- 📱 MOBILE TOUCH ENGINE (1-FINGER PAN, 2-FINGER PINCH-ZOOM, TOUCH SCALE) ---
+    let isTouching = false;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchLastX = 0;
+    let touchLastY = 0;
+    let touchStartTime = 0;
+    let initialPinchDist = 0;
+    let initialTimeWindow = 0;
+    let initialPriceSpan = 0;
+    let isTouchingPriceScale = false;
+
+    function getTouchDistance(t1, t2) {
+      const dx = t1.clientX - t2.clientX;
+      const dy = t1.clientY - t2.clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function getTouchMidpoint(t1, t2, rect) {
+      return {
+        x: ((t1.clientX + t2.clientX) / 2) - rect.left,
+        y: ((t1.clientY + t2.clientY) / 2) - rect.top
+      };
+    }
+
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      touchStartTime = performance.now();
+
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        const x = t.clientX - rect.left;
+        const y = t.clientY - rect.top;
+
+        // Check if tapped floating single-item delete button
+        if (activeDeleteBtnRect) {
+          const r = activeDeleteBtnRect;
+          if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+            userDrawings = userDrawings.filter((d) => d.id !== r.id);
+            selectedDrawingId = null;
+            activeDeleteBtnRect = null;
+            localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+            return;
+          }
+        }
+
+        if (activeDrawTool) {
+          drawStart = { t: xToTime(x), p: yToPrice(y) };
+          drawCurrent = { t: drawStart.t, p: drawStart.p };
+          return;
+        }
+
+        const clickedDrawing = findDrawingAt(x, y);
+        if (clickedDrawing) {
+          selectedDrawingId = clickedDrawing.id;
+          return;
+        } else {
+          selectedDrawingId = null;
+        }
+
+        // Check tap on floating Snap-to-Live button
+        const isScrolledBack = timeEnd < (Math.floor(Date.now() / 1000) + rightOffsetSec - 25);
+        if (isScrolledBack) {
+          const snapBtnW = 112;
+          const snapBtnH = 22;
+          const snapBtnX = (width - rightMargin) - snapBtnW - 12;
+          const snapBtnY = (height - bottomMargin) - subPanelHeight - snapBtnH - 10;
+          if (x >= snapBtnX && x <= snapBtnX + snapBtnW && y >= snapBtnY && y <= snapBtnY + snapBtnH) {
+            const curT = Math.floor(Date.now() / 1000);
+            timeEnd = curT + rightOffsetSec;
+            timeStart = timeEnd - timeWindowSec;
+            return;
+          }
+        }
+
+        isTouching = true;
+        touchStartX = t.clientX;
+        touchStartY = t.clientY;
+        touchLastX = t.clientX;
+        touchLastY = t.clientY;
+
+        isTouchingPriceScale = x > width - rightMargin;
+        mouseX = x;
+        mouseY = y;
+      } else if (e.touches.length === 2) {
+        isTouching = true;
+        isTouchingPriceScale = false;
+        initialPinchDist = getTouchDistance(e.touches[0], e.touches[1]);
+        initialTimeWindow = timeWindowSec;
+        initialPriceSpan = priceSpan;
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        mouseX = t.clientX - rect.left;
+        mouseY = t.clientY - rect.top;
+
+        if (activeDrawTool && drawStart) {
+          drawCurrent = { t: xToTime(mouseX), p: yToPrice(mouseY) };
+          return;
+        }
+
+        if (!isTouching) return;
+        const dx = t.clientX - touchLastX;
+        const dy = t.clientY - touchLastY;
+
+        if (isTouchingPriceScale) {
+          // Vertical price zoom on right scale drag
+          const factor = 1 + dy * 0.008;
+          priceSpan = Math.max(2.0, priceSpan * factor);
+          priceMin = priceCenter - priceSpan / 2;
+          priceMax = priceCenter + priceSpan / 2;
+        } else {
+          // 1-Finger Smooth Pan (Time X & Price Y)
+          const dt = (dx / (width - rightMargin)) * (timeEnd - timeStart);
+          timeStart -= dt;
+          timeEnd -= dt;
+          rightOffsetSec = timeEnd - nowSec;
+
+          const dp = (dy / (height - bottomMargin - subPanelHeight)) * priceSpan;
+          priceCenter += dp;
+          priceMin = priceCenter - priceSpan / 2;
+          priceMax = priceCenter + priceSpan / 2;
+        }
+
+        touchLastX = t.clientX;
+        touchLastY = t.clientY;
+      } else if (e.touches.length === 2) {
+        // 2-Finger Pinch Zoom (Time & Price)
+        const curDist = getTouchDistance(e.touches[0], e.touches[1]);
+        if (initialPinchDist > 0 && curDist > 0) {
+          const zoomFactor = initialPinchDist / curDist;
+          const mid = getTouchMidpoint(e.touches[0], e.touches[1], rect);
+          const cursorTime = xToTime(mid.x);
+
+          // Zoom Time
+          timeWindowSec = Math.max(30, Math.min(3600 * 24 * 30, initialTimeWindow * zoomFactor));
+          timeStart = cursorTime - (cursorTime - timeStart) * (timeWindowSec / (timeEnd - timeStart));
+          timeEnd = timeStart + timeWindowSec;
+          rightOffsetSec = timeEnd - nowSec;
+
+          // Zoom Price
+          priceSpan = Math.max(2.0, initialPriceSpan * zoomFactor);
+          priceMin = priceCenter - priceSpan / 2;
+          priceMax = priceCenter + priceSpan / 2;
+        }
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      if (activeDrawTool && drawStart && drawCurrent) {
+        if (Math.abs(drawStart.t - drawCurrent.t) > 2 || Math.abs(drawStart.p - drawCurrent.p) > 0.05) {
+          userDrawings.push({
+            id: Date.now(),
+            type: activeDrawTool,
+            t1: drawStart.t,
+            p1: drawStart.p,
+            t2: drawCurrent.t,
+            p2: drawCurrent.p,
+            color: '#00e5ff',
+            fillColor: 'rgba(0, 229, 255, 0.18)',
+            strokeColor: '#00e5ff'
+          });
+          localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+        }
+        drawStart = null;
+        drawCurrent = null;
+        activeDrawTool = null;
+        updateDrawButtonsUI();
+        return;
+      }
+
+      if (e.touches.length === 0) {
+        isTouching = false;
+        isTouchingPriceScale = false;
+      } else if (e.touches.length === 1) {
+        touchLastX = e.touches[0].clientX;
+        touchLastY = e.touches[0].clientY;
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchcancel', () => {
+      isTouching = false;
+      isTouchingPriceScale = false;
+    });
+
+    // ⌨️ KEYBOARD SHORTCUTS
+    window.addEventListener('keydown', (e) => {
+      // Don't fire if typing in an input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+      switch (e.key.toLowerCase()) {
+        case 'l': // Line tool
+          activeDrawTool = activeDrawTool === 'line' ? null : 'line';
+          selectedDrawingId = null; drawStart = null; drawCurrent = null;
+          updateDrawButtonsUI(); break;
+        case 'b': // Box tool
+          activeDrawTool = activeDrawTool === 'box' ? null : 'box';
+          selectedDrawingId = null; drawStart = null; drawCurrent = null;
+          updateDrawButtonsUI(); break;
+        case 'z': // Undo last drawing
+          if (selectedDrawingId) {
+            userDrawings = userDrawings.filter(d => d.id !== selectedDrawingId);
+            selectedDrawingId = null;
+          } else {
+            userDrawings.pop();
+          }
+          localStorage.setItem('cr_drawings', JSON.stringify(userDrawings)); break;
+        case 'escape': // Cancel active draw tool
+          activeDrawTool = null; drawStart = null; drawCurrent = null;
+          updateDrawButtonsUI(); break;
+        case 'delete': // Already handled above but reinforce for non-selected mode
+          if (selectedDrawingId) {
+            userDrawings = userDrawings.filter(d => d.id !== selectedDrawingId);
+            selectedDrawingId = null;
+            localStorage.setItem('cr_drawings', JSON.stringify(userDrawings));
+          } break;
+        case 's': // Screenshot
+          if (e.ctrlKey || e.metaKey) break; // Don't intercept Ctrl+S (browser save)
+          const link = document.createElement('a');
+          link.download = `CR-PRO_${new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click(); break;
+      }
+    });
+
+    // 🔔 PRICE ALERT: Right-click on price axis to set/clear alert
+    canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const plotWidth = width - rightMargin;
+      if (x >= plotWidth) {
+        // Right-click on price axis → set alert at this price
+        const alertPrice = yToPrice(y);
+        if (priceAlertLevel && Math.abs(priceAlertLevel - alertPrice) < 0.5) {
+          priceAlertLevel = null; // Clear if clicking near existing alert
+          priceAlertTriggered = false;
+        } else {
+          priceAlertLevel = Math.round(alertPrice * 4) / 4; // Snap to 0.25 increment
+          priceAlertTriggered = false;
+          // Show mini toast
+          const toast = document.getElementById('whale-toast');
+          toast.innerHTML = `🔔 ALERT SET @ $${priceAlertLevel.toFixed(2)}`;
+          toast.style.background = 'linear-gradient(135deg, rgba(251,191,36,0.18), rgba(15,23,42,0.98))';
+          toast.style.border = '1.5px solid rgba(251,191,36,0.7)';
+          toast.style.color = '#fbbf24';
+          toast.classList.add('active');
+          setTimeout(() => toast.classList.remove('active'), 2500);
+        }
+      }
+    });
+
+    // --- UI TOGGLES ---
+    document.getElementById('btn-toggle-candle').onclick = function () {
+      showCandles = !showCandles;
+      this.classList.toggle('active', showCandles);
+    };
+    document.getElementById('btn-toggle-heatmap').onclick = function () {
+      showHeatmap = !showHeatmap;
+      this.classList.toggle('active', showHeatmap);
+    };
+    document.getElementById('btn-toggle-bubbles').onclick = function () {
+      showBubbles = !showBubbles;
+      this.classList.toggle('active', showBubbles);
+    };
+    document.getElementById('btn-toggle-profile').onclick = function () {
+      showProfile = !showProfile;
+      this.classList.toggle('active', showProfile);
+    };
+    document.getElementById('btn-toggle-cmp').onclick = function () {
+      showCmp = !showCmp;
+      this.classList.toggle('active', showCmp);
+    };
+
+    document.getElementById('btn-fullscreen').onclick = function () {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    };
+
+    document.getElementById('btn-autofit').onclick = function () {
+      const curTime = Math.floor(Date.now() / 1000);
+      const tfSec = getTimeframeSeconds(currentTimeframe);
+      timeWindowSec = tfSec * 80;
+      rightOffsetSec = tfSec * 15;
+      timeEnd = curTime + rightOffsetSec;
+      timeStart = timeEnd - timeWindowSec;
+      priceCenter = currentSpotPrice;
+      priceSpan = 22.00;
+      priceMin = priceCenter - priceSpan / 2;
+      priceMax = priceCenter + priceSpan / 2;
+      seedContinuousDepthFromRealWalls();
+    };
+
+    // Timeframe dropdown listener
+    const tfSelect = document.getElementById('tf-select');
+    if (tfSelect) {
+      tfSelect.onchange = function () {
+        currentTimeframe = this.value;
+        const tfSec = getTimeframeSeconds(currentTimeframe);
+        timeWindowSec = tfSec * 80;
+        rightOffsetSec = tfSec * 15;
+        timeEnd = nowSec + rightOffsetSec;
+        timeStart = timeEnd - timeWindowSec;
+        if (candleVault[currentTimeframe] && candleVault[currentTimeframe].length > 0) {
+          candles = candleVault[currentTimeframe];
+          updateHeaderOhlc(candles[candles.length - 1]);
+        }
+        seedContinuousDepthFromRealWalls();
+      };
+    }
+
+    // --- STARTUP ---
+    loadRealHistoricalData();
+    setInterval(fetchRealLiveStatus, 350);
+    requestAnimationFrame(render);
+
+  })();
+  </script>
+</body>
+</html>

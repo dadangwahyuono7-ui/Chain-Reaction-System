@@ -1,0 +1,236 @@
+// News & Catalyst tab - polls /ff_calendar.json and /news_feed.json, both
+// written straight into this sultan/ folder by news_engine.py (no proxy
+// needed) and renders both plus a combined kesimpulan (conclusion).
+// 2026-08-25: calendar source switched from /today_calendar.json (the EA's
+// MT5-native export - USD-only High-impact-only, no forecast/previous) to
+// ForexFactory (forecast/previous included, zero EA dependency) - Dadang:
+// "calender news kalo bisa lo tarik ke web kita... kerjakan forex faktori".
+// Currency scope settled back to USD + "All" only (not every currency) -
+// "flagnya yang ada hubungan sama usd dan gold aja" - but ALL impact
+// levels now show (not just High), filtering happens server-side in
+// news_engine.py's _fetch_ff_calendar().
+
+const REFRESH_MS = 60000;
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+// 2026-08-25 - Dadang: "zona penting nya di kasih warna bisa gak bro
+// narasi pentingnya" - the AI prompt (news_engine.py's generate_ai_
+// analysis()) now wraps just the zona-pantau number/range in [[ ]]
+// markers on purpose, specifically so this can highlight it without
+// having to guess/regex-hunt for "zona pantau" phrasing that might vary.
+// Escape the WHOLE text first (never trust AI output as raw HTML), THEN
+// replace the marker on the already-escaped string - safe either way
+// since [ and ] aren't HTML-special characters.
+function highlightZones(text) {
+  return escapeHtml(text).replace(
+    /\[\[([^\]]+)\]\]/g,
+    '<span class="font-bold text-amber-300 bg-amber-400/10 px-1 rounded">$1</span>'
+  );
+}
+
+function fmtMinsUntil(mins) {
+  if (mins == null || mins < 0) return "-";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}j ${m}m lagi` : `${m}m lagi`;
+}
+
+function fmtNewsTime(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleString("id-ID", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch (e) {
+    return "";
+  }
+}
+
+// 2026-08-25 - Dadang: "sebaiknya bukan hanya yang merah deh biar web
+// nya rame bro jadi kuning oren dan merah juga masukin aja" - all 3
+// ForexFactory impact levels now come through (was High/merah-only),
+// each keeping its own flag color instead of one undifferentiated list.
+const IMPACT_FLAG = {
+  high:   { cls: "chip-red-flag",    label: "FLAG MERAH" },
+  medium: { cls: "chip-orange-flag", label: "FLAG ORANGE" },
+  low:    { cls: "chip-yellow-flag", label: "FLAG KUNING" },
+};
+
+async function loadCalendar() {
+  const el = document.getElementById("calendar-list");
+  try {
+    const res = await fetch("/ff_calendar.json", { cache: "no-store" });
+    const events = await res.json();
+    if (!Array.isArray(events) || events.length === 0) {
+      el.innerHTML = `<p class="text-[11px] text-slate-500">Gak ada event ekonomi dalam 24 jam ke depan.</p>`;
+      return;
+    }
+    el.innerHTML = events.map((ev) => {
+      const released = !!ev.released;
+      const flag = IMPACT_FLAG[ev.impact] || IMPACT_FLAG.low;
+      const badge = released
+        ? `<span class="chip chip-neu">SUDAH RILIS</span>`
+        : `<span class="chip ${flag.cls}">${flag.label}</span>`;
+      const timing = released ? "" : `<div class="text-[10px] text-slate-500 mt-0.5">${fmtMinsUntil(ev.mins_until)}</div>`;
+      // forecast/previous - bonus fields ForexFactory has that the old
+      // MT5-native calendar couldn't safely export (MQL5 fixed-point
+      // scaling risk on arbitrary numeric strings).
+      const fp = (ev.forecast || ev.previous)
+        ? `<div class="text-[10px] text-slate-600 font-mono mt-0.5">f: ${escapeHtml(ev.forecast || "-")} &middot; p: ${escapeHtml(ev.previous || "-")}</div>`
+        : "";
+      return `
+        <div class="flex items-start justify-between gap-3 pb-2 border-b border-slate-800/40 last:border-none last:pb-0">
+          <div class="min-w-0">
+            <div class="text-[12px] text-slate-200 font-medium truncate">${escapeHtml(ev.name)}</div>
+            <div class="text-[10px] text-slate-500 font-mono mt-0.5">${escapeHtml(ev.time)}</div>
+            ${fp}
+          </div>
+          <div class="text-right shrink-0">
+            ${badge}
+            ${timing}
+          </div>
+        </div>`;
+    }).join("");
+  } catch (e) {
+    el.innerHTML = `<p class="text-[11px] text-rose-400">Gagal baca kalender: ${escapeHtml(String(e))}</p>`;
+  }
+}
+
+function verdictChipClass(verdict) {
+  if (verdict === "BULLISH") return "chip-bull";
+  if (verdict === "BEARISH") return "chip-bear";
+  return "chip-neu";
+}
+
+function buildConfluenceNote(items) {
+  const withConfluence = items.filter((it) => (it.confluences || []).length > 0);
+  if (withConfluence.length === 0) {
+    return "Belum ada level yang disebut berita match sama zona Bookmap kita saat ini (atau EA lagi gak di XAUUSD).";
+  }
+  const parts = withConfluence.flatMap((it) => it.confluences.map((c) => `$${c.level}&asymp;${c.matched_label}`));
+  return `&#127919; ${withConfluence.length} berita nyebut level yang SEJALAN sama zona kita sendiri: ${parts.join(", ")}.`;
+}
+
+function buildVerdictText(conclusion) {
+  const { bullish_count, bearish_count, neutral_count, total, verdict } = conclusion;
+  if (total === 0) return "Belum ada headline yang kebaca.";
+  const base = `Dari ${total} headline gold terbaru: ${bullish_count} bullish, ${bearish_count} bearish, ${neutral_count} netral.`;
+  if (verdict === "BULLISH") return `${base} Nada dominan condong BULLISH - lebih banyak berita nyebut kenaikan/rally/dolar lemah dibanding sebaliknya.`;
+  if (verdict === "BEARISH") return `${base} Nada dominan condong BEARISH - lebih banyak berita nyebut penurunan/sell-off/dolar kuat dibanding sebaliknya.`;
+  if (verdict === "MIXED") return `${base} Nada CAMPUR ADUK - gak ada sisi yang dominan jelas, hati-hati whipsaw.`;
+  return `${base} Mayoritas netral, gak ada nada tegas dari headline terkini.`;
+}
+
+async function loadNews() {
+  const listEl = document.getElementById("news-list");
+  const badgeEl = document.getElementById("verdict-badge");
+  const textEl = document.getElementById("verdict-text");
+  const updatedEl = document.getElementById("updated-label");
+  try {
+    const res = await fetch("/news_feed.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("news_feed.json belum ada - jalanin news_engine.py dulu");
+    const data = await res.json();
+    const items = data.items || [];
+    const conclusion = data.conclusion || { bullish_count: 0, bearish_count: 0, neutral_count: 0, total: 0, verdict: "NEUTRAL" };
+
+    badgeEl.textContent = conclusion.verdict;
+    badgeEl.className = "chip " + verdictChipClass(conclusion.verdict);
+    textEl.textContent = buildVerdictText(conclusion);
+    const confluenceEl = document.getElementById("confluence-note");
+    if (confluenceEl) confluenceEl.innerHTML = buildConfluenceNote(items);
+
+    const analysisEl = document.getElementById("ai-analysis-text");
+    if (analysisEl) analysisEl.innerHTML = highlightZones(data.ai_analysis || "Analisa AI belum tersedia.");
+
+    if (data.updated_ts) {
+      const d = new Date(data.updated_ts * 1000);
+      updatedEl.textContent = "update " + d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+    }
+
+    if (items.length === 0) {
+      listEl.innerHTML = `<p class="text-[11px] text-slate-500">Belum ada headline.</p>`;
+      return;
+    }
+
+    listEl.innerHTML = items.map((it) => {
+      const toneChip = it.tone === "BULLISH" ? "chip-bull" : it.tone === "BEARISH" ? "chip-bear" : "chip-neu";
+      const timeLabel = fmtNewsTime(it.created_at);
+      const confluences = it.confluences || [];
+      // 2026-08-23 - Dadang: "bisa nyesuain data kita dari bookmap...
+      // area SNR yang di tandai fund manager kan biasanya di news juga
+      // ada" - a level the market/media is watching that also lines up
+      // with OUR OWN POC/VAH/VAL/wall data (from news_engine.py's
+      // _find_confluences), shown as its own callout so it stands out
+      // from a plain headline.
+      const confluenceHtml = confluences.length
+        ? `<div class="mt-1.5 flex flex-wrap gap-1.5">${confluences.map((c) => `
+            <span class="chip" style="background:rgba(217,180,101,0.14); color:#d9b465;" title="Berita nyebut $${c.level} - deket sama ${escapeHtml(c.matched_label)} kita di ${c.matched_price} (jarak ${c.distance})">
+              &#127919; $${c.level} &asymp; ${escapeHtml(c.matched_label)} @ ${c.matched_price}
+            </span>`).join("")}</div>`
+        : "";
+      // 2026-08-23 - Dadang: "news narasi bisa lo convert ke bahasa
+      // indonesia aja" - news_engine.py's _translate_batch() adds
+      // title_id/summary_id via the local LLM when it's reachable;
+      // shown as primary here, with the original English kept as a
+      // toggle rather than dropped, and a plain fallback to English
+      // when translation wasn't available that cycle (server was off,
+      // etc.) so the feature never just shows nothing.
+      const hasTranslation = !!(it.title_id && it.summary_id);
+      const displayTitle = hasTranslation ? it.title_id : it.title;
+      const displaySummary = hasTranslation ? it.summary_id : it.summary;
+      const origToggle = hasTranslation
+        ? `<button class="orig-toggle text-[9px] text-slate-600 hover:text-amber-300 uppercase tracking-wide ml-2" type="button">lihat asli</button>`
+        : "";
+
+      return `
+        <div class="news-item">
+          <a href="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="chip ${toneChip}">${it.tone}</span>
+              ${it.category ? `<span class="text-[9px] text-slate-500 uppercase tracking-wide">${escapeHtml(it.category)}</span>` : ""}
+              ${timeLabel ? `<span class="text-[9px] text-slate-600 font-mono ml-auto">${timeLabel}</span>` : ""}
+            </div>
+            <div class="news-title text-[13px] text-slate-100 font-medium leading-snug transition-colors" data-en="${escapeHtml(it.title)}" data-id="${escapeHtml(displayTitle)}">${escapeHtml(displayTitle)}</div>
+            <div class="news-summary text-[11px] text-slate-400 mt-1 leading-relaxed" data-en="${escapeHtml(it.summary)}" data-id="${escapeHtml(displaySummary)}">${escapeHtml(displaySummary)}</div>
+          </a>
+          ${origToggle}
+          ${confluenceHtml}
+        </div>`;
+    }).join("");
+
+    listEl.querySelectorAll(".orig-toggle").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const item = btn.closest(".news-item");
+        const titleEl = item.querySelector(".news-title");
+        const summaryEl = item.querySelector(".news-summary");
+        const showingEn = btn.dataset.showingEn === "1";
+        titleEl.textContent = showingEn ? titleEl.dataset.id : titleEl.dataset.en;
+        summaryEl.textContent = showingEn ? summaryEl.dataset.id : summaryEl.dataset.en;
+        btn.textContent = showingEn ? "lihat asli" : "lihat terjemahan";
+        btn.dataset.showingEn = showingEn ? "0" : "1";
+      });
+    });
+  } catch (e) {
+    listEl.innerHTML = `<p class="text-[11px] text-rose-400">Gagal baca berita: ${escapeHtml(String(e))}</p>`;
+    textEl.textContent = "Data berita belum tersedia.";
+  }
+}
+
+function refreshAll() {
+  loadCalendar();
+  loadNews();
+}
+
+refreshAll();
+setInterval(refreshAll, REFRESH_MS);
+
+// 2026-08-23 - the API settings form moved to its own login-gated
+// /admin.html (Dadang: "lo beri admin panel aja lo bro nanti gw isi
+// email dan pasword gw") - see admin.html/admin.js.
